@@ -1,0 +1,63 @@
+#1 - IronPace — Production App PRD
+What & Why
+Produce a single comprehensive Product Requirements Document (IRONPACE_PRD.md) at the project root. The current app is a polished React prototype that stores everything in localStorage and simulates GPS distance with Math.random(). The PRD maps every gap between today's prototype and a shippable product, defines the full feature set, specifies the technical architecture, and breaks the work into independently deliverable milestones. The goal is a document detailed enough that any engineer can pick it up and start building without further clarification.
+
+Done looks like
+A single IRONPACE_PRD.md file exists at the project root
+The document covers all sections listed in the Steps below
+Every section is specific enough to be actionable — no placeholder text, no vague bullets
+A reader can derive a sprint backlog directly from the document
+Out of scope
+Implementing any of the described features (this task is documentation only)
+Design mockups or wireframes beyond what already exists in the prototype
+Steps
+Write the Executive Summary — one-page overview of the product vision, target user, and the single metric that defines success (weekly active users completing at least one session).
+
+Write the User Personas section — define three personas: Competitive Lifter (tracks PRs obsessively), Running Commuter (cares about pace/route history), Hybrid Athlete (both gym + cardio). Each persona gets: name, goal, pain point with existing apps, and the one thing IronPace does that nothing else does for them.
+
+Write the Current Prototype Gap Analysis — a table listing every mock/stub in the existing code and what production replaces it:
+
+localStorage → cloud database (PostgreSQL via Drizzle ORM)
+Seed data constants → real user-owned data fetched from API
+Math.random() distance simulation → real device GPS via navigator.geolocation watchPosition
+Hardcoded PREV_PERF → computed from user's own history
+Hardcoded PRs (Strength PRs, Running PRs) → computed dynamically per user
+No auth → user accounts with JWT auth
+Single-device state → multi-device cloud sync
+No notifications → rest timer push notifications + workout reminders
+SVG route sketch → real Mapbox GL JS route replay
+Write the Feature Specifications — one subsection per feature module. Each subsection must include: purpose, user stories (3–5), acceptance criteria (specific, testable), and edge cases. Modules to cover:
+
+Authentication (email/password + optional OAuth; JWT access + refresh tokens; account deletion)
+Routine Builder (create/edit/delete routines; reorder exercises via drag; duplicate routine; share routine via link; import from community library)
+Gym Session Logger (live workout with rest timer; previous performance shown per set; 1RM calculation displayed inline; auto-save every 30 s so crashes don't lose data; post-session summary with volume PR detection)
+Run / Walk Tracker (real GPS via navigator.geolocation; live pace, distance, calories; km audio cues via Web Speech API; pause/resume that freezes GPS; post-session Mapbox route replay; auto-lap splits)
+Progress & Analytics (weekly volume trend; strength trend per exercise; run distance trend; personal records — both strength 1RM and running; heat-map calendar; body weight log optional)
+Notifications (rest-timer vibration + optional push; configurable workout reminders; streak alerts at 3, 7, 30 days)
+Social / Sharing (shareable session summary card as image via html2canvas; optional public profile; follow friends; friends' recent activity feed — read-only)
+Settings (unit toggle kg/lbs; distance toggle km/mi; dark mode only for now; data export as JSON; account deletion with 30-day grace period)
+Write the Technical Architecture section — diagram in Mermaid, then prose covering:
+
+Frontend: React 18 + Vite, TanStack Query for server state, Zustand for ephemeral UI state, React Router v6 for navigation, Mapbox GL JS for route maps, Recharts for analytics charts, PWA manifest + service worker for offline support and install prompt
+Backend: Node.js + Hono (or Express), PostgreSQL via Drizzle ORM, JWT auth middleware, S3-compatible storage (Cloudflare R2) for route GPX files and share-card images
+Database schema: users, routines, routine_exercises, workout_sessions, session_sets, run_sessions, run_splits, body_weight_logs, PRs (materialized view or dedicated table updated on session completion)
+API design: REST with versioning (/api/v1/); list every endpoint with method, path, auth requirement, request body, and response shape — at minimum 25 endpoints
+Real-time: none required v1; rest timer is client-only
+Deployment: Replit Deployments for the web app; PostgreSQL on Replit's built-in DB
+Write the Milestone Roadmap — four milestones, each shippable independently:
+
+M1 — Auth + Cloud Persistence (replace localStorage; user can sign up, log in, and have all existing prototype features backed by real DB; seed data removed)
+M2 — Real GPS Run Tracking (replace Math.random simulation; live geolocation; Mapbox route replay; Web Speech API audio cues)
+M3 — Analytics + PRs (computed PRs from real data; strength/run trend charts from DB; streak and calendar heat-map)
+M4 — Social + Share (session share cards; optional public profile; friend activity feed) Each milestone lists: goal, user value, new endpoints, new UI screens, and estimated effort in dev-days (realistic for one developer).
+Write the Non-Functional Requirements section:
+
+Performance: time-to-interactive < 2 s on 4G; analytics queries < 300 ms (add DB indexes)
+Offline: service worker caches the shell; gym sessions log to IndexedDB and sync on reconnect; run sessions buffer GPS points locally and upload on finish
+Security: HTTPS only; JWT expiry 15 min / refresh 30 days; no PII in logs; GDPR data export
+Accessibility: WCAG 2.1 AA; all interactive elements keyboard-reachable; focus ring visible
+Browser support: last 2 versions of Chrome, Safari, Firefox; iOS Safari 16+; Android Chrome 110+
+Write the Open Questions section — list at least 8 specific unresolved decisions the team must make before or during M1, for example: pricing model, whether to build native mobile (Expo) vs PWA-only, whether to support Apple Watch / wearable data import, maximum free storage quota, whether social features require moderation infrastructure, etc.
+
+Relevant files
+src/App.jsx
