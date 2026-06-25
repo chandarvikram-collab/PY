@@ -985,14 +985,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const getTodayCalories = useCallback((): DayCalories => {
     const today = todayStr();
-    return (
-      state.calorieLog.find((d) => d.date === today) ?? {
-        date: today,
-        goal: state.userProfile.calorieGoal,
-        water: 0,
-        entries: [],
-      }
-    );
+    const log = state.calorieLog.find((d) => d.date === today);
+    // Always override stored goal with the live profile value so that
+    // changes made in the Profile Nutrition Goals editor take effect immediately.
+    return log
+      ? { ...log, goal: state.userProfile.calorieGoal }
+      : { date: today, goal: state.userProfile.calorieGoal, water: 0, entries: [] };
   }, [state.calorieLog, state.userProfile.calorieGoal]);
 
   const getWeeklyNutrition = useCallback((): WeeklyNutrition[] => {
