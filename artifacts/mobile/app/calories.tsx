@@ -217,6 +217,9 @@ export default function CaloriesScreen() {
   // ── Weekly chart view toggle ───────────────────────────────────────────────
   const [weekViewMode, setWeekViewMode] = useState<"calories" | "macros">("calories");
 
+  // ── Day breakdown modal ────────────────────────────────────────────────────
+  const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null);
+
   // ── Expandable meal cards ──────────────────────────────────────────────────
   const [expandedMeals, setExpandedMeals] = useState<Set<MealType>>(
     () => new Set(MEAL_TYPES.filter((m) => today.entries.some((e) => e.meal === m)))
@@ -430,6 +433,8 @@ export default function CaloriesScreen() {
       d.setDate(d.getDate() - (6 - i));
       return { label: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"][d.getDay()], isToday: i === 6 };
     }), []);
+  const weekDayDates = useMemo(() =>
+    Array.from({ length: 7 }, (_, i) => makeDateStr(6 - i)), []);
 
   const weekAvg = Math.round(weekData.reduce((s, d) => s + d.consumed, 0) / 7);
   const bestProteinDay = weekData.reduce((b, d) => d.protein > b.protein ? d : b, weekData[0]);
@@ -523,7 +528,14 @@ export default function CaloriesScreen() {
             {weekData.map((day, i) => {
               const meta = weekDayLabels[i];
               return (
-                <View key={i} style={s.barCol}>
+                <Pressable
+                  key={i}
+                  style={s.barCol}
+                  onPress={() => {
+                    setSelectedDayDate(weekDayDates[i]);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                >
                   {weekViewMode === "calories" ? (
                     <View style={{ height: SBAR_H, justifyContent: "flex-end" }}>
                       <View
@@ -548,7 +560,7 @@ export default function CaloriesScreen() {
                     {meta.label}
                   </Text>
                   {meta.isToday && <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary, marginTop: 2 }} />}
-                </View>
+                </Pressable>
               );
             })}
           </View>
@@ -1051,6 +1063,107 @@ export default function CaloriesScreen() {
           </View>
         </View>
       )}
+
+      {/* ── Day Breakdown Sheet ── */}
+      {selectedDayDate && (() => {
+        const dayLog = state.calorieLog.find((d) => d.date === selectedDayDate);
+        const dayEntries = dayLog?.entries ?? [];
+        const dayGoal = dayLog?.goal ?? state.userProfile.calorieGoal;
+        const dayTotal = dayEntries.reduce((s, e) => s + e.calories, 0);
+        const remaining = dayGoal - dayTotal;
+        const [y, m, d] = selectedDayDate.split("-").map(Number);
+        const dateLabel = new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+        const isToday = selectedDayDate === todayDateStr;
+        return (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.88)", justifyContent: "flex-end", zIndex: 150 }]}>
+            <View style={[s.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
+              <View style={[s.handle, { backgroundColor: colors.border }]} />
+              <View style={s.sheetHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.sheetTitle, { color: colors.foreground }]}>{dateLabel}</Text>
+                  <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: isToday ? colors.primary : colors.mutedForeground, marginTop: 2 }}>
+                    {isToday ? "Today · " : ""}{dayTotal} kcal of {dayGoal} goal
+                    {dayTotal > 0 ? (remaining >= 0
+                      ? `  ·  ${remaining} left`
+                      : `  ·  ${Math.abs(remaining)} over`) : ""}
+                  </Text>
+                </View>
+                <Pressable onPress={() => setSelectedDayDate(null)} hitSlop={10}>
+                  <Feather name="x" size={22} color={colors.mutedForeground} />
+                </Pressable>
+              </View>
+
+              {/* Macro summary pills */}
+              {dayEntries.length > 0 && (() => {
+                const p = Math.round(dayEntries.reduce((s, e) => s + e.protein, 0));
+                const c = Math.round(dayEntries.reduce((s, e) => s + e.carbs, 0));
+                const f = Math.round(dayEntries.reduce((s, e) => s + e.fat, 0));
+                return (
+                  <View style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#3b82f622", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
+                      <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#3b82f6" }} />
+                      <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#3b82f6" }}>{p}g P</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#f59e0b22", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
+                      <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#f59e0b" }} />
+                      <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#f59e0b" }}>{c}g C</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#8b5cf622", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
+                      <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#8b5cf6" }} />
+                      <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#8b5cf6" }}>{f}g F</Text>
+                    </View>
+                  </View>
+                );
+              })()}
+
+              {dayEntries.length === 0 ? (
+                <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                  <Feather name="calendar" size={32} color={colors.border} />
+                  <Text style={{ fontSize: 14, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 10, textAlign: "center" }}>
+                    No food logged for this day
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+                  {MEAL_TYPES.filter((meal) => dayEntries.some((e) => e.meal === meal)).map((meal) => {
+                    const mealEntries = dayEntries.filter((e) => e.meal === meal);
+                    const mealCals = mealEntries.reduce((s, e) => s + e.calories, 0);
+                    const meta = MEAL_META[meal];
+                    return (
+                      <View key={meal} style={{ marginBottom: 14 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 7 }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: meta.color }} />
+                          <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.foreground }}>{meta.label}</Text>
+                          <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginLeft: "auto" }}>{mealCals} kcal</Text>
+                        </View>
+                        {mealEntries.map((entry) => (
+                          <View key={entry.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 7, borderTopWidth: 1, borderTopColor: colors.border }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, fontFamily: "Inter_500Medium", color: colors.foreground }} numberOfLines={1}>{entry.name}</Text>
+                              <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 1 }}>
+                                P {Math.round(entry.protein)}g · C {Math.round(entry.carbs)}g · F {Math.round(entry.fat)}g
+                              </Text>
+                            </View>
+                            <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: colors.foreground, marginLeft: 8 }}>{entry.calories}</Text>
+                            <Text style={{ fontSize: 10, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginLeft: 3, alignSelf: "flex-end", marginBottom: 1 }}>kcal</Text>
+                          </View>
+                        ))}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              <Pressable
+                onPress={() => setSelectedDayDate(null)}
+                style={{ marginTop: 12, padding: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
+              >
+                <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground }}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        );
+      })()}
 
       {/* ── Save Template Modal ── */}
       {saveTemplateVisible && (
