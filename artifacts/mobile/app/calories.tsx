@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Platform,
   Pressable,
   ScrollView,
@@ -46,8 +47,11 @@ const DONUT_R = 56;
 const DONUT_SIZE = 140;
 const CIRCUMFERENCE = 2 * Math.PI * DONUT_R;
 
+// Animated SVG circle (JS-driven, works cross-platform with useNativeDriver: false)
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
 const QUICK_FOODS: FoodItem[] = [
-  FOODS.find((f) => f.id === "pr10")!, // Whey Protein Powder
+  FOODS.find((f) => f.id === "pr10")!, // Whey Protein
   FOODS.find((f) => f.id === "gr03")!, // Oatmeal
   FOODS.find((f) => f.id === "pr01")!, // Chicken Breast
   FOODS.find((f) => f.id === "gr01")!, // White Rice
@@ -87,26 +91,34 @@ function makeId() {
 
 // ─── SUB-COMPONENTS ────────────────────────────────────────────────────────
 
-function DonutRing({ consumed, goal, colors }: { consumed: number; goal: number; colors: ReturnType<typeof import("@/hooks/useColors").useColors> }) {
+type ColorsType = ReturnType<typeof import("@/hooks/useColors").useColors>;
+
+function DonutRing({ consumed, goal, colors }: { consumed: number; goal: number; colors: ColorsType }) {
   const pct = Math.min(1, consumed / Math.max(1, goal));
-  const strokeOffset = CIRCUMFERENCE * (1 - pct);
   const remaining = goal - consumed;
   const cx = DONUT_SIZE / 2;
+
+  const offsetAnim = useRef(new Animated.Value(CIRCUMFERENCE)).current;
+
+  useEffect(() => {
+    Animated.timing(offsetAnim, {
+      toValue: CIRCUMFERENCE * (1 - pct),
+      duration: 900,
+      useNativeDriver: false,
+    }).start();
+  }, [pct]);
 
   return (
     <View style={{ alignItems: "center", marginBottom: 20 }}>
       <View style={{ width: DONUT_SIZE, height: DONUT_SIZE }}>
         <Svg width={DONUT_SIZE} height={DONUT_SIZE} viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}>
-          <Circle
-            cx={cx} cy={cx} r={DONUT_R}
-            stroke={colors.border} strokeWidth={12} fill="none"
-          />
-          <Circle
+          <Circle cx={cx} cy={cx} r={DONUT_R} stroke={colors.border} strokeWidth={12} fill="none" />
+          <AnimatedCircle
             cx={cx} cy={cx} r={DONUT_R}
             stroke={remaining < 0 ? colors.destructive : colors.primary}
             strokeWidth={12} fill="none"
             strokeDasharray={`${CIRCUMFERENCE}`}
-            strokeDashoffset={strokeOffset}
+            strokeDashoffset={offsetAnim}
             strokeLinecap="round"
             transform={`rotate(-90 ${cx} ${cx})`}
           />
@@ -123,13 +135,15 @@ function DonutRing({ consumed, goal, colors }: { consumed: number; goal: number;
   );
 }
 
-function MacroBarFull({ label, value, max, color, colors }: { label: string; value: number; max: number; color: string; colors: ReturnType<typeof import("@/hooks/useColors").useColors> }) {
+function MacroBarFull({ label, value, max, color, colors }: { label: string; value: number; max: number; color: string; colors: ColorsType }) {
   const pct = Math.min(100, Math.round((value / Math.max(1, max)) * 100));
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 5 }}>
         <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: colors.mutedForeground }}>{label}</Text>
-        <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: colors.foreground }}>{value}g <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>{pct}%</Text></Text>
+        <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: colors.foreground }}>
+          {value}g <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>{pct}%</Text>
+        </Text>
       </View>
       <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: "hidden" }}>
         <View style={{ height: "100%", width: `${pct}%`, backgroundColor: color, borderRadius: 3 }} />
@@ -152,11 +166,25 @@ export default function CaloriesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, addFoodEntry, removeFoodEntry, updateWater, getTodayCalories } = useApp();
+  const { state, addFoodEntry, removeFoodEntry, updateWater, getTodayCalories, getWeeklyNutrition } = useApp();
 
   const today = getTodayCalories();
   const todayDateStr = makeDateStr(0);
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
+
+  // ── Expandable meal cards ──────────────────────────────────────────────────
+  const [expandedMeals, setExpandedMeals] = useState<Set<MealType>>(
+    () => new Set(MEAL_TYPES.filter((m) => today.entries.some((e) => e.meal === m)))
+  );
+
+  function toggleMeal(meal: MealType) {
+    setExpandedMeals((prev) => {
+      const next = new Set(prev);
+      if (next.has(meal)) next.delete(meal);
+      else next.add(meal);
+      return next;
+    });
+  }
 
   // ── Sheet state ────────────────────────────────────────────────────────────
   const [addingMeal, setAddingMeal] = useState<MealType | null>(null);
@@ -205,15 +233,9 @@ export default function CaloriesScreen() {
   function addPhotoSuggestion(food: FoodItem) {
     if (!addingMeal) return;
     const entry: FoodEntry = {
-      id: makeId(),
-      name: food.name,
-      calories: food.calories,
-      protein: food.protein,
-      carbs: food.carbs,
-      fat: food.fat,
-      fiber: food.fiber,
-      sugar: food.sugar,
-      sodium: food.sodium,
+      id: makeId(), name: food.name, calories: food.calories,
+      protein: food.protein, carbs: food.carbs, fat: food.fat,
+      fiber: food.fiber, sugar: food.sugar, sodium: food.sodium,
       meal: addingMeal,
       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
     };
@@ -221,6 +243,16 @@ export default function CaloriesScreen() {
     setPhotoSuggestions((prev) => prev.filter((f) => f.id !== food.id));
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (photoSuggestions.length <= 1) setAddingMeal(null);
+  }
+
+  function swapPhotoSuggestion(food: FoodItem) {
+    const available = FOODS.filter(
+      (f) => !photoSuggestions.some((s) => s.id === f.id) && f.id !== food.id
+    );
+    if (!available.length) return;
+    const replacement = available[Math.floor(Math.random() * available.length)];
+    setPhotoSuggestions((prev) => prev.map((f) => (f.id === food.id ? replacement : f)));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }
 
   // ── Barcode simulation ─────────────────────────────────────────────────────
@@ -242,15 +274,9 @@ export default function CaloriesScreen() {
   function confirmBarcodeProduct() {
     if (!addingMeal || !barcodeProduct) return;
     const entry: FoodEntry = {
-      id: makeId(),
-      name: barcodeProduct.name,
-      calories: barcodeProduct.calories,
-      protein: barcodeProduct.protein,
-      carbs: barcodeProduct.carbs,
-      fat: barcodeProduct.fat,
-      fiber: barcodeProduct.fiber,
-      sugar: barcodeProduct.sugar,
-      sodium: barcodeProduct.sodium,
+      id: makeId(), name: barcodeProduct.name, calories: barcodeProduct.calories,
+      protein: barcodeProduct.protein, carbs: barcodeProduct.carbs, fat: barcodeProduct.fat,
+      fiber: barcodeProduct.fiber, sugar: barcodeProduct.sugar, sodium: barcodeProduct.sodium,
       meal: addingMeal,
       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
     };
@@ -269,8 +295,7 @@ export default function CaloriesScreen() {
   function handleManualAdd() {
     if (!addingMeal || !customName.trim() || !customCals) return;
     const entry: FoodEntry = {
-      id: makeId(),
-      name: customName.trim(),
+      id: makeId(), name: customName.trim(),
       calories: parseInt(customCals) || 0,
       protein: parseFloat(customProtein) || 0,
       carbs: parseFloat(customCarbs) || 0,
@@ -287,15 +312,9 @@ export default function CaloriesScreen() {
   function handleQuickAdd(food: FoodItem) {
     if (!addingMeal) return;
     const entry: FoodEntry = {
-      id: makeId(),
-      name: food.name,
-      calories: food.calories,
-      protein: food.protein,
-      carbs: food.carbs,
-      fat: food.fat,
-      fiber: food.fiber,
-      sugar: food.sugar,
-      sodium: food.sodium,
+      id: makeId(), name: food.name, calories: food.calories,
+      protein: food.protein, carbs: food.carbs, fat: food.fat,
+      fiber: food.fiber, sugar: food.sugar, sodium: food.sodium,
       meal: addingMeal,
       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
     };
@@ -309,11 +328,11 @@ export default function CaloriesScreen() {
     setAddingMeal(meal);
     setSheetTab("search");
     setSearchQuery("");
-    setPhotoPhase("idle");
-    setPhotoSuggestions([]);
-    setBarcodePhase("idle");
-    setBarcodeProduct(null);
+    setPhotoPhase("idle"); setPhotoSuggestions([]);
+    setBarcodePhase("idle"); setBarcodeProduct(null);
     setCustomName(""); setCustomCals(""); setCustomProtein(""); setCustomCarbs(""); setCustomFat("");
+    // Auto-expand the target meal card
+    setExpandedMeals((prev) => new Set([...prev, meal]));
   }
 
   function closeSheet() {
@@ -340,21 +359,13 @@ export default function CaloriesScreen() {
     ), [today.entries]);
 
   // ── Weekly data ────────────────────────────────────────────────────────────
-  const weekData = useMemo(() =>
+  const weekData = getWeeklyNutrition();
+  const weekDayLabels = useMemo(() =>
     Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - (6 - i));
-      const dateStr = makeDateStr(6 - i);
-      const dayLog = state.calorieLog.find((c) => c.date === dateStr);
-      const consumed = dayLog?.entries.reduce((s, e) => s + e.calories, 0) ?? 0;
-      const protein = dayLog?.entries.reduce((s, e) => s + e.protein, 0) ?? 0;
-      const goal = dayLog?.goal ?? state.userProfile.calorieGoal;
-      return {
-        label: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"][d.getDay()],
-        consumed, protein, goal,
-        isToday: dateStr === todayDateStr,
-      };
-    }), [state.calorieLog, state.userProfile.calorieGoal, todayDateStr]);
+      return { label: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"][d.getDay()], isToday: i === 6 };
+    }), []);
 
   const weekAvg = Math.round(weekData.reduce((s, d) => s + d.consumed, 0) / 7);
   const bestProteinDay = weekData.reduce((b, d) => d.protein > b.protein ? d : b, weekData[0]);
@@ -395,8 +406,12 @@ export default function CaloriesScreen() {
             <MacroBarFull label="Fat" value={Math.round(totals.fat)} max={fatGoal} color="#8b5cf6" colors={colors} />
           </View>
           <View style={[s.goalRow, { borderTopColor: colors.border }]}>
-            <Text style={[s.goalText, { color: colors.mutedForeground }]}>Daily goal: <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold" }}>{today.goal} kcal</Text></Text>
-            <Text style={[s.goalText, { color: colors.mutedForeground }]}>Protein: <Text style={{ color: "#3b82f6", fontFamily: "Inter_700Bold" }}>{proteinGoal}g</Text></Text>
+            <Text style={[s.goalText, { color: colors.mutedForeground }]}>
+              Goal: <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold" }}>{today.goal} kcal</Text>
+            </Text>
+            <Text style={[s.goalText, { color: colors.mutedForeground }]}>
+              Protein: <Text style={{ color: "#3b82f6", fontFamily: "Inter_700Bold" }}>{proteinGoal}g</Text>
+            </Text>
           </View>
         </View>
 
@@ -411,22 +426,27 @@ export default function CaloriesScreen() {
             </View>
           </View>
           <View style={s.barsRow}>
-            {weekData.map((day, i) => (
-              <View key={i} style={s.barCol}>
-                <View style={{ height: 64, justifyContent: "flex-end" }}>
-                  <View
-                    style={{
-                      width: 22,
-                      height: Math.max(3, Math.round((day.consumed / weekMaxCals) * 64)),
-                      backgroundColor: day.isToday ? colors.primary : colors.border,
-                      borderRadius: 4,
-                    }}
-                  />
+            {weekData.map((day, i) => {
+              const meta = weekDayLabels[i];
+              return (
+                <View key={i} style={s.barCol}>
+                  <View style={{ height: 64, justifyContent: "flex-end" }}>
+                    <View
+                      style={{
+                        width: 22,
+                        height: Math.max(3, Math.round((day.consumed / weekMaxCals) * 64)),
+                        backgroundColor: meta.isToday ? colors.primary : colors.border,
+                        borderRadius: 4,
+                      }}
+                    />
+                  </View>
+                  <Text style={{ fontSize: 10, fontFamily: "Inter_500Medium", color: meta.isToday ? colors.primary : colors.mutedForeground, marginTop: 4 }}>
+                    {meta.label}
+                  </Text>
+                  {meta.isToday && <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary, marginTop: 2 }} />}
                 </View>
-                <Text style={{ fontSize: 10, fontFamily: "Inter_500Medium", color: day.isToday ? colors.primary : colors.mutedForeground, marginTop: 4 }}>{day.label}</Text>
-                {day.isToday && <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary, marginTop: 2 }} />}
-              </View>
-            ))}
+              );
+            })}
           </View>
           <View style={[s.weekStats, { borderTopColor: colors.border }]}>
             <View style={s.weekStat}>
@@ -474,9 +494,12 @@ export default function CaloriesScreen() {
           const mealProtein = entries.reduce((s, e) => s + e.protein, 0);
           const mealCarbs = entries.reduce((s, e) => s + e.carbs, 0);
           const mealFat = entries.reduce((s, e) => s + e.fat, 0);
+          const isExpanded = expandedMeals.has(meal);
+
           return (
             <View key={meal} style={[s.mealCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={s.mealHeader}>
+              {/* Tappable header toggles expansion */}
+              <Pressable onPress={() => toggleMeal(meal)} style={s.mealHeader}>
                 <View style={[s.mealIcon, { backgroundColor: meta.color + "22" }]}>
                   <Feather name={meta.icon as any} size={16} color={meta.color} />
                 </View>
@@ -484,16 +507,29 @@ export default function CaloriesScreen() {
                   <Text style={[s.mealName, { color: colors.foreground }]}>{meta.label}</Text>
                   {entries.length > 0 && (
                     <Text style={[s.mealMacroSub, { color: colors.mutedForeground }]}>
-                      P:{Math.round(mealProtein)}g · C:{Math.round(mealCarbs)}g · F:{Math.round(mealFat)}g
+                      {mealCals} kcal · P:{Math.round(mealProtein)}g · C:{Math.round(mealCarbs)}g · F:{Math.round(mealFat)}g
                     </Text>
                   )}
                 </View>
-                {mealCals > 0 && <Text style={[s.mealCals, { color: colors.mutedForeground }]}>{mealCals} kcal</Text>}
-                <Pressable onPress={() => openAdd(meal)} style={[s.mealAddBtn, { borderColor: colors.primary }]}>
+                {entries.length > 0 && (
+                  <Feather
+                    name={isExpanded ? "chevron-down" : "chevron-right"}
+                    size={16}
+                    color={colors.mutedForeground}
+                    style={{ marginRight: 4 }}
+                  />
+                )}
+                <Pressable
+                  onPress={() => openAdd(meal)}
+                  hitSlop={8}
+                  style={[s.mealAddBtn, { borderColor: colors.primary }]}
+                >
                   <Feather name="plus" size={16} color={colors.primary} />
                 </Pressable>
-              </View>
-              {entries.map((entry) => (
+              </Pressable>
+
+              {/* Entries — shown only when expanded */}
+              {isExpanded && entries.map((entry) => (
                 <Pressable
                   key={entry.id}
                   onPress={() =>
@@ -501,17 +537,11 @@ export default function CaloriesScreen() {
                       pathname: "/food-detail",
                       params: {
                         food: JSON.stringify({
-                          id: entry.id,
-                          name: entry.name,
-                          servingSize: 100,
-                          servingUnit: "g",
-                          calories: entry.calories,
-                          protein: entry.protein,
-                          carbs: entry.carbs,
-                          fat: entry.fat,
-                          fiber: entry.fiber ?? 0,
-                          sugar: entry.sugar ?? 0,
-                          sodium: entry.sodium ?? 0,
+                          id: entry.id, name: entry.name,
+                          servingSize: 100, servingUnit: "g",
+                          calories: entry.calories, protein: entry.protein,
+                          carbs: entry.carbs, fat: entry.fat,
+                          fiber: entry.fiber ?? 0, sugar: entry.sugar ?? 0, sodium: entry.sodium ?? 0,
                           category: "Custom",
                         }),
                       },
@@ -521,7 +551,7 @@ export default function CaloriesScreen() {
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={[s.entryName, { color: colors.foreground }]} numberOfLines={1}>{entry.name}</Text>
-                    <View style={{ flexDirection: "row", gap: 4, marginTop: 4 }}>
+                    <View style={{ flexDirection: "row", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
                       <FoodChip label={`P ${entry.protein}g`} color="#3b82f6" />
                       <FoodChip label={`C ${entry.carbs}g`} color="#f59e0b" />
                       <FoodChip label={`F ${entry.fat}g`} color="#8b5cf6" />
@@ -543,10 +573,8 @@ export default function CaloriesScreen() {
       {addingMeal && (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.88)", justifyContent: "flex-end", zIndex: 100 }]}>
           <View style={[s.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
-            {/* Drag handle */}
             <View style={[s.handle, { backgroundColor: colors.border }]} />
 
-            {/* Sheet header */}
             <View style={s.sheetHeader}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <View style={[s.mealDot, { backgroundColor: MEAL_META[addingMeal].color }]} />
@@ -583,9 +611,8 @@ export default function CaloriesScreen() {
                   <Feather name="search" size={16} color={colors.mutedForeground} />
                   <TextInput
                     style={[s.searchInput, { color: colors.foreground, flex: 1 }]}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholder="Search 80+ foods…"
+                    value={searchQuery} onChangeText={setSearchQuery}
+                    placeholder="Search 85+ foods…"
                     placeholderTextColor={colors.mutedForeground}
                     autoCorrect={false}
                   />
@@ -595,13 +622,14 @@ export default function CaloriesScreen() {
                     </Pressable>
                   )}
                 </View>
-                {searchResults.length === 0 && searchQuery.trim() ? (
-                  <Text style={[s.emptyText, { color: colors.mutedForeground }]}>No results for "{searchQuery}"</Text>
-                ) : searchResults.length === 0 ? (
-                  <Text style={[s.emptyText, { color: colors.mutedForeground }]}>Type to search, or pick a quick-add below.</Text>
-                ) : null}
                 {searchQuery.trim() === "" && searchResults.length > 0 && (
                   <Text style={[s.recentsLabel, { color: colors.mutedForeground }]}>Recent foods</Text>
+                )}
+                {searchQuery.trim() !== "" && searchResults.length === 0 && (
+                  <Text style={[s.emptyText, { color: colors.mutedForeground }]}>No results for "{searchQuery}"</Text>
+                )}
+                {searchQuery.trim() === "" && searchResults.length === 0 && (
+                  <Text style={[s.emptyText, { color: colors.mutedForeground }]}>Type to search the local food database.</Text>
                 )}
                 <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
                   {searchResults.map((food) => (
@@ -615,7 +643,7 @@ export default function CaloriesScreen() {
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={[s.resultName, { color: colors.foreground }]} numberOfLines={1}>{food.name}</Text>
-                        <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{food.servingSize}{food.servingUnit.includes("g") ? "" : " "}{food.servingUnit}</Text>
+                        <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{food.servingUnit}</Text>
                         <View style={{ flexDirection: "row", gap: 4, marginTop: 4 }}>
                           <FoodChip label={`P ${food.protein}g`} color="#3b82f6" />
                           <FoodChip label={`C ${food.carbs}g`} color="#f59e0b" />
@@ -654,7 +682,7 @@ export default function CaloriesScreen() {
                       <View style={[s.vfCorner, s.vfBL, { borderColor: colors.primary }]} />
                       <View style={[s.vfCorner, s.vfBR, { borderColor: colors.primary }]} />
                       <Feather name="camera" size={36} color={colors.border} />
-                      <Text style={[{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 8 }]}>
+                      <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 8 }}>
                         Point at your meal
                       </Text>
                     </View>
@@ -676,27 +704,33 @@ export default function CaloriesScreen() {
 
                 {photoPhase === "results" && (
                   <View style={{ gap: 10 }}>
-                    <Text style={[s.aiLabel, { color: colors.mutedForeground }]}>AI detected these foods — tap to add:</Text>
+                    <Text style={[s.aiLabel, { color: colors.mutedForeground }]}>AI detected these foods — add, swap, or dismiss:</Text>
                     {photoSuggestions.map((food) => (
                       <View key={food.id} style={[s.aiCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                         <View style={{ flex: 1 }}>
-                          <Text style={[s.resultName, { color: colors.foreground }]}>{food.name}</Text>
+                          <Text style={[s.resultName, { color: colors.foreground }]} numberOfLines={1}>{food.name}</Text>
                           <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{food.servingUnit}</Text>
                           <View style={{ flexDirection: "row", gap: 4, marginTop: 4 }}>
                             <FoodChip label={`${food.calories} kcal`} color={colors.primary} />
                             <FoodChip label={`P ${food.protein}g`} color="#3b82f6" />
                           </View>
                         </View>
-                        <Pressable onPress={() => addPhotoSuggestion(food)} style={[s.aiAddBtn, { backgroundColor: colors.primary }]}>
-                          <Feather name="check" size={18} color="#fff" />
+                        {/* Add */}
+                        <Pressable onPress={() => addPhotoSuggestion(food)} style={[s.aiActionBtn, { backgroundColor: colors.primary }]}>
+                          <Feather name="check" size={16} color="#fff" />
                         </Pressable>
-                        <Pressable onPress={() => setPhotoSuggestions((p) => p.filter((f) => f.id !== food.id))} style={[s.aiDismissBtn, { borderColor: colors.border }]}>
-                          <Feather name="x" size={18} color={colors.mutedForeground} />
+                        {/* Swap */}
+                        <Pressable onPress={() => swapPhotoSuggestion(food)} style={[s.aiActionBtn, { borderColor: colors.border, borderWidth: 1, backgroundColor: colors.muted }]}>
+                          <Feather name="refresh-cw" size={16} color={colors.info} />
+                        </Pressable>
+                        {/* Dismiss */}
+                        <Pressable onPress={() => setPhotoSuggestions((p) => p.filter((f) => f.id !== food.id))} style={[s.aiActionBtn, { borderColor: colors.border, borderWidth: 1 }]}>
+                          <Feather name="x" size={16} color={colors.mutedForeground} />
                         </Pressable>
                       </View>
                     ))}
                     {photoSuggestions.length === 0 && (
-                      <Text style={[s.emptyText, { color: colors.mutedForeground }]}>All added! Tap + on another meal to continue.</Text>
+                      <Text style={[s.emptyText, { color: colors.mutedForeground }]}>All done! Tap + on another meal to continue.</Text>
                     )}
                   </View>
                 )}
@@ -718,7 +752,7 @@ export default function CaloriesScreen() {
                         Align barcode in frame
                       </Text>
                     </View>
-                    <Text style={[s.simHint, { color: colors.mutedForeground }]}>Simulates scanning a barcode</Text>
+                    <Text style={[s.simHint, { color: colors.mutedForeground }]}>Simulates scanning a real barcode</Text>
                     <Pressable onPress={startBarcodeScan} style={[s.bigBtn, { backgroundColor: colors.info }]}>
                       <Feather name="maximize" size={18} color="#fff" />
                       <Text style={s.bigBtnText}>Simulate Scan</Text>
@@ -852,7 +886,6 @@ const s = StyleSheet.create({
   mealIcon: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   mealName: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   mealMacroSub: { fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 2 },
-  mealCals: { fontSize: 13, fontFamily: "Inter_500Medium" },
   mealAddBtn: { width: 32, height: 32, borderRadius: 10, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
   entryRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1 },
   entryName: { fontSize: 13, fontFamily: "Inter_500Medium" },
@@ -892,9 +925,8 @@ const s = StyleSheet.create({
   analyzingText: { fontSize: 17, fontFamily: "Inter_700Bold" },
   analyzingSubText: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center" },
   aiLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  aiCard: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, borderWidth: 1, padding: 12 },
-  aiAddBtn: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  aiDismissBtn: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  aiCard: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, padding: 12 },
+  aiActionBtn: { width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   input: { borderRadius: 10, borderWidth: 1, padding: 12, fontSize: 15, fontFamily: "Inter_400Regular" },
   addBtn: { padding: 14, borderRadius: 12, alignItems: "center" },
   addBtnText: { fontSize: 15, fontFamily: "Inter_700Bold", color: "#fff" },

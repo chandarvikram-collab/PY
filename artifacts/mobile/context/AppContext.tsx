@@ -135,6 +135,16 @@ export type DayCalories = {
   water: number;
 };
 
+export type WeeklyNutrition = {
+  date: string;
+  consumed: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  goal: number;
+};
+
 export type Friend = {
   id: string;
   name: string;
@@ -236,6 +246,7 @@ type AppContextType = {
   sendMessage: (threadId: string, text: string) => void;
   markThreadRead: (threadId: string) => void;
   getTodayCalories: () => DayCalories;
+  getWeeklyNutrition: () => WeeklyNutrition[];
   addRoutine: (routine: Routine) => void;
   addRunSession: (session: RunSession) => void;
 };
@@ -715,9 +726,9 @@ const DEFAULT_STATE: AppState = {
       goal: 2400,
       water: 4,
       entries: [
-        { id: "fe1", name: "Greek Yogurt + Granola", calories: 380, protein: 22, carbs: 48, fat: 8, meal: "breakfast", time: "7:30 AM" },
-        { id: "fe2", name: "Chicken Rice Bowl", calories: 620, protein: 45, carbs: 68, fat: 12, meal: "lunch", time: "12:15 PM" },
-        { id: "fe3", name: "Protein Shake", calories: 220, protein: 40, carbs: 8, fat: 3, meal: "snack", time: "3:00 PM" },
+        { id: "fe1", name: "Greek Yogurt + Granola", calories: 380, protein: 22, carbs: 48, fat: 8, fiber: 3, sugar: 14, sodium: 95, meal: "breakfast", time: "7:30 AM" },
+        { id: "fe2", name: "Chicken Rice Bowl", calories: 620, protein: 45, carbs: 68, fat: 12, fiber: 2, sugar: 2, sodium: 480, meal: "lunch", time: "12:15 PM" },
+        { id: "fe3", name: "Protein Shake", calories: 220, protein: 40, carbs: 8, fat: 3, fiber: 1, sugar: 2, sodium: 130, meal: "snack", time: "3:00 PM" },
       ],
     },
   ],
@@ -958,6 +969,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   }, [state.calorieLog, state.userProfile.calorieGoal]);
 
+  const getWeeklyNutrition = useCallback((): WeeklyNutrition[] => {
+    const base = new Date();
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(base);
+      d.setDate(base.getDate() - (6 - i));
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const dayLog = state.calorieLog.find((c) => c.date === dateStr);
+      return {
+        date: dateStr,
+        consumed: dayLog?.entries.reduce((s, e) => s + e.calories, 0) ?? 0,
+        protein: dayLog?.entries.reduce((s, e) => s + e.protein, 0) ?? 0,
+        carbs: dayLog?.entries.reduce((s, e) => s + e.carbs, 0) ?? 0,
+        fat: dayLog?.entries.reduce((s, e) => s + e.fat, 0) ?? 0,
+        fiber: dayLog?.entries.reduce((s, e) => s + (e.fiber ?? 0), 0) ?? 0,
+        goal: dayLog?.goal ?? state.userProfile.calorieGoal,
+      };
+    });
+  }, [state.calorieLog, state.userProfile.calorieGoal]);
+
   const addRoutine = useCallback(
     (routine: Routine) => {
       update((prev) => ({ ...prev, routines: [...prev.routines, routine] }));
@@ -999,6 +1029,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         sendMessage,
         markThreadRead,
         getTodayCalories,
+        getWeeklyNutrition,
         addRoutine,
         addRunSession,
       }}
