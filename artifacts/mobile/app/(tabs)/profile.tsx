@@ -1,13 +1,14 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -35,17 +36,19 @@ function MenuRow({ icon, label, onPress, danger, value }: { icon: string; label:
       </View>
       <Text style={[styles.menuLabel, { color: danger ? "#ef4444" : colors.foreground }]}>{label}</Text>
       <View style={{ flex: 1 }} />
-      {value && <Text style={[styles.menuValue, { color: colors.mutedForeground }]}>{value}</Text>}
+      {value ? <Text style={[styles.menuValue, { color: colors.mutedForeground }]}>{value}</Text> : null}
       <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
     </Pressable>
   );
 }
 
+type GoalField = { label: string; value: string; setValue: (v: string) => void; unit: string; color: string };
+
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state } = useApp();
+  const { state, updateProfile } = useApp();
   const { userProfile, workoutHistory, challenges } = state;
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -64,13 +67,65 @@ export default function ProfileScreen() {
     return (now.getTime() - d.getTime()) / 86400000 <= 7;
   }).length;
 
+  // ── Nutrition goal defaults (formula fallback if not yet explicitly set) ───
+  const defaultCarbs = Math.round((userProfile.calorieGoal * 0.45) / 4);
+  const defaultFat = Math.round((userProfile.calorieGoal * 0.3) / 9);
+  const displayCarbs = userProfile.carbGoal ?? defaultCarbs;
+  const displayFat = userProfile.fatGoal ?? defaultFat;
+
+  // ── Inline editing state ───────────────────────────────────────────────────
+  const [editingGoals, setEditingGoals] = useState(false);
+  const [draftCals, setDraftCals] = useState("");
+  const [draftProtein, setDraftProtein] = useState("");
+  const [draftCarbs, setDraftCarbs] = useState("");
+  const [draftFat, setDraftFat] = useState("");
+
+  function openEditGoals() {
+    setDraftCals(String(userProfile.calorieGoal));
+    setDraftProtein(String(userProfile.proteinGoal));
+    setDraftCarbs(String(displayCarbs));
+    setDraftFat(String(displayFat));
+    setEditingGoals(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
+  function cancelEditGoals() {
+    setEditingGoals(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
+  function saveGoals() {
+    const cals = Math.max(500, parseInt(draftCals) || userProfile.calorieGoal);
+    const protein = Math.max(10, parseInt(draftProtein) || userProfile.proteinGoal);
+    const carbs = Math.max(0, parseInt(draftCarbs) || defaultCarbs);
+    const fat = Math.max(0, parseInt(draftFat) || defaultFat);
+    updateProfile({ calorieGoal: cals, proteinGoal: protein, carbGoal: carbs, fatGoal: fat });
+    setEditingGoals(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  const goalFields: GoalField[] = [
+    { label: "Daily Calories", value: draftCals, setValue: setDraftCals, unit: "kcal", color: colors.primary },
+    { label: "Protein",         value: draftProtein, setValue: setDraftProtein, unit: "g", color: "#3b82f6" },
+    { label: "Carbohydrates",   value: draftCarbs, setValue: setDraftCarbs, unit: "g", color: "#f59e0b" },
+    { label: "Fat",             value: draftFat, setValue: setDraftFat, unit: "g", color: "#8b5cf6" },
+  ];
+
+  const displayGoals = [
+    { label: "Calories", value: userProfile.calorieGoal, unit: "kcal", color: colors.primary },
+    { label: "Protein",  value: userProfile.proteinGoal, unit: "g/day", color: "#3b82f6" },
+    { label: "Carbs",    value: displayCarbs,             unit: "g/day", color: "#f59e0b" },
+    { label: "Fat",      value: displayFat,               unit: "g/day", color: "#8b5cf6" },
+  ];
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingTop: topPad + 12, paddingBottom: insets.bottom + 90 }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
-      {/* Hero Section */}
+      {/* ── Hero ── */}
       <View style={[styles.hero, { borderBottomColor: colors.border }]}>
         <View style={styles.heroTop}>
           <Avatar initials={userInitials} color={colors.primary} size={72} />
@@ -89,31 +144,25 @@ export default function ProfileScreen() {
           <Text style={[styles.bio, { color: colors.mutedForeground }]}>{userProfile.bio}</Text>
         ) : null}
 
-        {/* Stats Row */}
         <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={[styles.statVal, { color: colors.foreground }]}>{userProfile.totalWorkouts}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Workouts</Text>
-          </View>
-          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statVal, { color: colors.foreground }]}>{userProfile.streak}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Streak</Text>
-          </View>
-          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statVal, { color: colors.foreground }]}>{userProfile.totalPoints.toLocaleString()}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Points</Text>
-          </View>
-          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statVal, { color: colors.foreground }]}>{weekSessions}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>This week</Text>
-          </View>
+          {[
+            { val: userProfile.totalWorkouts, label: "Workouts" },
+            { val: userProfile.streak, label: "Streak" },
+            { val: userProfile.totalPoints.toLocaleString(), label: "Points" },
+            { val: weekSessions, label: "This week" },
+          ].map((s, i) => (
+            <React.Fragment key={s.label}>
+              {i > 0 && <View style={[styles.statDivider, { backgroundColor: colors.border }]} />}
+              <View style={styles.statItem}>
+                <Text style={[styles.statVal, { color: colors.foreground }]}>{s.val}</Text>
+                <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
+              </View>
+            </React.Fragment>
+          ))}
         </View>
       </View>
 
-      {/* Goals + Equipment */}
+      {/* ── Goals chips ── */}
       <View style={[styles.section, { paddingHorizontal: 18 }]}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Goals</Text>
         <View style={styles.chipRow}>
@@ -125,6 +174,7 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* ── Equipment chips ── */}
       <View style={[styles.section, { paddingHorizontal: 18 }]}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Equipment</Text>
         <View style={styles.chipRow}>
@@ -136,7 +186,76 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* AI Plan */}
+      {/* ── Nutrition Goals ── */}
+      <View style={[styles.section, { paddingHorizontal: 18 }]}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>Nutrition Goals</Text>
+          {!editingGoals ? (
+            <Pressable onPress={openEditGoals} style={[styles.pillBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Feather name="edit-2" size={13} color={colors.mutedForeground} />
+              <Text style={[styles.pillBtnText, { color: colors.mutedForeground }]}>Edit</Text>
+            </Pressable>
+          ) : (
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable onPress={cancelEditGoals} style={[styles.pillBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Text style={[styles.pillBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={saveGoals} style={[styles.pillBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                <Feather name="check" size={13} color="#fff" />
+                <Text style={[styles.pillBtnText, { color: "#fff" }]}>Save</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.goalsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {editingGoals ? (
+            /* ── Edit mode: TextInput rows ── */
+            goalFields.map((field, i) => (
+              <View
+                key={field.label}
+                style={[
+                  styles.goalInputRow,
+                  { borderBottomColor: colors.border, borderBottomWidth: i < goalFields.length - 1 ? 1 : 0 },
+                ]}
+              >
+                <View style={[styles.goalDot, { backgroundColor: field.color }]} />
+                <Text style={[styles.goalInputLabel, { color: colors.foreground }]}>{field.label}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <TextInput
+                    style={[styles.goalInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.muted }]}
+                    value={field.value}
+                    onChangeText={field.setValue}
+                    keyboardType="number-pad"
+                    maxLength={5}
+                    selectTextOnFocus
+                  />
+                  <Text style={[styles.goalInputUnit, { color: colors.mutedForeground }]}>{field.unit}</Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            /* ── Display mode: 2×2 stat grid ── */
+            <View style={styles.goalStatsGrid}>
+              {displayGoals.map((g) => (
+                <View key={g.label} style={[styles.goalStatItem, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                  <Text style={{ fontSize: 22, fontFamily: "Inter_700Bold", color: g.color }}>{g.value}</Text>
+                  <Text style={{ fontSize: 10, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>{g.unit}</Text>
+                  <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: colors.mutedForeground, marginTop: 3 }}>{g.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {!editingGoals && (
+          <Text style={[styles.goalsHint, { color: colors.mutedForeground }]}>
+            These targets update the donut ring and macro bars in your calorie tracker.
+          </Text>
+        )}
+      </View>
+
+      {/* ── AI Plan ── */}
       <View style={[styles.section, { paddingHorizontal: 18 }]}>
         <Pressable
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/ai-plan"); }}
@@ -159,7 +278,7 @@ export default function ProfileScreen() {
         </Pressable>
       </View>
 
-      {/* Menu */}
+      {/* ── Menu cards ── */}
       <View style={[styles.menuSection, { marginHorizontal: 18 }]}>
         <View style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <MenuRow icon="message-circle" label="Messages" onPress={() => router.push("/chat")} value={`${state.chatThreads.reduce((s, t) => s + t.unread, 0) || ""}`} />
@@ -199,9 +318,21 @@ const styles = StyleSheet.create({
   statDivider: { width: 1, height: 28 },
   section: { marginBottom: 18 },
   sectionTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 10, opacity: 0.7 },
+  sectionHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
   chipText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  pillBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  pillBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  goalsCard: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  goalStatsGrid: { flexDirection: "row", flexWrap: "wrap" },
+  goalStatItem: { width: "50%", alignItems: "center", paddingVertical: 18, borderRightWidth: 0.5, borderBottomWidth: 0.5 },
+  goalInputRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+  goalDot: { width: 10, height: 10, borderRadius: 5 },
+  goalInputLabel: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
+  goalInput: { width: 80, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16, fontFamily: "Inter_700Bold", textAlign: "right" },
+  goalInputUnit: { fontSize: 12, fontFamily: "Inter_400Regular", width: 30 },
+  goalsHint: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 8, textAlign: "center", opacity: 0.8 },
   aiPlanCard: { borderRadius: 16, padding: 16, flexDirection: "row", alignItems: "center" },
   aiPlanLeft: { flex: 1, flexDirection: "row", alignItems: "center" },
   aiPlanTitle: { fontSize: 16, fontFamily: "Inter_700Bold", color: "#fff" },

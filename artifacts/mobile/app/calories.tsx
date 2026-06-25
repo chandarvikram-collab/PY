@@ -394,8 +394,8 @@ export default function CaloriesScreen() {
 
   // ── Macro goals ────────────────────────────────────────────────────────────
   const proteinGoal = state.userProfile.proteinGoal;
-  const carbGoal = Math.round((today.goal * 0.45) / 4);
-  const fatGoal = Math.round((today.goal * 0.3) / 9);
+  const carbGoal = state.userProfile.carbGoal ?? Math.round((today.goal * 0.45) / 4);
+  const fatGoal = state.userProfile.fatGoal ?? Math.round((today.goal * 0.3) / 9);
 
   return (
     <View style={[s.container, { backgroundColor: colors.background }]}>

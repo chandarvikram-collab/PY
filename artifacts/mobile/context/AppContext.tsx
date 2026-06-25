@@ -25,6 +25,8 @@ export type UserProfile = {
   aiPlan: AIPlan | null;
   calorieGoal: number;
   proteinGoal: number;
+  carbGoal?: number;
+  fatGoal?: number;
 };
 
 export type AIPlan = {
