@@ -51,6 +51,13 @@ function RootLayoutNav() {
           presentation: "fullScreenModal",
         }}
       />
+      <Stack.Screen
+        name="run-session"
+        options={{
+          headerShown: false,
+          presentation: "fullScreenModal",
+        }}
+      />
     </Stack>
   );
 }

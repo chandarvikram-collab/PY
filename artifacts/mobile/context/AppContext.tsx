@@ -94,6 +94,24 @@ export type WorkoutSession = {
   exerciseLog: ExerciseLog[];
 };
 
+export type RunSplit = {
+  km: number;
+  pace: string;
+  elapsed: number;
+};
+
+export type RunSession = {
+  id: string;
+  date: string;
+  distance: number;
+  duration: number;
+  avgPace: string;
+  bestPace: string;
+  calories: number;
+  splits: RunSplit[];
+  routeCoords?: Array<{ lat: number; lng: number }>;
+};
+
 export type FoodEntry = {
   id: string;
   name: string;
@@ -194,6 +212,7 @@ type AppState = {
   challenges: Challenge[];
   posts: Post[];
   chatThreads: ChatThread[];
+  runHistory: RunSession[];
 };
 
 type AppContextType = {
@@ -213,6 +232,7 @@ type AppContextType = {
   markThreadRead: (threadId: string) => void;
   getTodayCalories: () => DayCalories;
   addRoutine: (routine: Routine) => void;
+  addRunSession: (session: RunSession) => void;
 };
 
 const ME_ID = "me";
@@ -529,6 +549,65 @@ const SEED_CHAT_THREADS: ChatThread[] = [
   },
 ];
 
+const SEED_RUN_HISTORY: RunSession[] = [
+  {
+    id: "rh1",
+    date: "2026-06-23",
+    distance: 8.2,
+    duration: 2640,
+    avgPace: "5:22",
+    bestPace: "4:58",
+    calories: 533,
+    splits: [
+      { km: 1, pace: "5:41", elapsed: 341 },
+      { km: 2, pace: "5:28", elapsed: 669 },
+      { km: 3, pace: "5:15", elapsed: 984 },
+      { km: 4, pace: "5:10", elapsed: 1294 },
+      { km: 5, pace: "5:18", elapsed: 1612 },
+      { km: 6, pace: "5:22", elapsed: 1934 },
+      { km: 7, pace: "5:30", elapsed: 2264 },
+      { km: 8, pace: "4:58", elapsed: 2562 },
+    ],
+  },
+  {
+    id: "rh2",
+    date: "2026-06-20",
+    distance: 5.1,
+    duration: 1710,
+    avgPace: "5:35",
+    bestPace: "5:12",
+    calories: 332,
+    splits: [
+      { km: 1, pace: "5:48", elapsed: 348 },
+      { km: 2, pace: "5:35", elapsed: 683 },
+      { km: 3, pace: "5:28", elapsed: 1011 },
+      { km: 4, pace: "5:22", elapsed: 1333 },
+      { km: 5, pace: "5:12", elapsed: 1645 },
+    ],
+  },
+  {
+    id: "rh3",
+    date: "2026-06-17",
+    distance: 10.0,
+    duration: 3300,
+    avgPace: "5:30",
+    bestPace: "5:05",
+    calories: 650,
+    splits: [
+      { km: 1, pace: "5:52", elapsed: 352 },
+      { km: 2, pace: "5:40", elapsed: 692 },
+      { km: 3, pace: "5:32", elapsed: 1024 },
+      { km: 4, pace: "5:25", elapsed: 1349 },
+      { km: 5, pace: "5:20", elapsed: 1669 },
+      { km: 6, pace: "5:25", elapsed: 1994 },
+      { km: 7, pace: "5:28", elapsed: 2322 },
+      { km: 8, pace: "5:15", elapsed: 2637 },
+      { km: 9, pace: "5:18", elapsed: 2955 },
+      { km: 10, pace: "5:05", elapsed: 3260 },
+    ],
+  },
+];
+
 const SEED_ROUTINES: Routine[] = [
   {
     id: "r1",
@@ -641,6 +720,7 @@ const DEFAULT_STATE: AppState = {
   challenges: SEED_CHALLENGES,
   posts: SEED_POSTS,
   chatThreads: SEED_CHAT_THREADS,
+  runHistory: SEED_RUN_HISTORY,
 };
 
 const STORAGE_KEY = "ironpace_v1";
@@ -880,6 +960,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [update]
   );
 
+  const addRunSession = useCallback(
+    (session: RunSession) => {
+      update((prev) => ({
+        ...prev,
+        runHistory: [session, ...prev.runHistory],
+        userProfile: {
+          ...prev.userProfile,
+          totalPoints: prev.userProfile.totalPoints + Math.floor(session.distance * 10) + 20,
+        },
+      }));
+    },
+    [update]
+  );
+
   if (!loaded) return null;
 
   return (
@@ -901,6 +995,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         markThreadRead,
         getTodayCalories,
         addRoutine,
+        addRunSession,
       }}
     >
       {children}

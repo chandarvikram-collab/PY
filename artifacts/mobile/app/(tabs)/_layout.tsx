@@ -21,7 +21,7 @@ function NativeTabLayout() {
         <Label>Train</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="social">
-        <Icon sf={{ default: "photo.on.rectangle", selected: "photo.on.rectangle.fill" }} />
+        <Icon sf={{ default: "photo.on.rectangle", selected: "photo.fill.on.rectangle.fill" }} />
         <Label>Social</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="challenges">
