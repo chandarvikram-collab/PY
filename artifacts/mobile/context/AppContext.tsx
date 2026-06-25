@@ -119,6 +119,11 @@ export type FoodEntry = {
   protein: number;
   carbs: number;
   fat: number;
+  fiber?: number;
+  sugar?: number;
+  sodium?: number;
+  servingSize?: number;
+  servingUnit?: string;
   meal: "breakfast" | "lunch" | "dinner" | "snack";
   time: string;
 };

@@ -58,6 +58,13 @@ function RootLayoutNav() {
           presentation: "fullScreenModal",
         }}
       />
+      <Stack.Screen
+        name="food-detail"
+        options={{
+          headerShown: false,
+          presentation: "modal",
+        }}
+      />
     </Stack>
   );
 }
