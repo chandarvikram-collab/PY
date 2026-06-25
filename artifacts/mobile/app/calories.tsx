@@ -19,7 +19,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Circle, Svg } from "react-native-svg";
+import { Circle, ClipPath, Defs, G, Rect, Svg } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
@@ -50,6 +50,47 @@ const CIRCUMFERENCE = 2 * Math.PI * DONUT_R;
 
 // Animated SVG circle (JS-driven, works cross-platform with useNativeDriver: false)
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+// ─── STACKED BAR CHART ─────────────────────────────────────────────────────
+
+const SBAR_H = 64;
+const SBAR_W = 22;
+
+function StackedBar({ protein, carbs, fat, maxGrams, dayIdx }: {
+  protein: number; carbs: number; fat: number; maxGrams: number; dayIdx: number;
+}) {
+  const total = protein + carbs + fat;
+  if (total === 0 || maxGrams === 0) return <View style={{ height: SBAR_H, width: SBAR_W }} />;
+
+  const scale = SBAR_H / maxGrams;
+  const fH = Math.max(0, Math.round(fat * scale));
+  const cH = Math.max(0, Math.round(carbs * scale));
+  const pH = Math.max(0, Math.round(protein * scale));
+  const totalH = Math.min(SBAR_H, fH + cH + pH);
+
+  if (totalH === 0) return <View style={{ height: SBAR_H, width: SBAR_W }} />;
+
+  // SVG y=0 is the top; stack from bottom up: fat → carbs → protein
+  const fY = SBAR_H - fH;
+  const cY = fY - cH;
+  const pY = cY - pH;
+  const clipId = `sc${dayIdx}`;
+
+  return (
+    <Svg width={SBAR_W} height={SBAR_H}>
+      <Defs>
+        <ClipPath id={clipId}>
+          <Rect x={0} y={SBAR_H - totalH} width={SBAR_W} height={totalH} rx={3} ry={3} />
+        </ClipPath>
+      </Defs>
+      <G clipPath={`url(#${clipId})`}>
+        {fH > 0 && <Rect x={0} y={fY} width={SBAR_W} height={fH} fill="#8b5cf6" />}
+        {cH > 0 && <Rect x={0} y={cY} width={SBAR_W} height={cH} fill="#f59e0b" />}
+        {pH > 0 && <Rect x={0} y={pY} width={SBAR_W} height={pH} fill="#3b82f6" />}
+      </G>
+    </Svg>
+  );
+}
 
 const QUICK_FOODS: FoodItem[] = [
   FOODS.find((f) => f.id === "pr10")!, // Whey Protein
@@ -172,6 +213,9 @@ export default function CaloriesScreen() {
   const today = getTodayCalories();
   const todayDateStr = makeDateStr(0);
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
+
+  // ── Weekly chart view toggle ───────────────────────────────────────────────
+  const [weekViewMode, setWeekViewMode] = useState<"calories" | "macros">("calories");
 
   // ── Expandable meal cards ──────────────────────────────────────────────────
   const [expandedMeals, setExpandedMeals] = useState<Set<MealType>>(
@@ -391,6 +435,10 @@ export default function CaloriesScreen() {
   const bestProteinDay = weekData.reduce((b, d) => d.protein > b.protein ? d : b, weekData[0]);
   const adherenceDays = weekData.filter((d) => d.consumed > 0 && Math.abs(d.consumed - d.goal) < 250).length;
   const weekMaxCals = Math.max(state.userProfile.calorieGoal, ...weekData.map((d) => d.consumed), 1);
+  const weekMaxGrams = Math.max(1, ...weekData.map((d) => d.protein + d.carbs + d.fat));
+  const weekAvgProtein = Math.round(weekData.reduce((s, d) => s + d.protein, 0) / 7);
+  const weekAvgCarbs = Math.round(weekData.reduce((s, d) => s + d.carbs, 0) / 7);
+  const weekAvgFat = Math.round(weekData.reduce((s, d) => s + d.fat, 0) / 7);
 
   // ── Macro goals ────────────────────────────────────────────────────────────
   const proteinGoal = state.userProfile.proteinGoal;
@@ -437,29 +485,65 @@ export default function CaloriesScreen() {
 
         {/* ── Weekly Strip ── */}
         <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: 16 }]}>
+          {/* Header row with title + Calories/Macros toggle */}
           <View style={s.weekHeader}>
             <Text style={[s.weekTitle, { color: colors.foreground }]}>Weekly Overview</Text>
-            <View style={[s.badge, { backgroundColor: adherenceDays >= 5 ? colors.success + "22" : colors.warning + "22" }]}>
-              <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: adherenceDays >= 5 ? colors.success : colors.warning }}>
-                {adherenceDays}/7 on track
-              </Text>
+            <View style={s.weekToggle}>
+              {(["calories", "macros"] as const).map((mode) => {
+                const active = weekViewMode === mode;
+                return (
+                  <Pressable
+                    key={mode}
+                    onPress={() => { setWeekViewMode(mode); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    style={[s.weekToggleBtn, { backgroundColor: active ? colors.primary : "transparent", borderColor: active ? colors.primary : colors.border }]}
+                  >
+                    <Text style={[s.weekToggleBtnText, { color: active ? "#fff" : colors.mutedForeground }]}>
+                      {mode === "calories" ? "Calories" : "Macros"}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
+
+          {/* Macros legend (only in macros view) */}
+          {weekViewMode === "macros" && (
+            <View style={s.weekLegend}>
+              {[{ label: "Protein", color: "#3b82f6" }, { label: "Carbs", color: "#f59e0b" }, { label: "Fat", color: "#8b5cf6" }].map((l) => (
+                <View key={l.label} style={s.weekLegendItem}>
+                  <View style={[s.weekLegendDot, { backgroundColor: l.color }]} />
+                  <Text style={[s.weekLegendText, { color: colors.mutedForeground }]}>{l.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Bar chart — Calories or Macros */}
           <View style={s.barsRow}>
             {weekData.map((day, i) => {
               const meta = weekDayLabels[i];
               return (
                 <View key={i} style={s.barCol}>
-                  <View style={{ height: 64, justifyContent: "flex-end" }}>
-                    <View
-                      style={{
-                        width: 22,
-                        height: Math.max(3, Math.round((day.consumed / weekMaxCals) * 64)),
-                        backgroundColor: meta.isToday ? colors.primary : colors.border,
-                        borderRadius: 4,
-                      }}
+                  {weekViewMode === "calories" ? (
+                    <View style={{ height: SBAR_H, justifyContent: "flex-end" }}>
+                      <View
+                        style={{
+                          width: SBAR_W,
+                          height: Math.max(3, Math.round((day.consumed / weekMaxCals) * SBAR_H)),
+                          backgroundColor: meta.isToday ? colors.primary : colors.border,
+                          borderRadius: 4,
+                        }}
+                      />
+                    </View>
+                  ) : (
+                    <StackedBar
+                      protein={day.protein}
+                      carbs={day.carbs}
+                      fat={day.fat}
+                      maxGrams={weekMaxGrams}
+                      dayIdx={i}
                     />
-                  </View>
+                  )}
                   <Text style={{ fontSize: 10, fontFamily: "Inter_500Medium", color: meta.isToday ? colors.primary : colors.mutedForeground, marginTop: 4 }}>
                     {meta.label}
                   </Text>
@@ -468,21 +552,44 @@ export default function CaloriesScreen() {
               );
             })}
           </View>
+
+          {/* Stats row — changes based on active view */}
           <View style={[s.weekStats, { borderTopColor: colors.border }]}>
-            <View style={s.weekStat}>
-              <Text style={[s.weekStatVal, { color: colors.foreground }]}>{weekAvg}</Text>
-              <Text style={[s.weekStatLabel, { color: colors.mutedForeground }]}>7-day avg kcal</Text>
-            </View>
-            <View style={[s.weekStatDivider, { backgroundColor: colors.border }]} />
-            <View style={s.weekStat}>
-              <Text style={[s.weekStatVal, { color: "#3b82f6" }]}>{Math.round(bestProteinDay.protein)}g</Text>
-              <Text style={[s.weekStatLabel, { color: colors.mutedForeground }]}>Best protein day</Text>
-            </View>
-            <View style={[s.weekStatDivider, { backgroundColor: colors.border }]} />
-            <View style={s.weekStat}>
-              <Text style={[s.weekStatVal, { color: colors.primary }]}>{adherenceDays}</Text>
-              <Text style={[s.weekStatLabel, { color: colors.mutedForeground }]}>Adherence days</Text>
-            </View>
+            {weekViewMode === "calories" ? (
+              <>
+                <View style={s.weekStat}>
+                  <Text style={[s.weekStatVal, { color: colors.foreground }]}>{weekAvg}</Text>
+                  <Text style={[s.weekStatLabel, { color: colors.mutedForeground }]}>7-day avg kcal</Text>
+                </View>
+                <View style={[s.weekStatDivider, { backgroundColor: colors.border }]} />
+                <View style={s.weekStat}>
+                  <Text style={[s.weekStatVal, { color: "#3b82f6" }]}>{Math.round(bestProteinDay.protein)}g</Text>
+                  <Text style={[s.weekStatLabel, { color: colors.mutedForeground }]}>Best protein day</Text>
+                </View>
+                <View style={[s.weekStatDivider, { backgroundColor: colors.border }]} />
+                <View style={s.weekStat}>
+                  <Text style={[s.weekStatVal, { color: colors.primary }]}>{adherenceDays}</Text>
+                  <Text style={[s.weekStatLabel, { color: colors.mutedForeground }]}>Adherence days</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={s.weekStat}>
+                  <Text style={[s.weekStatVal, { color: "#3b82f6" }]}>{weekAvgProtein}g</Text>
+                  <Text style={[s.weekStatLabel, { color: colors.mutedForeground }]}>Avg protein</Text>
+                </View>
+                <View style={[s.weekStatDivider, { backgroundColor: colors.border }]} />
+                <View style={s.weekStat}>
+                  <Text style={[s.weekStatVal, { color: "#f59e0b" }]}>{weekAvgCarbs}g</Text>
+                  <Text style={[s.weekStatLabel, { color: colors.mutedForeground }]}>Avg carbs</Text>
+                </View>
+                <View style={[s.weekStatDivider, { backgroundColor: colors.border }]} />
+                <View style={s.weekStat}>
+                  <Text style={[s.weekStatVal, { color: "#8b5cf6" }]}>{weekAvgFat}g</Text>
+                  <Text style={[s.weekStatLabel, { color: colors.mutedForeground }]}>Avg fat</Text>
+                </View>
+              </>
+            )}
           </View>
         </View>
 
@@ -1058,6 +1165,13 @@ const s = StyleSheet.create({
   input: { borderRadius: 10, borderWidth: 1, padding: 12, fontSize: 15, fontFamily: "Inter_400Regular" },
   addBtn: { padding: 14, borderRadius: 12, alignItems: "center" },
   addBtnText: { fontSize: 15, fontFamily: "Inter_700Bold", color: "#fff" },
+  weekToggle: { flexDirection: "row", gap: 4, backgroundColor: "transparent" },
+  weekToggleBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1 },
+  weekToggleBtnText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  weekLegend: { flexDirection: "row", gap: 12, justifyContent: "center", marginBottom: 10 },
+  weekLegendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  weekLegendDot: { width: 8, height: 8, borderRadius: 4 },
+  weekLegendText: { fontSize: 10, fontFamily: "Inter_500Medium" },
   saveTemplateBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, borderWidth: 1.5, borderStyle: "dashed", padding: 14, marginBottom: 10 },
   saveTemplateBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   tabBadge: { borderRadius: 8, minWidth: 16, height: 16, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 },
