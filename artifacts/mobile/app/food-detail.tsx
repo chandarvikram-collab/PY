@@ -46,11 +46,14 @@ export default function FoodDetailScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { addFoodEntry } = useApp();
+  const { addFoodEntry, updateFoodEntry } = useApp();
 
-  const params = useLocalSearchParams<{ food: string; meal?: string }>();
+  const params = useLocalSearchParams<{ food: string; meal?: string; entryId?: string; date?: string }>();
   const food: FoodItem = useMemo(() => JSON.parse(params.food ?? "{}"), [params.food]);
   const meal = (params.meal ?? "") as FoodEntry["meal"] | "";
+  const entryId = params.entryId ?? "";
+  const entryDate = params.date ?? todayStr();
+  const isEditMode = !!entryId;
 
   const [multiplier, setMultiplier] = useState(1);
   const [customGrams, setCustomGrams] = useState("");
@@ -98,6 +101,21 @@ export default function FoodDetailScreen() {
     router.back();
   }
 
+  function handleSave() {
+    if (!entryId) return;
+    updateFoodEntry(entryDate, entryId, {
+      calories: scaled.calories,
+      protein: scaled.protein,
+      carbs: scaled.carbs,
+      fat: scaled.fat,
+      fiber: scaled.fiber,
+      sugar: scaled.sugar,
+      sodium: scaled.sodium,
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.back();
+  }
+
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
   return (
@@ -111,7 +129,15 @@ export default function FoodDetailScreen() {
           <Pressable onPress={() => router.back()} style={[s.backBtn, { borderColor: colors.border }]}>
             <Feather name="x" size={20} color={colors.mutedForeground} />
           </Pressable>
-          <Text style={[s.title, { color: colors.foreground }]} numberOfLines={2}>{food.name}</Text>
+          <View style={{ flex: 1, alignItems: "center" }}>
+            {isEditMode && (
+              <View style={[s.editBadge, { backgroundColor: colors.primary + "22" }]}>
+                <Feather name="edit-2" size={10} color={colors.primary} />
+                <Text style={[s.editBadgeText, { color: colors.primary }]}>Editing entry</Text>
+              </View>
+            )}
+            <Text style={[s.title, { color: colors.foreground }]} numberOfLines={2}>{food.name}</Text>
+          </View>
           <View style={{ width: 38 }} />
         </View>
 
@@ -119,7 +145,9 @@ export default function FoodDetailScreen() {
         <View style={[s.servingRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Feather name="package" size={14} color={colors.mutedForeground} />
           <Text style={[s.servingText, { color: colors.mutedForeground }]}>
-            1 serving = {food.servingSize}{food.servingUnit.includes("g") ? "" : " "}{food.servingUnit}
+            {isEditMode
+              ? `Logged: ${food.servingSize}${food.servingUnit.includes("g") ? "" : " "}${food.servingUnit}`
+              : `1 serving = ${food.servingSize}${food.servingUnit.includes("g") ? "" : " "}${food.servingUnit}`}
           </Text>
           <View style={{ flex: 1 }} />
           <Text style={[s.scaledServing, { color: colors.foreground }]}>{servingGrams}</Text>
@@ -144,7 +172,9 @@ export default function FoodDetailScreen() {
 
         {/* Serving Adjuster */}
         <View style={[s.adjCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[s.sectionLabel, { color: colors.mutedForeground }]}>SERVING SIZE</Text>
+          <Text style={[s.sectionLabel, { color: colors.mutedForeground }]}>
+            {isEditMode ? "ADJUST SERVING SIZE" : "SERVING SIZE"}
+          </Text>
           <View style={s.multRow}>
             {MULTIPLIERS.map((m) => (
               <Pressable
@@ -181,15 +211,25 @@ export default function FoodDetailScreen() {
           </View>
         </View>
 
-        {/* Add button */}
-        {!!meal && (
+        {/* Action button */}
+        {isEditMode ? (
           <Pressable
-            onPress={handleAdd}
+            onPress={handleSave}
             style={[s.addBtn, { backgroundColor: colors.primary }]}
           >
-            <Feather name="plus" size={18} color="#fff" />
-            <Text style={s.addBtnText}>Add to {meal.charAt(0).toUpperCase() + meal.slice(1)}</Text>
+            <Feather name="check" size={18} color="#fff" />
+            <Text style={s.addBtnText}>Save changes</Text>
           </Pressable>
+        ) : (
+          !!meal && (
+            <Pressable
+              onPress={handleAdd}
+              style={[s.addBtn, { backgroundColor: colors.primary }]}
+            >
+              <Feather name="plus" size={18} color="#fff" />
+              <Text style={s.addBtnText}>Add to {meal.charAt(0).toUpperCase() + meal.slice(1)}</Text>
+            </Pressable>
+          )
         )}
       </ScrollView>
     </View>
@@ -200,7 +240,9 @@ const s = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 18 },
   backBtn: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  title: { flex: 1, fontSize: 20, fontFamily: "Inter_700Bold", textAlign: "center" },
+  editBadge: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 4 },
+  editBadgeText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  title: { fontSize: 20, fontFamily: "Inter_700Bold", textAlign: "center" },
   servingRow: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 14 },
   servingText: { fontSize: 13, fontFamily: "Inter_400Regular" },
   scaledServing: { fontSize: 13, fontFamily: "Inter_700Bold" },

@@ -259,6 +259,7 @@ type AppContextType = {
   addWorkoutSession: (session: WorkoutSession) => void;
   addFoodEntry: (date: string, entry: FoodEntry) => void;
   removeFoodEntry: (date: string, entryId: string) => void;
+  updateFoodEntry: (date: string, entryId: string, updates: Pick<FoodEntry, "calories" | "protein" | "carbs" | "fat" | "fiber" | "sugar" | "sodium">) => void;
   updateWater: (date: string, cups: number) => void;
   likePost: (postId: string) => void;
   addPost: (post: Post) => void;
@@ -879,6 +880,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [update]
   );
 
+  const updateFoodEntry = useCallback(
+    (date: string, entryId: string, updates: Pick<FoodEntry, "calories" | "protein" | "carbs" | "fat" | "fiber" | "sugar" | "sodium">) => {
+      update((prev) => ({
+        ...prev,
+        calorieLog: prev.calorieLog.map((d) =>
+          d.date === date
+            ? {
+                ...d,
+                entries: d.entries.map((e) =>
+                  e.id === entryId ? { ...e, ...updates } : e
+                ),
+              }
+            : d
+        ),
+      }));
+    },
+    [update]
+  );
+
   const updateWater = useCallback(
     (date: string, cups: number) => {
       update((prev) => ({
@@ -1118,6 +1138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addWorkoutSession,
         addFoodEntry,
         removeFoodEntry,
+        updateFoodEntry,
         updateWater,
         likePost,
         addPost,

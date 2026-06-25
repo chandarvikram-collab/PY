@@ -564,6 +564,8 @@ export default function CaloriesScreen() {
                           fiber: entry.fiber ?? 0, sugar: entry.sugar ?? 0, sodium: entry.sodium ?? 0,
                           category: "Custom",
                         }),
+                        entryId: entry.id,
+                        date: todayDateStr,
                       },
                     })
                   }
