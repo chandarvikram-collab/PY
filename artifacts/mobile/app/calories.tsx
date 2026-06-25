@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
 import type { FoodEntry } from "@/context/AppContext";
+import type { MealTemplate } from "@/context/AppContext";
 import FOODS, { searchFoods } from "@/constants/foods";
 import type { FoodItem } from "@/constants/foods";
 import { useColors } from "@/hooks/useColors";
@@ -32,7 +33,7 @@ import { useColors } from "@/hooks/useColors";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
 type MealType = (typeof MEAL_TYPES)[number];
-type SheetTab = "search" | "photo" | "barcode" | "custom" | "quick";
+type SheetTab = "search" | "photo" | "barcode" | "custom" | "quick" | "templates";
 type PhotoPhase = "idle" | "viewfinder" | "analyzing" | "results";
 type BarcodePhase = "idle" | "scanning" | "found";
 
@@ -166,7 +167,7 @@ export default function CaloriesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, addFoodEntry, removeFoodEntry, updateWater, getTodayCalories, getWeeklyNutrition } = useApp();
+  const { state, addFoodEntry, removeFoodEntry, updateWater, getTodayCalories, getWeeklyNutrition, saveMealTemplate, deleteMealTemplate, loadMealTemplate } = useApp();
 
   const today = getTodayCalories();
   const todayDateStr = makeDateStr(0);
@@ -321,6 +322,25 @@ export default function CaloriesScreen() {
     addFoodEntry(todayDateStr, entry);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setAddingMeal(null);
+  }
+
+  // ── Template save modal ───────────────────────────────────────────────────
+  const [saveTemplateVisible, setSaveTemplateVisible] = useState(false);
+  const [templateNameInput, setTemplateNameInput] = useState("");
+
+  function openSaveTemplate() {
+    const d = new Date();
+    const defaultName = d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+    setTemplateNameInput(defaultName);
+    setSaveTemplateVisible(true);
+  }
+
+  function confirmSaveTemplate() {
+    if (!templateNameInput.trim()) return;
+    saveMealTemplate(templateNameInput.trim(), today.entries);
+    setSaveTemplateVisible(false);
+    setTemplateNameInput("");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
   // ── Sheet open/close ───────────────────────────────────────────────────────
@@ -567,6 +587,17 @@ export default function CaloriesScreen() {
             </View>
           );
         })}
+
+        {/* ── Save Today as Template ── */}
+        {today.entries.length > 0 && (
+          <Pressable
+            onPress={openSaveTemplate}
+            style={[s.saveTemplateBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <Feather name="bookmark" size={16} color={colors.primary} />
+            <Text style={[s.saveTemplateBtnText, { color: colors.primary }]}>Save today as template</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       {/* ── Add Food Sheet ── */}
@@ -590,14 +621,20 @@ export default function CaloriesScreen() {
             {/* Tabs */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: "row", gap: 4 }}>
-                {(["search", "photo", "barcode", "custom", "quick"] as SheetTab[]).map((tab) => {
-                  const icons: Record<SheetTab, string> = { search: "search", photo: "camera", barcode: "maximize", custom: "edit-3", quick: "list" };
-                  const labels: Record<SheetTab, string> = { search: "Search", photo: "Photo", barcode: "Barcode", custom: "Custom", quick: "Quick" };
+                {(["search", "photo", "barcode", "custom", "quick", "templates"] as SheetTab[]).map((tab) => {
+                  const icons: Record<SheetTab, string> = { search: "search", photo: "camera", barcode: "maximize", custom: "edit-3", quick: "list", templates: "bookmark" };
+                  const labels: Record<SheetTab, string> = { search: "Search", photo: "Photo", barcode: "Barcode", custom: "Custom", quick: "Quick", templates: "Templates" };
                   const active = sheetTab === tab;
+                  const templateCount = tab === "templates" ? state.mealTemplates.length : 0;
                   return (
                     <Pressable key={tab} onPress={() => setSheetTab(tab)} style={[s.sheetTab, { borderBottomColor: active ? colors.primary : "transparent" }]}>
                       <Feather name={icons[tab] as any} size={13} color={active ? colors.primary : colors.mutedForeground} />
                       <Text style={[s.sheetTabText, { color: active ? colors.primary : colors.mutedForeground }]}>{labels[tab]}</Text>
+                      {templateCount > 0 && (
+                        <View style={[s.tabBadge, { backgroundColor: colors.primary }]}>
+                          <Text style={s.tabBadgeText}>{templateCount}</Text>
+                        </View>
+                      )}
                     </Pressable>
                   );
                 })}
@@ -849,6 +886,95 @@ export default function CaloriesScreen() {
                 ))}
               </ScrollView>
             )}
+
+            {/* ── Templates Tab ── */}
+            {sheetTab === "templates" && (
+              <View style={{ gap: 10 }}>
+                {state.mealTemplates.length === 0 ? (
+                  <View style={{ alignItems: "center", gap: 12, paddingVertical: 24 }}>
+                    <Feather name="bookmark" size={32} color={colors.border} />
+                    <Text style={[s.emptyText, { color: colors.mutedForeground, textAlign: "center" }]}>
+                      No templates yet.{"\n"}Add food today and tap "Save today as template".
+                    </Text>
+                  </View>
+                ) : (
+                  <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+                    {state.mealTemplates.map((tmpl: MealTemplate) => {
+                      const tmplCals = tmpl.entries.reduce((s, e) => s + e.calories, 0);
+                      const tmplProtein = tmpl.entries.reduce((s, e) => s + e.protein, 0);
+                      return (
+                        <View key={tmpl.id} style={[s.templateRow, { borderBottomColor: colors.border }]}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[s.resultName, { color: colors.foreground }]} numberOfLines={1}>{tmpl.name}</Text>
+                            <Text style={[s.resultServing, { color: colors.mutedForeground }]}>
+                              {tmpl.entries.length} items · {tmplCals} kcal · P {Math.round(tmplProtein)}g
+                            </Text>
+                            <Text style={{ fontSize: 10, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 2 }}>
+                              Saved {tmpl.createdAt}
+                            </Text>
+                          </View>
+                          <Pressable
+                            onPress={() => {
+                              if (!addingMeal) return;
+                              loadMealTemplate(todayDateStr, tmpl.id, addingMeal);
+                              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                              closeSheet();
+                            }}
+                            style={[s.templateLoadBtn, { backgroundColor: colors.primary }]}
+                          >
+                            <Feather name="download" size={14} color="#fff" />
+                            <Text style={s.templateLoadBtnText}>Load</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => deleteMealTemplate(tmpl.id)}
+                            hitSlop={8}
+                            style={{ padding: 6 }}
+                          >
+                            <Feather name="trash-2" size={14} color={colors.destructive} />
+                          </Pressable>
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* ── Save Template Modal ── */}
+      {saveTemplateVisible && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.88)", justifyContent: "center", alignItems: "center", zIndex: 200, paddingHorizontal: 24 }]}>
+          <View style={[s.templateModal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[s.templateModalTitle, { color: colors.foreground }]}>Save as Template</Text>
+            <Text style={[s.templateModalSubtitle, { color: colors.mutedForeground }]}>
+              {today.entries.length} food{today.entries.length !== 1 ? "s" : ""} will be saved
+            </Text>
+            <TextInput
+              style={[s.templateModalInput, { backgroundColor: colors.muted, color: colors.foreground, borderColor: colors.border }]}
+              value={templateNameInput}
+              onChangeText={setTemplateNameInput}
+              placeholder="Template name"
+              placeholderTextColor={colors.mutedForeground}
+              autoFocus
+              selectTextOnFocus
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+              <Pressable
+                onPress={() => setSaveTemplateVisible(false)}
+                style={[s.templateModalCancel, { borderColor: colors.border }]}
+              >
+                <Text style={{ fontFamily: "Inter_500Medium", color: colors.mutedForeground, fontSize: 14 }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={confirmSaveTemplate}
+                style={[s.templateModalSave, { backgroundColor: colors.primary, opacity: templateNameInput.trim() ? 1 : 0.45 }]}
+              >
+                <Feather name="bookmark" size={15} color="#fff" />
+                <Text style={{ fontFamily: "Inter_600SemiBold", color: "#fff", fontSize: 14 }}>Save</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       )}
@@ -930,4 +1056,17 @@ const s = StyleSheet.create({
   input: { borderRadius: 10, borderWidth: 1, padding: 12, fontSize: 15, fontFamily: "Inter_400Regular" },
   addBtn: { padding: 14, borderRadius: 12, alignItems: "center" },
   addBtnText: { fontSize: 15, fontFamily: "Inter_700Bold", color: "#fff" },
+  saveTemplateBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, borderWidth: 1.5, borderStyle: "dashed", padding: 14, marginBottom: 10 },
+  saveTemplateBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  tabBadge: { borderRadius: 8, minWidth: 16, height: 16, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 },
+  tabBadgeText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff" },
+  templateRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12, borderBottomWidth: 1 },
+  templateLoadBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  templateLoadBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#fff" },
+  templateModal: { borderRadius: 20, borderWidth: 1, padding: 22, width: "100%", gap: 12 },
+  templateModalTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  templateModalSubtitle: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: -6 },
+  templateModalInput: { borderRadius: 10, borderWidth: 1, padding: 12, fontSize: 15, fontFamily: "Inter_400Regular" },
+  templateModalCancel: { flex: 1, borderRadius: 12, borderWidth: 1, padding: 12, alignItems: "center", justifyContent: "center" },
+  templateModalSave: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 12, padding: 12 },
 });

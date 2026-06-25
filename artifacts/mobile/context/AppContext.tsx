@@ -128,6 +128,25 @@ export type FoodEntry = {
   time: string;
 };
 
+export type MealTemplateEntry = {
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+  sugar?: number;
+  sodium?: number;
+  meal: "breakfast" | "lunch" | "dinner" | "snack";
+};
+
+export type MealTemplate = {
+  id: string;
+  name: string;
+  createdAt: string;
+  entries: MealTemplateEntry[];
+};
+
 export type DayCalories = {
   date: string;
   goal: number;
@@ -228,6 +247,7 @@ type AppState = {
   posts: Post[];
   chatThreads: ChatThread[];
   runHistory: RunSession[];
+  mealTemplates: MealTemplate[];
 };
 
 type AppContextType = {
@@ -249,6 +269,9 @@ type AppContextType = {
   getWeeklyNutrition: () => WeeklyNutrition[];
   addRoutine: (routine: Routine) => void;
   addRunSession: (session: RunSession) => void;
+  saveMealTemplate: (name: string, entries: FoodEntry[]) => void;
+  deleteMealTemplate: (templateId: string) => void;
+  loadMealTemplate: (date: string, templateId: string, targetMeal: FoodEntry["meal"]) => void;
 };
 
 const ME_ID = "me";
@@ -720,6 +743,7 @@ const DEFAULT_STATE: AppState = {
   userProfile: DEFAULT_PROFILE,
   routines: SEED_ROUTINES,
   workoutHistory: SEED_HISTORY,
+  mealTemplates: [],
   calorieLog: [
     {
       date: todayStr(),
@@ -1009,6 +1033,80 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [update]
   );
 
+  const saveMealTemplate = useCallback(
+    (name: string, entries: FoodEntry[]) => {
+      const template: MealTemplate = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+        name: name.trim(),
+        createdAt: todayStr(),
+        entries: entries.map((e) => ({
+          name: e.name,
+          calories: e.calories,
+          protein: e.protein,
+          carbs: e.carbs,
+          fat: e.fat,
+          fiber: e.fiber,
+          sugar: e.sugar,
+          sodium: e.sodium,
+          meal: e.meal,
+        })),
+      };
+      update((prev) => ({ ...prev, mealTemplates: [template, ...prev.mealTemplates] }));
+    },
+    [update]
+  );
+
+  const deleteMealTemplate = useCallback(
+    (templateId: string) => {
+      update((prev) => ({
+        ...prev,
+        mealTemplates: prev.mealTemplates.filter((t) => t.id !== templateId),
+      }));
+    },
+    [update]
+  );
+
+  const loadMealTemplate = useCallback(
+    (date: string, templateId: string, targetMeal: FoodEntry["meal"]) => {
+      update((prev) => {
+        const template = prev.mealTemplates.find((t) => t.id === templateId);
+        if (!template) return prev;
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+        const newEntries: FoodEntry[] = template.entries.map((e) => ({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+          name: e.name,
+          calories: e.calories,
+          protein: e.protein,
+          carbs: e.carbs,
+          fat: e.fat,
+          fiber: e.fiber,
+          sugar: e.sugar,
+          sodium: e.sodium,
+          meal: targetMeal,
+          time: timeStr,
+        }));
+        const existing = prev.calorieLog.find((d) => d.date === date);
+        if (existing) {
+          return {
+            ...prev,
+            calorieLog: prev.calorieLog.map((d) =>
+              d.date === date ? { ...d, entries: [...d.entries, ...newEntries] } : d
+            ),
+          };
+        }
+        return {
+          ...prev,
+          calorieLog: [
+            ...prev.calorieLog,
+            { date, goal: prev.userProfile.calorieGoal, water: 0, entries: newEntries },
+          ],
+        };
+      });
+    },
+    [update]
+  );
+
   if (!loaded) return null;
 
   return (
@@ -1032,6 +1130,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getWeeklyNutrition,
         addRoutine,
         addRunSession,
+        saveMealTemplate,
+        deleteMealTemplate,
+        loadMealTemplate,
       }}
     >
       {children}
