@@ -1,5 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -10,6 +12,7 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Platform,
   Pressable,
@@ -34,8 +37,32 @@ import { useColors } from "@/hooks/useColors";
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
 type MealType = (typeof MEAL_TYPES)[number];
 type SheetTab = "search" | "photo" | "barcode" | "custom" | "quick" | "templates";
-type PhotoPhase = "idle" | "viewfinder" | "analyzing" | "results";
-type BarcodePhase = "idle" | "scanning" | "found";
+type PhotoPhase = "idle" | "analyzing" | "results";
+type BarcodePhase = "idle" | "camera" | "scanning" | "found";
+
+type AiFoodResult = {
+  id: string;
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  serving: string;
+};
+
+type ScannedProduct = {
+  name: string;
+  brand?: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  servingSize: string;
+};
+
+const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : "";
 
 const MEAL_META: Record<MealType, { label: string; color: string; icon: string }> = {
   breakfast: { label: "Breakfast", color: "#f59e0b", icon: "sun" },
@@ -258,32 +285,101 @@ export default function CaloriesScreen() {
     return searchFoods(searchQuery, 15);
   }, [searchQuery, today.entries]);
 
-  // ── Photo simulation ───────────────────────────────────────────────────────
-  const [photoPhase, setPhotoPhase] = useState<PhotoPhase>("idle");
-  const [photoSuggestions, setPhotoSuggestions] = useState<FoodItem[]>([]);
-  const photoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── Camera permission ──────────────────────────────────────────────────────
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
-  function startPhotoScan() {
-    setPhotoPhase("viewfinder");
+  // ── Photo (real image picker + AI) ────────────────────────────────────────
+  const [photoPhase, setPhotoPhase] = useState<PhotoPhase>("idle");
+  const [photoSuggestions, setPhotoSuggestions] = useState<AiFoodResult[]>([]);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+
+  async function startPhotoScan() {
+    setPhotoError(null);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const camResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted" && camResult.status !== "granted") {
+      Alert.alert("Permission needed", "Allow camera or photo library access to analyze food.");
+      return;
+    }
+
+    Alert.alert(
+      "Add Food Photo",
+      "Choose how to capture your meal",
+      [
+        {
+          text: "Take Photo",
+          onPress: async () => {
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ["images"],
+              quality: 0.7,
+              base64: true,
+            });
+            if (!result.canceled && result.assets[0]?.base64) {
+              await analyzePhoto(result.assets[0].base64, result.assets[0].mimeType ?? "image/jpeg");
+            }
+          },
+        },
+        {
+          text: "Choose from Library",
+          onPress: async () => {
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ["images"],
+              quality: 0.7,
+              base64: true,
+            });
+            if (!result.canceled && result.assets[0]?.base64) {
+              await analyzePhoto(result.assets[0].base64, result.assets[0].mimeType ?? "image/jpeg");
+            }
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
   }
 
-  function capturePhoto() {
+  async function analyzePhoto(base64: string, mimeType: string) {
     setPhotoPhase("analyzing");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    photoTimer.current = setTimeout(() => {
-      const combo = PHOTO_COMBOS[Math.floor(Math.random() * PHOTO_COMBOS.length)];
-      setPhotoSuggestions([...combo]);
+    try {
+      const res = await fetch(`${API_BASE}/api/analyze-food`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64, mimeType }),
+      });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json() as { foods?: unknown[] };
+      const foods = (data.foods ?? []) as Array<{
+        name: string; calories: number; protein: number; carbs: number; fat: number; serving: string;
+      }>;
+      if (foods.length === 0) {
+        setPhotoError("No food detected in the photo. Try a clearer image.");
+        setPhotoPhase("idle");
+        return;
+      }
+      const results: AiFoodResult[] = foods.map((f, i) => ({
+        id: `ai-${i}-${Date.now()}`,
+        name: f.name,
+        calories: Math.round(f.calories ?? 0),
+        protein: Math.round(f.protein ?? 0),
+        carbs: Math.round(f.carbs ?? 0),
+        fat: Math.round(f.fat ?? 0),
+        serving: f.serving ?? "1 serving",
+      }));
+      setPhotoSuggestions(results);
       setPhotoPhase("results");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 2000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to analyze photo.";
+      setPhotoError(msg);
+      setPhotoPhase("idle");
+    }
   }
 
-  function addPhotoSuggestion(food: FoodItem) {
+  function addPhotoSuggestion(food: AiFoodResult) {
     if (!addingMeal) return;
     const entry: FoodEntry = {
       id: makeId(), name: food.name, calories: food.calories,
       protein: food.protein, carbs: food.carbs, fat: food.fat,
-      fiber: food.fiber, sugar: food.sugar, sodium: food.sodium,
       meal: addingMeal,
       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
     };
@@ -293,38 +389,55 @@ export default function CaloriesScreen() {
     if (photoSuggestions.length <= 1) setAddingMeal(null);
   }
 
-  function swapPhotoSuggestion(food: FoodItem) {
-    const available = FOODS.filter(
-      (f) => !photoSuggestions.some((s) => s.id === f.id) && f.id !== food.id
-    );
-    if (!available.length) return;
-    const replacement = available[Math.floor(Math.random() * available.length)];
-    setPhotoSuggestions((prev) => prev.map((f) => (f.id === food.id ? replacement : f)));
+  // ── Barcode (real camera + Open Food Facts) ────────────────────────────────
+  const [barcodePhase, setBarcodePhase] = useState<BarcodePhase>("idle");
+  const [barcodeProduct, setBarcodeProduct] = useState<ScannedProduct | null>(null);
+  const [barcodeError, setBarcodeError] = useState<string | null>(null);
+  const barcodeScanningRef = useRef(false);
+
+  async function startBarcodeScan() {
+    setBarcodeError(null);
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) {
+        Alert.alert("Camera permission required", "Enable camera access in Settings to scan barcodes.");
+        return;
+      }
+    }
+    barcodeScanningRef.current = false;
+    setBarcodePhase("camera");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }
 
-  // ── Barcode simulation ─────────────────────────────────────────────────────
-  const [barcodePhase, setBarcodePhase] = useState<BarcodePhase>("idle");
-  const [barcodeProduct, setBarcodeProduct] = useState<FoodItem | null>(null);
-  const barcodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function startBarcodeScan() {
+  async function handleBarcodeScan(barcode: string) {
+    if (barcodeScanningRef.current) return;
+    barcodeScanningRef.current = true;
     setBarcodePhase("scanning");
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    barcodeTimer.current = setTimeout(() => {
-      const product = BARCODE_PRODUCTS[Math.floor(Math.random() * BARCODE_PRODUCTS.length)];
-      setBarcodeProduct(product);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const res = await fetch(`${API_BASE}/api/barcode/${encodeURIComponent(barcode)}`);
+      const data = await res.json() as ScannedProduct & { error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? `Error ${res.status}`);
+      setBarcodeProduct(data);
       setBarcodePhase("found");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 1500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Could not find product.";
+      setBarcodeError(msg);
+      barcodeScanningRef.current = false;
+      setBarcodePhase("camera");
+    }
   }
 
   function confirmBarcodeProduct() {
     if (!addingMeal || !barcodeProduct) return;
     const entry: FoodEntry = {
-      id: makeId(), name: barcodeProduct.name, calories: barcodeProduct.calories,
-      protein: barcodeProduct.protein, carbs: barcodeProduct.carbs, fat: barcodeProduct.fat,
-      fiber: barcodeProduct.fiber, sugar: barcodeProduct.sugar, sodium: barcodeProduct.sodium,
+      id: makeId(),
+      name: barcodeProduct.brand ? `${barcodeProduct.name} (${barcodeProduct.brand})` : barcodeProduct.name,
+      calories: barcodeProduct.calories,
+      protein: barcodeProduct.protein,
+      carbs: barcodeProduct.carbs,
+      fat: barcodeProduct.fat,
       meal: addingMeal,
       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
     };
@@ -403,15 +516,15 @@ export default function CaloriesScreen() {
   }
 
   function closeSheet() {
-    if (photoTimer.current) clearTimeout(photoTimer.current);
-    if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
     setAddingMeal(null);
+    setPhotoPhase("idle");
+    setPhotoSuggestions([]);
+    setPhotoError(null);
+    setBarcodePhase("idle");
+    setBarcodeProduct(null);
+    setBarcodeError(null);
+    barcodeScanningRef.current = false;
   }
-
-  useEffect(() => () => {
-    if (photoTimer.current) clearTimeout(photoTimer.current);
-    if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
-  }, []);
 
   // ── Totals ─────────────────────────────────────────────────────────────────
   const totals = useMemo(() =>
