@@ -937,28 +937,19 @@ export default function CaloriesScreen() {
               <View style={{ gap: 14 }}>
                 {photoPhase === "idle" && (
                   <View style={{ alignItems: "center", gap: 14 }}>
-                    <Text style={[s.simHint, { color: colors.mutedForeground }]}>Simulate AI photo analysis of your meal</Text>
+                    <Text style={[s.simHint, { color: colors.mutedForeground }]}>
+                      AI analyzes your meal photo and estimates nutrition
+                    </Text>
+                    {photoError && (
+                      <View style={{ backgroundColor: "#ef444422", borderRadius: 10, padding: 10, width: "100%" }}>
+                        <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: "#ef4444", textAlign: "center" }}>
+                          {photoError}
+                        </Text>
+                      </View>
+                    )}
                     <Pressable onPress={startPhotoScan} style={[s.bigBtn, { backgroundColor: colors.primary }]}>
                       <Feather name="camera" size={18} color="#fff" />
-                      <Text style={s.bigBtnText}>Take Photo</Text>
-                    </Pressable>
-                  </View>
-                )}
-
-                {photoPhase === "viewfinder" && (
-                  <View style={{ alignItems: "center", gap: 16 }}>
-                    <View style={[s.viewfinder, { borderColor: colors.border }]}>
-                      <View style={[s.vfCorner, s.vfTL, { borderColor: colors.primary }]} />
-                      <View style={[s.vfCorner, s.vfTR, { borderColor: colors.primary }]} />
-                      <View style={[s.vfCorner, s.vfBL, { borderColor: colors.primary }]} />
-                      <View style={[s.vfCorner, s.vfBR, { borderColor: colors.primary }]} />
-                      <Feather name="camera" size={36} color={colors.border} />
-                      <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 8 }}>
-                        Point at your meal
-                      </Text>
-                    </View>
-                    <Pressable onPress={capturePhoto} style={[s.shutterBtn, { borderColor: colors.primary }]}>
-                      <View style={[s.shutterInner, { backgroundColor: colors.primary }]} />
+                      <Text style={s.bigBtnText}>Take / Choose Photo</Text>
                     </Pressable>
                   </View>
                 )}
@@ -975,26 +966,20 @@ export default function CaloriesScreen() {
 
                 {photoPhase === "results" && (
                   <View style={{ gap: 10 }}>
-                    <Text style={[s.aiLabel, { color: colors.mutedForeground }]}>AI detected these foods — add, swap, or dismiss:</Text>
+                    <Text style={[s.aiLabel, { color: colors.mutedForeground }]}>AI detected these foods — add or dismiss:</Text>
                     {photoSuggestions.map((food) => (
                       <View key={food.id} style={[s.aiCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                         <View style={{ flex: 1 }}>
                           <Text style={[s.resultName, { color: colors.foreground }]} numberOfLines={1}>{food.name}</Text>
-                          <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{food.servingUnit}</Text>
+                          <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{food.serving}</Text>
                           <View style={{ flexDirection: "row", gap: 4, marginTop: 4 }}>
                             <FoodChip label={`${food.calories} kcal`} color={colors.primary} />
                             <FoodChip label={`P ${food.protein}g`} color="#3b82f6" />
                           </View>
                         </View>
-                        {/* Add */}
                         <Pressable onPress={() => addPhotoSuggestion(food)} style={[s.aiActionBtn, { backgroundColor: colors.primary }]}>
                           <Feather name="check" size={16} color="#fff" />
                         </Pressable>
-                        {/* Swap */}
-                        <Pressable onPress={() => swapPhotoSuggestion(food)} style={[s.aiActionBtn, { borderColor: colors.border, borderWidth: 1, backgroundColor: colors.muted }]}>
-                          <Feather name="refresh-cw" size={16} color={colors.info} />
-                        </Pressable>
-                        {/* Dismiss */}
                         <Pressable onPress={() => setPhotoSuggestions((p) => p.filter((f) => f.id !== food.id))} style={[s.aiActionBtn, { borderColor: colors.border, borderWidth: 1 }]}>
                           <Feather name="x" size={16} color={colors.mutedForeground} />
                         </Pressable>
@@ -1002,6 +987,11 @@ export default function CaloriesScreen() {
                     ))}
                     {photoSuggestions.length === 0 && (
                       <Text style={[s.emptyText, { color: colors.mutedForeground }]}>All done! Tap + on another meal to continue.</Text>
+                    )}
+                    {photoSuggestions.length > 0 && (
+                      <Pressable onPress={() => { setPhotoPhase("idle"); setPhotoSuggestions([]); }} style={[s.ghostBtn, { borderColor: colors.border }]}>
+                        <Text style={[s.ghostBtnText, { color: colors.mutedForeground }]}>Scan another photo</Text>
+                      </Pressable>
                     )}
                   </View>
                 )}
@@ -1020,13 +1010,44 @@ export default function CaloriesScreen() {
                       <View style={[s.vfCorner, s.vfBR, { borderColor: colors.info }]} />
                       <Feather name="maximize" size={32} color={colors.border} />
                       <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 8 }}>
-                        Align barcode in frame
+                        Point camera at any barcode
                       </Text>
                     </View>
-                    <Text style={[s.simHint, { color: colors.mutedForeground }]}>Simulates scanning a real barcode</Text>
+                    {barcodeError && (
+                      <View style={{ backgroundColor: "#ef444422", borderRadius: 10, padding: 10, width: "100%" }}>
+                        <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: "#ef4444", textAlign: "center" }}>
+                          {barcodeError}
+                        </Text>
+                      </View>
+                    )}
                     <Pressable onPress={startBarcodeScan} style={[s.bigBtn, { backgroundColor: colors.info }]}>
                       <Feather name="maximize" size={18} color="#fff" />
-                      <Text style={s.bigBtnText}>Simulate Scan</Text>
+                      <Text style={s.bigBtnText}>Scan Barcode</Text>
+                    </Pressable>
+                  </View>
+                )}
+
+                {barcodePhase === "camera" && (
+                  <View style={{ gap: 12 }}>
+                    <View style={{ borderRadius: 14, overflow: "hidden", height: 220, position: "relative" }}>
+                      <CameraView
+                        style={{ flex: 1 }}
+                        facing="back"
+                        barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "qr", "code128", "code39"] }}
+                        onBarcodeScanned={(result) => { void handleBarcodeScan(result.data); }}
+                      />
+                      <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", pointerEvents: "none" }]}>
+                        <View style={[s.vfCorner, s.vfTL, { borderColor: "#fff", top: 40, left: 40 }]} />
+                        <View style={[s.vfCorner, s.vfTR, { borderColor: "#fff", top: 40, right: 40 }]} />
+                        <View style={[s.vfCorner, s.vfBL, { borderColor: "#fff", bottom: 40, left: 40 }]} />
+                        <View style={[s.vfCorner, s.vfBR, { borderColor: "#fff", bottom: 40, right: 40 }]} />
+                      </View>
+                    </View>
+                    <Text style={[s.analyzingSubText, { color: colors.mutedForeground, textAlign: "center" }]}>
+                      Align barcode in frame — it scans automatically
+                    </Text>
+                    <Pressable onPress={() => setBarcodePhase("idle")} style={[s.ghostBtn, { borderColor: colors.border }]}>
+                      <Text style={[s.ghostBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
                     </Pressable>
                   </View>
                 )}
@@ -1034,8 +1055,8 @@ export default function CaloriesScreen() {
                 {barcodePhase === "scanning" && (
                   <View style={{ alignItems: "center", gap: 16, paddingVertical: 20 }}>
                     <ActivityIndicator color={colors.info} size="large" />
-                    <Text style={[s.analyzingText, { color: colors.foreground }]}>Scanning barcode…</Text>
-                    <Text style={[s.analyzingSubText, { color: colors.mutedForeground }]}>Looking up product database</Text>
+                    <Text style={[s.analyzingText, { color: colors.foreground }]}>Looking up product…</Text>
+                    <Text style={[s.analyzingSubText, { color: colors.mutedForeground }]}>Searching Open Food Facts database</Text>
                   </View>
                 )}
 
@@ -1045,11 +1066,15 @@ export default function CaloriesScreen() {
                     <View style={[s.aiCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                       <View style={{ flex: 1 }}>
                         <Text style={[s.resultName, { color: colors.foreground }]}>{barcodeProduct.name}</Text>
-                        <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{barcodeProduct.servingUnit}</Text>
+                        {barcodeProduct.brand && (
+                          <Text style={[{ fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 }, { color: colors.mutedForeground }]}>{barcodeProduct.brand}</Text>
+                        )}
+                        <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{barcodeProduct.servingSize}</Text>
                         <View style={{ flexDirection: "row", gap: 4, marginTop: 4 }}>
                           <FoodChip label={`${barcodeProduct.calories} kcal`} color={colors.primary} />
                           <FoodChip label={`P ${barcodeProduct.protein}g`} color="#3b82f6" />
                           <FoodChip label={`C ${barcodeProduct.carbs}g`} color="#f59e0b" />
+                          <FoodChip label={`F ${barcodeProduct.fat}g`} color="#8b5cf6" />
                         </View>
                       </View>
                     </View>
@@ -1057,7 +1082,7 @@ export default function CaloriesScreen() {
                       <Feather name="plus" size={18} color="#fff" />
                       <Text style={s.bigBtnText}>Add to {MEAL_META[addingMeal!].label}</Text>
                     </Pressable>
-                    <Pressable onPress={() => { setBarcodePhase("idle"); setBarcodeProduct(null); }} style={[s.ghostBtn, { borderColor: colors.border }]}>
+                    <Pressable onPress={() => { setBarcodePhase("idle"); setBarcodeProduct(null); setBarcodeError(null); }} style={[s.ghostBtn, { borderColor: colors.border }]}>
                       <Text style={[s.ghostBtnText, { color: colors.mutedForeground }]}>Scan again</Text>
                     </Pressable>
                   </View>
