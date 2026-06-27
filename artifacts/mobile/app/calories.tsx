@@ -82,7 +82,17 @@ type ScannedProduct = {
   carbs: number;
   fat: number;
   servingSize: string;
+  servingGrams: number;
+  per100gCalories: number;
+  per100gProtein: number;
+  per100gCarbs: number;
+  per100gFat: number;
 };
+
+function parseServingGrams(serving: string): number {
+  const m = serving.match(/(\d+(?:\.\d+)?)\s*g/i);
+  return m ? Math.round(parseFloat(m[1])) : 100;
+}
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -316,7 +326,8 @@ export default function CaloriesScreen() {
   const [photoPhase, setPhotoPhase] = useState<PhotoPhase>("idle");
   const [photoSuggestions, setPhotoSuggestions] = useState<AiFoodResult[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  const [photoQty, setPhotoQty] = useState<Record<string, string>>({});
+  const [photoGrams, setPhotoGrams] = useState<Record<string, string>>({});
+  const [photoBaseGrams, setPhotoBaseGrams] = useState<Record<string, number>>({});
 
   async function pickAndAnalyze(launcher: () => Promise<ImagePicker.ImagePickerResult>) {
     setPhotoError(null);
@@ -393,9 +404,15 @@ export default function CaloriesScreen() {
         fat: Math.round(f.fat ?? 0),
         serving: f.serving ?? "1 serving",
       }));
-      const qtyMap: Record<string, string> = {};
-      results.forEach((r) => { qtyMap[r.id] = "1"; });
-      setPhotoQty(qtyMap);
+      const gramsMap: Record<string, string> = {};
+      const baseMap: Record<string, number> = {};
+      results.forEach((r) => {
+        const base = parseServingGrams(r.serving);
+        gramsMap[r.id] = String(base);
+        baseMap[r.id] = base;
+      });
+      setPhotoGrams(gramsMap);
+      setPhotoBaseGrams(baseMap);
       setPhotoSuggestions(results);
       setPhotoPhase("results");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -408,14 +425,16 @@ export default function CaloriesScreen() {
 
   function addPhotoSuggestion(food: AiFoodResult) {
     if (!addingMeal) return;
-    const qty = Math.max(0.1, parseFloat(photoQty[food.id] ?? "1") || 1);
+    const grams = Math.max(1, parseFloat(photoGrams[food.id] ?? "100") || 100);
+    const base = photoBaseGrams[food.id] ?? 100;
+    const ratio = grams / base;
     const entry: FoodEntry = {
       id: makeId(),
-      name: qty !== 1 ? `${food.name} (×${qty})` : food.name,
-      calories: Math.round(food.calories * qty),
-      protein: Math.round(food.protein * qty),
-      carbs: Math.round(food.carbs * qty),
-      fat: Math.round(food.fat * qty),
+      name: `${food.name} (${grams}g)`,
+      calories: Math.round(food.calories * ratio),
+      protein: Math.round(food.protein * ratio),
+      carbs: Math.round(food.carbs * ratio),
+      fat: Math.round(food.fat * ratio),
       meal: addingMeal,
       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
     };
@@ -430,6 +449,7 @@ export default function CaloriesScreen() {
   const [barcodeProduct, setBarcodeProduct] = useState<ScannedProduct | null>(null);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
   const [barcodeInput, setBarcodeInput] = useState("");
+  const [barcodeGrams, setBarcodeGrams] = useState("100");
   const barcodeScanningRef = useRef(false);
   const isWeb = Platform.OS === "web";
 
@@ -475,13 +495,18 @@ export default function CaloriesScreen() {
 
   function confirmBarcodeProduct() {
     if (!addingMeal || !barcodeProduct) return;
+    const grams = Math.max(1, parseFloat(barcodeGrams) || 100);
+    const ratio = grams / 100;
+    const baseName = barcodeProduct.brand
+      ? `${barcodeProduct.name} (${barcodeProduct.brand})`
+      : barcodeProduct.name;
     const entry: FoodEntry = {
       id: makeId(),
-      name: barcodeProduct.brand ? `${barcodeProduct.name} (${barcodeProduct.brand})` : barcodeProduct.name,
-      calories: barcodeProduct.calories,
-      protein: barcodeProduct.protein,
-      carbs: barcodeProduct.carbs,
-      fat: barcodeProduct.fat,
+      name: `${baseName} – ${grams}g`,
+      calories: Math.round(barcodeProduct.per100gCalories * ratio),
+      protein: Math.round(barcodeProduct.per100gProtein * ratio),
+      carbs: Math.round(barcodeProduct.per100gCarbs * ratio),
+      fat: Math.round(barcodeProduct.per100gFat * ratio),
       meal: addingMeal,
       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
     };
@@ -564,11 +589,13 @@ export default function CaloriesScreen() {
     setPhotoPhase("idle");
     setPhotoSuggestions([]);
     setPhotoError(null);
-    setPhotoQty({});
+    setPhotoGrams({});
+    setPhotoBaseGrams({});
     setBarcodePhase("idle");
     setBarcodeProduct(null);
     setBarcodeError(null);
     setBarcodeInput("");
+    setBarcodeGrams("100");
     barcodeScanningRef.current = false;
   }
 
@@ -880,11 +907,10 @@ export default function CaloriesScreen() {
         )}
       </ScrollView>
 
-      {/* ── Add Food Sheet ── */}
+      {/* ── Add Food Full-Screen Modal ── */}
       {addingMeal && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.88)", justifyContent: "flex-end", zIndex: 100 }]}>
-          <View style={[s.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
-            <View style={[s.handle, { backgroundColor: colors.border }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 100 }]}>
+          <View style={[s.sheet, { backgroundColor: colors.background, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16, flex: 1 }]}>
 
             <View style={s.sheetHeader}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -1012,54 +1038,63 @@ export default function CaloriesScreen() {
 
                 {photoPhase === "results" && (
                   <View style={{ gap: 10 }}>
-                    <Text style={[s.aiLabel, { color: colors.mutedForeground }]}>AI detected these foods — adjust servings, then add:</Text>
+                    <Text style={[s.aiLabel, { color: colors.mutedForeground }]}>AI detected these foods — set grams, then add:</Text>
                     {photoSuggestions.map((food) => {
-                      const qty = parseFloat(photoQty[food.id] ?? "1") || 1;
-                      const scaledCal = Math.round(food.calories * qty);
-                      const scaledP = Math.round(food.protein * qty);
+                      const base = photoBaseGrams[food.id] ?? 100;
+                      const grams = Math.max(1, parseFloat(photoGrams[food.id] ?? String(base)) || base);
+                      const ratio = grams / base;
                       return (
-                        <View key={food.id} style={[s.aiCard, { backgroundColor: colors.muted, borderColor: colors.border, flexDirection: "column", gap: 8 }]}>
+                        <View key={food.id} style={[s.aiCard, { backgroundColor: colors.muted, borderColor: colors.border, flexDirection: "column", gap: 10 }]}>
                           <View style={{ flexDirection: "row", alignItems: "center" }}>
                             <View style={{ flex: 1 }}>
                               <Text style={[s.resultName, { color: colors.foreground }]} numberOfLines={1}>{food.name}</Text>
-                              <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{food.serving}</Text>
+                              <Text style={[s.resultServing, { color: colors.mutedForeground }]}>AI estimate for {base}g</Text>
                             </View>
                             <Pressable onPress={() => setPhotoSuggestions((p) => p.filter((f) => f.id !== food.id))} style={[s.aiActionBtn, { borderColor: colors.border, borderWidth: 1 }]}>
                               <Feather name="x" size={16} color={colors.mutedForeground} />
                             </Pressable>
                           </View>
+
+                          {/* Grams row */}
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                            <View style={{ flexDirection: "row", gap: 4, flex: 1 }}>
-                              <FoodChip label={`${scaledCal} kcal`} color={colors.primary} />
-                              <FoodChip label={`P ${scaledP}g`} color="#3b82f6" />
-                            </View>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 8, paddingVertical: 4 }}>
+                            <Text style={{ fontSize: 13, fontFamily: "Inter_500Medium", color: colors.mutedForeground, flex: 1 }}>Amount</Text>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6 }}>
                               <Pressable
                                 onPress={() => {
-                                  const v = Math.max(0.5, (parseFloat(photoQty[food.id] ?? "1") || 1) - 0.5);
-                                  setPhotoQty((q) => ({ ...q, [food.id]: String(v) }));
+                                  const cur = parseFloat(photoGrams[food.id] ?? String(base)) || base;
+                                  setPhotoGrams((q) => ({ ...q, [food.id]: String(Math.max(1, cur - 10)) }));
                                 }}
-                                hitSlop={6}
+                                hitSlop={8}
                               >
-                                <Feather name="minus" size={14} color={colors.mutedForeground} />
+                                <Feather name="minus" size={15} color={colors.mutedForeground} />
                               </Pressable>
                               <TextInput
-                                style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.foreground, minWidth: 28, textAlign: "center" }}
-                                value={photoQty[food.id] ?? "1"}
-                                onChangeText={(v) => setPhotoQty((q) => ({ ...q, [food.id]: v }))}
+                                style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: colors.foreground, minWidth: 44, textAlign: "center" }}
+                                value={photoGrams[food.id] ?? String(base)}
+                                onChangeText={(v) => setPhotoGrams((q) => ({ ...q, [food.id]: v }))}
                                 keyboardType="decimal-pad"
                                 selectTextOnFocus
                               />
-                              <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>srv</Text>
+                              <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>g</Text>
                               <Pressable
                                 onPress={() => {
-                                  const v = (parseFloat(photoQty[food.id] ?? "1") || 1) + 0.5;
-                                  setPhotoQty((q) => ({ ...q, [food.id]: String(v) }));
+                                  const cur = parseFloat(photoGrams[food.id] ?? String(base)) || base;
+                                  setPhotoGrams((q) => ({ ...q, [food.id]: String(cur + 10) }));
                                 }}
-                                hitSlop={6}
+                                hitSlop={8}
                               >
-                                <Feather name="plus" size={14} color={colors.mutedForeground} />
+                                <Feather name="plus" size={15} color={colors.mutedForeground} />
                               </Pressable>
+                            </View>
+                          </View>
+
+                          {/* Live macro chips + add button */}
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <View style={{ flexDirection: "row", gap: 4, flex: 1, flexWrap: "wrap" }}>
+                              <FoodChip label={`${Math.round(food.calories * ratio)} kcal`} color={colors.primary} />
+                              <FoodChip label={`P ${Math.round(food.protein * ratio)}g`} color="#3b82f6" />
+                              <FoodChip label={`C ${Math.round(food.carbs * ratio)}g`} color="#f59e0b" />
+                              <FoodChip label={`F ${Math.round(food.fat * ratio)}g`} color="#8b5cf6" />
                             </View>
                             <Pressable onPress={() => addPhotoSuggestion(food)} style={[s.aiActionBtn, { backgroundColor: colors.primary }]}>
                               <Feather name="check" size={16} color="#fff" />
@@ -1069,10 +1104,10 @@ export default function CaloriesScreen() {
                       );
                     })}
                     {photoSuggestions.length === 0 && (
-                      <Text style={[s.emptyText, { color: colors.mutedForeground }]}>All done! Tap + on another meal to continue.</Text>
+                      <Text style={[s.emptyText, { color: colors.mutedForeground }]}>All done!</Text>
                     )}
                     {photoSuggestions.length > 0 && (
-                      <Pressable onPress={() => { setPhotoPhase("idle"); setPhotoSuggestions([]); setPhotoQty({}); }} style={[s.ghostBtn, { borderColor: colors.border }]}>
+                      <Pressable onPress={() => { setPhotoPhase("idle"); setPhotoSuggestions([]); setPhotoGrams({}); setPhotoBaseGrams({}); }} style={[s.ghostBtn, { borderColor: colors.border }]}>
                         <Text style={[s.ghostBtnText, { color: colors.mutedForeground }]}>Scan another photo</Text>
                       </Pressable>
                     )}
@@ -1186,33 +1221,67 @@ export default function CaloriesScreen() {
                   </View>
                 )}
 
-                {barcodePhase === "found" && barcodeProduct && (
-                  <View style={{ gap: 12 }}>
-                    <Text style={[s.aiLabel, { color: colors.mutedForeground }]}>Product found:</Text>
-                    <View style={[s.aiCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[s.resultName, { color: colors.foreground }]}>{barcodeProduct.name}</Text>
-                        {barcodeProduct.brand && (
-                          <Text style={[{ fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 }, { color: colors.mutedForeground }]}>{barcodeProduct.brand}</Text>
-                        )}
-                        <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{barcodeProduct.servingSize}</Text>
-                        <View style={{ flexDirection: "row", gap: 4, marginTop: 4 }}>
-                          <FoodChip label={`${barcodeProduct.calories} kcal`} color={colors.primary} />
-                          <FoodChip label={`P ${barcodeProduct.protein}g`} color="#3b82f6" />
-                          <FoodChip label={`C ${barcodeProduct.carbs}g`} color="#f59e0b" />
-                          <FoodChip label={`F ${barcodeProduct.fat}g`} color="#8b5cf6" />
+                {barcodePhase === "found" && barcodeProduct && (() => {
+                  const g = Math.max(1, parseFloat(barcodeGrams) || 100);
+                  const r = g / 100;
+                  return (
+                    <View style={{ gap: 12 }}>
+                      <Text style={[s.aiLabel, { color: colors.mutedForeground }]}>Product found — set grams:</Text>
+                      <View style={[s.aiCard, { backgroundColor: colors.muted, borderColor: colors.border, flexDirection: "column", gap: 10 }]}>
+                        <View>
+                          <Text style={[s.resultName, { color: colors.foreground }]}>{barcodeProduct.name}</Text>
+                          {barcodeProduct.brand && (
+                            <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 1 }}>{barcodeProduct.brand}</Text>
+                          )}
+                          <Text style={[s.resultServing, { color: colors.mutedForeground }]}>per 100g · label: {barcodeProduct.servingSize}</Text>
+                        </View>
+
+                        {/* Grams stepper */}
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                          <Text style={{ fontSize: 13, fontFamily: "Inter_500Medium", color: colors.mutedForeground, flex: 1 }}>Amount</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6 }}>
+                            <Pressable
+                              onPress={() => setBarcodeGrams((v) => String(Math.max(1, (parseFloat(v) || 100) - 10)))}
+                              hitSlop={8}
+                            >
+                              <Feather name="minus" size={16} color={colors.mutedForeground} />
+                            </Pressable>
+                            <TextInput
+                              style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: colors.foreground, minWidth: 44, textAlign: "center" }}
+                              value={barcodeGrams}
+                              onChangeText={setBarcodeGrams}
+                              keyboardType="decimal-pad"
+                              selectTextOnFocus
+                            />
+                            <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>g</Text>
+                            <Pressable
+                              onPress={() => setBarcodeGrams((v) => String((parseFloat(v) || 100) + 10))}
+                              hitSlop={8}
+                            >
+                              <Feather name="plus" size={16} color={colors.mutedForeground} />
+                            </Pressable>
+                          </View>
+                        </View>
+
+                        {/* Live macro preview */}
+                        <View style={{ flexDirection: "row", gap: 4, flexWrap: "wrap" }}>
+                          <FoodChip label={`${Math.round(barcodeProduct.per100gCalories * r)} kcal`} color={colors.primary} />
+                          <FoodChip label={`P ${Math.round(barcodeProduct.per100gProtein * r)}g`} color="#3b82f6" />
+                          <FoodChip label={`C ${Math.round(barcodeProduct.per100gCarbs * r)}g`} color="#f59e0b" />
+                          <FoodChip label={`F ${Math.round(barcodeProduct.per100gFat * r)}g`} color="#8b5cf6" />
                         </View>
                       </View>
+
+                      <Pressable onPress={confirmBarcodeProduct} style={[s.bigBtn, { backgroundColor: colors.primary }]}>
+                        <Feather name="plus" size={18} color="#fff" />
+                        <Text style={s.bigBtnText}>Add to {MEAL_META[addingMeal!].label}</Text>
+                      </Pressable>
+                      <Pressable onPress={() => { setBarcodePhase("idle"); setBarcodeProduct(null); setBarcodeError(null); setBarcodeGrams("100"); }} style={[s.ghostBtn, { borderColor: colors.border }]}>
+                        <Text style={[s.ghostBtnText, { color: colors.mutedForeground }]}>Scan again</Text>
+                      </Pressable>
                     </View>
-                    <Pressable onPress={confirmBarcodeProduct} style={[s.bigBtn, { backgroundColor: colors.primary }]}>
-                      <Feather name="plus" size={18} color="#fff" />
-                      <Text style={s.bigBtnText}>Add to {MEAL_META[addingMeal!].label}</Text>
-                    </Pressable>
-                    <Pressable onPress={() => { setBarcodePhase("idle"); setBarcodeProduct(null); setBarcodeError(null); }} style={[s.ghostBtn, { borderColor: colors.border }]}>
-                      <Text style={[s.ghostBtnText, { color: colors.mutedForeground }]}>Scan again</Text>
-                    </Pressable>
-                  </View>
-                )}
+                  );
+                })()}
               </View>
             )}
 
@@ -1503,7 +1572,7 @@ const s = StyleSheet.create({
   entryName: { fontSize: 13, fontFamily: "Inter_500Medium" },
   entryTime: { fontSize: 10, fontFamily: "Inter_400Regular", marginLeft: 2, alignSelf: "center" },
   entryCals: { fontSize: 14, fontFamily: "Inter_700Bold", marginRight: 4 },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingTop: 12, maxHeight: "88%" },
+  sheet: { padding: 20, flex: 1 },
   handle: { width: 36, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 14 },
   sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
   mealDot: { width: 10, height: 10, borderRadius: 5 },

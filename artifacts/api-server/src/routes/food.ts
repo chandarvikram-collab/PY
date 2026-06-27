@@ -39,6 +39,7 @@ router.get("/barcode/:code", async (req, res) => {
     const hasServingData = nutriments["energy-kcal_serving"] !== undefined;
     const prefix = hasServingData ? "_serving" : "_100g";
 
+    // Per-serving (or per-100g fallback) — shown on the label
     const calories =
       getNutrient(`energy-kcal${prefix}`) ||
       getNutrient("energy-kcal_100g") ||
@@ -56,6 +57,20 @@ router.get("/barcode/:code", async (req, res) => {
       getNutrient("fat_100g") ||
       getNutrient("fat");
 
+    // Always include per-100g so the client can scale by grams
+    const per100gCalories =
+      getNutrient("energy-kcal_100g") || getNutrient("energy-kcal") || calories;
+    const per100gProtein =
+      getNutrient("proteins_100g") || getNutrient("proteins") || protein;
+    const per100gCarbs =
+      getNutrient("carbohydrates_100g") || getNutrient("carbohydrates") || carbs;
+    const per100gFat =
+      getNutrient("fat_100g") || getNutrient("fat") || fat;
+
+    // Parse grams from serving_size string (e.g. "355 ml" → 355, "30g" → 30)
+    const servingGramsMatch = servingSize.match(/(\d+(?:\.\d+)?)\s*(g|ml)/i);
+    const servingGrams = servingGramsMatch ? Math.round(parseFloat(servingGramsMatch[1])) : 100;
+
     res.json({
       barcode: code,
       name: (prod.product_name as string | undefined) ?? "Unknown Product",
@@ -65,6 +80,11 @@ router.get("/barcode/:code", async (req, res) => {
       carbs,
       fat,
       servingSize,
+      servingGrams,
+      per100gCalories,
+      per100gProtein,
+      per100gCarbs,
+      per100gFat,
     });
   } catch (error: unknown) {
     const message =
