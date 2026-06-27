@@ -50,6 +50,30 @@ type AiFoodResult = {
   serving: string;
 };
 
+async function compressToJpeg(base64: string, mimeType: string): Promise<{ base64: string; mimeType: string }> {
+  if (Platform.OS !== "web" || typeof document === "undefined") return { base64, mimeType };
+  return new Promise((resolve) => {
+    const img = new (window as any).Image() as HTMLImageElement;
+    img.onload = () => {
+      const MAX = 768;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else { width = Math.round(width * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve({ base64, mimeType }); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.55);
+      resolve({ base64: dataUrl.split(",")[1] ?? base64, mimeType: "image/jpeg" });
+    };
+    img.onerror = () => resolve({ base64, mimeType });
+    img.src = `data:${mimeType};base64,${base64}`;
+  });
+}
+
 type ScannedProduct = {
   name: string;
   brand?: string;
@@ -292,45 +316,49 @@ export default function CaloriesScreen() {
   const [photoPhase, setPhotoPhase] = useState<PhotoPhase>("idle");
   const [photoSuggestions, setPhotoSuggestions] = useState<AiFoodResult[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoQty, setPhotoQty] = useState<Record<string, string>>({});
+
+  async function pickAndAnalyze(launcher: () => Promise<ImagePicker.ImagePickerResult>) {
+    setPhotoError(null);
+    const result = await launcher();
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const raw = asset.base64;
+    const mime = asset.mimeType ?? "image/jpeg";
+    if (!raw) { setPhotoError("Could not read image data."); return; }
+    const { base64, mimeType } = await compressToJpeg(raw, mime);
+    await analyzePhoto(base64, mimeType);
+  }
 
   async function startPhotoScan() {
     setPhotoError(null);
+    if (Platform.OS === "web") {
+      await pickAndAnalyze(() =>
+        ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.5, base64: true })
+      );
+      return;
+    }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     const camResult = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted" && camResult.status !== "granted") {
       Alert.alert("Permission needed", "Allow camera or photo library access to analyze food.");
       return;
     }
-
     Alert.alert(
       "Add Food Photo",
       "Choose how to capture your meal",
       [
         {
           text: "Take Photo",
-          onPress: async () => {
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ["images"],
-              quality: 0.7,
-              base64: true,
-            });
-            if (!result.canceled && result.assets[0]?.base64) {
-              await analyzePhoto(result.assets[0].base64, result.assets[0].mimeType ?? "image/jpeg");
-            }
-          },
+          onPress: () => pickAndAnalyze(() =>
+            ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.5, base64: true })
+          ),
         },
         {
           text: "Choose from Library",
-          onPress: async () => {
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ["images"],
-              quality: 0.7,
-              base64: true,
-            });
-            if (!result.canceled && result.assets[0]?.base64) {
-              await analyzePhoto(result.assets[0].base64, result.assets[0].mimeType ?? "image/jpeg");
-            }
-          },
+          onPress: () => pickAndAnalyze(() =>
+            ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.5, base64: true })
+          ),
         },
         { text: "Cancel", style: "cancel" },
       ]
@@ -365,6 +393,9 @@ export default function CaloriesScreen() {
         fat: Math.round(f.fat ?? 0),
         serving: f.serving ?? "1 serving",
       }));
+      const qtyMap: Record<string, string> = {};
+      results.forEach((r) => { qtyMap[r.id] = "1"; });
+      setPhotoQty(qtyMap);
       setPhotoSuggestions(results);
       setPhotoPhase("results");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -377,9 +408,14 @@ export default function CaloriesScreen() {
 
   function addPhotoSuggestion(food: AiFoodResult) {
     if (!addingMeal) return;
+    const qty = Math.max(0.1, parseFloat(photoQty[food.id] ?? "1") || 1);
     const entry: FoodEntry = {
-      id: makeId(), name: food.name, calories: food.calories,
-      protein: food.protein, carbs: food.carbs, fat: food.fat,
+      id: makeId(),
+      name: qty !== 1 ? `${food.name} (×${qty})` : food.name,
+      calories: Math.round(food.calories * qty),
+      protein: Math.round(food.protein * qty),
+      carbs: Math.round(food.carbs * qty),
+      fat: Math.round(food.fat * qty),
       meal: addingMeal,
       time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
     };
@@ -389,14 +425,21 @@ export default function CaloriesScreen() {
     if (photoSuggestions.length <= 1) setAddingMeal(null);
   }
 
-  // ── Barcode (real camera + Open Food Facts) ────────────────────────────────
+  // ── Barcode (camera on native, text input on web + Open Food Facts) ────────
   const [barcodePhase, setBarcodePhase] = useState<BarcodePhase>("idle");
   const [barcodeProduct, setBarcodeProduct] = useState<ScannedProduct | null>(null);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
+  const [barcodeInput, setBarcodeInput] = useState("");
   const barcodeScanningRef = useRef(false);
+  const isWeb = Platform.OS === "web";
 
   async function startBarcodeScan() {
     setBarcodeError(null);
+    setBarcodeInput("");
+    if (isWeb) {
+      setBarcodePhase("camera");
+      return;
+    }
     if (!cameraPermission?.granted) {
       const result = await requestCameraPermission();
       if (!result.granted) {
@@ -409,13 +452,14 @@ export default function CaloriesScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }
 
-  async function handleBarcodeScan(barcode: string) {
+  async function handleBarcodeLookup(barcode: string) {
+    if (!barcode.trim()) return;
     if (barcodeScanningRef.current) return;
     barcodeScanningRef.current = true;
     setBarcodePhase("scanning");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      const res = await fetch(`${API_BASE}/api/barcode/${encodeURIComponent(barcode)}`);
+      const res = await fetch(`${API_BASE}/api/barcode/${encodeURIComponent(barcode.trim())}`);
       const data = await res.json() as ScannedProduct & { error?: string };
       if (!res.ok || data.error) throw new Error(data.error ?? `Error ${res.status}`);
       setBarcodeProduct(data);
@@ -520,9 +564,11 @@ export default function CaloriesScreen() {
     setPhotoPhase("idle");
     setPhotoSuggestions([]);
     setPhotoError(null);
+    setPhotoQty({});
     setBarcodePhase("idle");
     setBarcodeProduct(null);
     setBarcodeError(null);
+    setBarcodeInput("");
     barcodeScanningRef.current = false;
   }
 
@@ -966,30 +1012,67 @@ export default function CaloriesScreen() {
 
                 {photoPhase === "results" && (
                   <View style={{ gap: 10 }}>
-                    <Text style={[s.aiLabel, { color: colors.mutedForeground }]}>AI detected these foods — add or dismiss:</Text>
-                    {photoSuggestions.map((food) => (
-                      <View key={food.id} style={[s.aiCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[s.resultName, { color: colors.foreground }]} numberOfLines={1}>{food.name}</Text>
-                          <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{food.serving}</Text>
-                          <View style={{ flexDirection: "row", gap: 4, marginTop: 4 }}>
-                            <FoodChip label={`${food.calories} kcal`} color={colors.primary} />
-                            <FoodChip label={`P ${food.protein}g`} color="#3b82f6" />
+                    <Text style={[s.aiLabel, { color: colors.mutedForeground }]}>AI detected these foods — adjust servings, then add:</Text>
+                    {photoSuggestions.map((food) => {
+                      const qty = parseFloat(photoQty[food.id] ?? "1") || 1;
+                      const scaledCal = Math.round(food.calories * qty);
+                      const scaledP = Math.round(food.protein * qty);
+                      return (
+                        <View key={food.id} style={[s.aiCard, { backgroundColor: colors.muted, borderColor: colors.border, flexDirection: "column", gap: 8 }]}>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[s.resultName, { color: colors.foreground }]} numberOfLines={1}>{food.name}</Text>
+                              <Text style={[s.resultServing, { color: colors.mutedForeground }]}>{food.serving}</Text>
+                            </View>
+                            <Pressable onPress={() => setPhotoSuggestions((p) => p.filter((f) => f.id !== food.id))} style={[s.aiActionBtn, { borderColor: colors.border, borderWidth: 1 }]}>
+                              <Feather name="x" size={16} color={colors.mutedForeground} />
+                            </Pressable>
+                          </View>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <View style={{ flexDirection: "row", gap: 4, flex: 1 }}>
+                              <FoodChip label={`${scaledCal} kcal`} color={colors.primary} />
+                              <FoodChip label={`P ${scaledP}g`} color="#3b82f6" />
+                            </View>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 8, paddingVertical: 4 }}>
+                              <Pressable
+                                onPress={() => {
+                                  const v = Math.max(0.5, (parseFloat(photoQty[food.id] ?? "1") || 1) - 0.5);
+                                  setPhotoQty((q) => ({ ...q, [food.id]: String(v) }));
+                                }}
+                                hitSlop={6}
+                              >
+                                <Feather name="minus" size={14} color={colors.mutedForeground} />
+                              </Pressable>
+                              <TextInput
+                                style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.foreground, minWidth: 28, textAlign: "center" }}
+                                value={photoQty[food.id] ?? "1"}
+                                onChangeText={(v) => setPhotoQty((q) => ({ ...q, [food.id]: v }))}
+                                keyboardType="decimal-pad"
+                                selectTextOnFocus
+                              />
+                              <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>srv</Text>
+                              <Pressable
+                                onPress={() => {
+                                  const v = (parseFloat(photoQty[food.id] ?? "1") || 1) + 0.5;
+                                  setPhotoQty((q) => ({ ...q, [food.id]: String(v) }));
+                                }}
+                                hitSlop={6}
+                              >
+                                <Feather name="plus" size={14} color={colors.mutedForeground} />
+                              </Pressable>
+                            </View>
+                            <Pressable onPress={() => addPhotoSuggestion(food)} style={[s.aiActionBtn, { backgroundColor: colors.primary }]}>
+                              <Feather name="check" size={16} color="#fff" />
+                            </Pressable>
                           </View>
                         </View>
-                        <Pressable onPress={() => addPhotoSuggestion(food)} style={[s.aiActionBtn, { backgroundColor: colors.primary }]}>
-                          <Feather name="check" size={16} color="#fff" />
-                        </Pressable>
-                        <Pressable onPress={() => setPhotoSuggestions((p) => p.filter((f) => f.id !== food.id))} style={[s.aiActionBtn, { borderColor: colors.border, borderWidth: 1 }]}>
-                          <Feather name="x" size={16} color={colors.mutedForeground} />
-                        </Pressable>
-                      </View>
-                    ))}
+                      );
+                    })}
                     {photoSuggestions.length === 0 && (
                       <Text style={[s.emptyText, { color: colors.mutedForeground }]}>All done! Tap + on another meal to continue.</Text>
                     )}
                     {photoSuggestions.length > 0 && (
-                      <Pressable onPress={() => { setPhotoPhase("idle"); setPhotoSuggestions([]); }} style={[s.ghostBtn, { borderColor: colors.border }]}>
+                      <Pressable onPress={() => { setPhotoPhase("idle"); setPhotoSuggestions([]); setPhotoQty({}); }} style={[s.ghostBtn, { borderColor: colors.border }]}>
                         <Text style={[s.ghostBtnText, { color: colors.mutedForeground }]}>Scan another photo</Text>
                       </Pressable>
                     )}
@@ -1029,24 +1112,67 @@ export default function CaloriesScreen() {
 
                 {barcodePhase === "camera" && (
                   <View style={{ gap: 12 }}>
-                    <View style={{ borderRadius: 14, overflow: "hidden", height: 220, position: "relative" }}>
-                      <CameraView
-                        style={{ flex: 1 }}
-                        facing="back"
-                        barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "qr", "code128", "code39"] }}
-                        onBarcodeScanned={(result) => { void handleBarcodeScan(result.data); }}
-                      />
-                      <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", pointerEvents: "none" }]}>
-                        <View style={[s.vfCorner, s.vfTL, { borderColor: "#fff", top: 40, left: 40 }]} />
-                        <View style={[s.vfCorner, s.vfTR, { borderColor: "#fff", top: 40, right: 40 }]} />
-                        <View style={[s.vfCorner, s.vfBL, { borderColor: "#fff", bottom: 40, left: 40 }]} />
-                        <View style={[s.vfCorner, s.vfBR, { borderColor: "#fff", bottom: 40, right: 40 }]} />
-                      </View>
-                    </View>
-                    <Text style={[s.analyzingSubText, { color: colors.mutedForeground, textAlign: "center" }]}>
-                      Align barcode in frame — it scans automatically
-                    </Text>
-                    <Pressable onPress={() => setBarcodePhase("idle")} style={[s.ghostBtn, { borderColor: colors.border }]}>
+                    {isWeb ? (
+                      <>
+                        <Text style={[s.simHint, { color: colors.mutedForeground }]}>
+                          Enter the barcode number from the product packaging
+                        </Text>
+                        <View style={[s.searchBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                          <Feather name="hash" size={16} color={colors.mutedForeground} />
+                          <TextInput
+                            style={[s.searchInput, { color: colors.foreground, flex: 1 }]}
+                            value={barcodeInput}
+                            onChangeText={setBarcodeInput}
+                            placeholder="e.g. 5449000000996"
+                            placeholderTextColor={colors.mutedForeground}
+                            keyboardType="numeric"
+                            autoFocus
+                            returnKeyType="search"
+                            onSubmitEditing={() => void handleBarcodeLookup(barcodeInput)}
+                          />
+                          {barcodeInput.length > 0 && (
+                            <Pressable onPress={() => setBarcodeInput("")} hitSlop={8}>
+                              <Feather name="x" size={14} color={colors.mutedForeground} />
+                            </Pressable>
+                          )}
+                        </View>
+                        {barcodeError && (
+                          <View style={{ backgroundColor: "#ef444422", borderRadius: 10, padding: 10 }}>
+                            <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: "#ef4444", textAlign: "center" }}>
+                              {barcodeError}
+                            </Text>
+                          </View>
+                        )}
+                        <Pressable
+                          onPress={() => void handleBarcodeLookup(barcodeInput)}
+                          style={[s.bigBtn, { backgroundColor: colors.info, opacity: barcodeInput.trim().length >= 6 ? 1 : 0.4 }]}
+                        >
+                          <Feather name="search" size={18} color="#fff" />
+                          <Text style={s.bigBtnText}>Look Up Barcode</Text>
+                        </Pressable>
+                      </>
+                    ) : (
+                      <>
+                        <View style={{ borderRadius: 14, overflow: "hidden", height: 220, position: "relative" }}>
+                          <CameraView
+                            style={{ flex: 1 }}
+                            facing="back"
+                            barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "qr", "code128", "code39"] }}
+                            onBarcodeScanned={(result) => { void handleBarcodeLookup(result.data); }}
+                          />
+                          <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", pointerEvents: "none" }]}>
+                            <View style={[s.vfCorner, s.vfTL, { borderColor: "#fff", top: 40, left: 40 }]} />
+                            <View style={[s.vfCorner, s.vfTR, { borderColor: "#fff", top: 40, right: 40 }]} />
+                            <View style={[s.vfCorner, s.vfBL, { borderColor: "#fff", bottom: 40, left: 40 }]} />
+                            <View style={[s.vfCorner, s.vfBR, { borderColor: "#fff", bottom: 40, right: 40 }]} />
+                          </View>
+                        </View>
+                        <Text style={[s.analyzingSubText, { color: colors.mutedForeground, textAlign: "center" }]}>
+                          Align barcode in frame — scans automatically
+                        </Text>
+                      </>
+                    )}
+                    <Pressable onPress={() => { setBarcodePhase("idle"); setBarcodeError(null); }} style={[s.ghostBtn, { borderColor: colors.border }]}>
                       <Text style={[s.ghostBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
                     </Pressable>
                   </View>
