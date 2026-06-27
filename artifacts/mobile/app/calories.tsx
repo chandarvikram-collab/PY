@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -910,7 +911,11 @@ export default function CaloriesScreen() {
       {/* ── Add Food Full-Screen Modal ── */}
       {addingMeal && (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 100 }]}>
-          <View style={[s.sheet, { backgroundColor: colors.background, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16, flex: 1 }]}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={[s.sheet, { backgroundColor: colors.background, paddingTop: insets.top + 8, flex: 1 }]}
+            keyboardVerticalOffset={0}
+          >
 
             <View style={s.sheetHeader}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -1530,7 +1535,7 @@ export default function CaloriesScreen() {
                 <Text style={{ fontFamily: "Inter_600SemiBold", color: "#fff", fontSize: 14 }}>Save</Text>
               </Pressable>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       )}
     </View>
