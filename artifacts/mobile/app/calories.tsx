@@ -1398,7 +1398,7 @@ export default function CaloriesScreen() {
                 )}
               </View>
             )}
-          </View>
+          </KeyboardAvoidingView>
         </View>
       )}
 
@@ -1535,7 +1535,7 @@ export default function CaloriesScreen() {
                 <Text style={{ fontFamily: "Inter_600SemiBold", color: "#fff", fontSize: 14 }}>Save</Text>
               </Pressable>
             </View>
-          </KeyboardAvoidingView>
+          </View>
         </View>
       )}
     </View>
