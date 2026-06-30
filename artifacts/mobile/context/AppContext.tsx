@@ -577,6 +577,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }),
         });
         if (r.ok) {
+          const user = await r.json() as {
+            name: string; username: string; level: string;
+            calorieGoal: number; proteinGoal: number; joinDate: string; bio: string;
+            totalPoints: number; totalWorkouts: number; streak: number;
+          };
+          setState((prev) => ({
+            ...prev,
+            userProfile: {
+              ...prev.userProfile,
+              name: user.name,
+              username: user.username,
+              level: user.level as ExperienceLevel,
+              calorieGoal: user.calorieGoal,
+              proteinGoal: user.proteinGoal,
+              joinDate: user.joinDate,
+              bio: user.bio,
+              totalPoints: user.totalPoints,
+              totalWorkouts: user.totalWorkouts,
+              streak: user.streak,
+            },
+          }));
+        }
+      } catch {}
+
+      await drainPendingQueue();
+
+      // Re-fetch user profile after drain so any just-synced session
+      // totals and streak are reflected before hydrateFromApi runs.
+      try {
+        const r = await fetch(`${API_BASE}/api/users/${userId}`);
+        if (r.ok) {
           const user = (await r.json()) as ServerUserPartial;
           setState((prev) => ({
             ...prev,
@@ -589,8 +620,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }));
         }
       } catch {}
-
-      await drainPendingQueue();
 
       hydrateFromApi(userId, setState);
     };
@@ -712,10 +741,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ],
         };
       });
-      if (apiUserIdRef.current) {
-        queueAndFire("POST", "/food-log", {
+      const userId = apiUserIdRef.current;
+      if (userId) {
+        queueAndFire("POST", `/food-log/${userId}`, {
           id: entry.id,
-          userId: apiUserIdRef.current,
           date,
           meal: entry.meal,
           name: entry.name,

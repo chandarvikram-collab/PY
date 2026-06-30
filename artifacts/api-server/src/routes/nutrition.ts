@@ -4,8 +4,11 @@ import { db, foodEntries, insertFoodEntrySchema } from "@workspace/db";
 
 const router = Router();
 
-router.post("/food-log", async (req, res) => {
-  const parsed = insertFoodEntrySchema.safeParse(req.body);
+router.post("/food-log/:userId", async (req, res) => {
+  const parsed = insertFoodEntrySchema.safeParse({
+    ...req.body,
+    userId: req.params.userId,
+  });
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues });
     return;
