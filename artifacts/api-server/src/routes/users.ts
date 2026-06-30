@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { db, users, insertUserSchema, updateUserSchema } from "@workspace/db";
 
 const router = Router();
@@ -61,8 +61,9 @@ router.get("/leaderboard", async (req, res) => {
       totalWorkouts: users.totalWorkouts,
     })
     .from(users)
-    .orderBy(users.totalPoints);
-  res.json(rows.reverse());
+    .orderBy(desc(users.totalPoints))
+    .limit(20);
+  res.json(rows);
 });
 
 export default router;

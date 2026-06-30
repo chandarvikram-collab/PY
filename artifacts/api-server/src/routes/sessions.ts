@@ -66,7 +66,7 @@ router.post("/sessions/workout", async (req, res) => {
 
   const streak = await calculateStreak(data.userId);
 
-  await db
+  const [updatedUser] = await db
     .update(users)
     .set({
       totalPoints: sql`${users.totalPoints} + ${data.pointsEarned}`,
@@ -74,10 +74,11 @@ router.post("/sessions/workout", async (req, res) => {
       streak,
       updatedAt: new Date(),
     })
-    .where(eq(users.id, data.userId));
+    .where(eq(users.id, data.userId))
+    .returning();
 
   req.log.info({ sessionId: rows[0].id }, "workout session saved");
-  res.status(201).json(rows[0]);
+  res.status(201).json({ session: rows[0], user: updatedUser });
 });
 
 router.get("/sessions/workout/:userId", async (req, res) => {
@@ -111,17 +112,18 @@ router.post("/sessions/run", async (req, res) => {
 
   const streak = await calculateStreak(data.userId);
 
-  await db
+  const [updatedUser] = await db
     .update(users)
     .set({
       totalPoints: sql`${users.totalPoints} + ${data.pointsEarned}`,
       streak,
       updatedAt: new Date(),
     })
-    .where(eq(users.id, data.userId));
+    .where(eq(users.id, data.userId))
+    .returning();
 
   req.log.info({ sessionId: rows[0].id }, "run session saved");
-  res.status(201).json(rows[0]);
+  res.status(201).json({ session: rows[0], user: updatedUser });
 });
 
 router.get("/sessions/run/:userId", async (req, res) => {
@@ -132,6 +134,32 @@ router.get("/sessions/run/:userId", async (req, res) => {
     .orderBy(desc(runSessions.createdAt))
     .limit(100);
   res.json(rows);
+});
+
+router.get("/sessions/:userId", async (req, res) => {
+  const [workouts, runs] = await Promise.all([
+    db
+      .select()
+      .from(workoutSessions)
+      .where(eq(workoutSessions.userId, req.params.userId))
+      .orderBy(desc(workoutSessions.createdAt))
+      .limit(100),
+    db
+      .select()
+      .from(runSessions)
+      .where(eq(runSessions.userId, req.params.userId))
+      .orderBy(desc(runSessions.createdAt))
+      .limit(100),
+  ]);
+
+  const combined = [
+    ...workouts.map((w) => ({ type: "workout" as const, ...w })),
+    ...runs.map((r) => ({ type: "run" as const, ...r })),
+  ]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 100);
+
+  res.json(combined);
 });
 
 export default router;

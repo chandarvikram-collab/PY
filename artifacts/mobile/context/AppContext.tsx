@@ -304,14 +304,9 @@ type PendingItem = {
   body?: string;
 };
 
-function queueAndFire(method: "POST" | "PATCH" | "DELETE", path: string, body?: unknown): void {
-  const item: PendingItem = {
-    uid: generateUUID(),
-    method,
-    path,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  };
+type ServerUserPartial = { totalPoints: number; totalWorkouts: number; streak: number };
 
+function addToQueue(item: PendingItem): void {
   AsyncStorage.getItem(PENDING_KEY)
     .then((raw) => {
       const queue: PendingItem[] = raw ? (JSON.parse(raw) as PendingItem[]) : [];
@@ -319,19 +314,51 @@ function queueAndFire(method: "POST" | "PATCH" | "DELETE", path: string, body?: 
       return AsyncStorage.setItem(PENDING_KEY, JSON.stringify(queue));
     })
     .catch(() => {});
+}
+
+function removeFromQueue(uid: string): void {
+  AsyncStorage.getItem(PENDING_KEY)
+    .then((raw) => {
+      const queue: PendingItem[] = raw ? (JSON.parse(raw) as PendingItem[]) : [];
+      return AsyncStorage.setItem(PENDING_KEY, JSON.stringify(queue.filter((q) => q.uid !== uid)));
+    })
+    .catch(() => {});
+}
+
+function queueAndFire(method: "POST" | "PATCH" | "DELETE", path: string, body?: unknown): void {
+  const item: PendingItem = {
+    uid: generateUUID(),
+    method,
+    path,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  };
+  addToQueue(item);
 
   const headers: Record<string, string> = item.body ? { "Content-Type": "application/json" } : {};
   fetch(`${API_BASE}/api${path}`, { method, headers, body: item.body })
-    .then((r) => {
-      if (r.ok) {
-        AsyncStorage.getItem(PENDING_KEY)
-          .then((raw) => {
-            const queue: PendingItem[] = raw ? (JSON.parse(raw) as PendingItem[]) : [];
-            const updated = queue.filter((q) => q.uid !== item.uid);
-            return AsyncStorage.setItem(PENDING_KEY, JSON.stringify(updated));
-          })
-          .catch(() => {});
-      }
+    .then((r) => { if (r.ok) removeFromQueue(item.uid); })
+    .catch(() => {});
+}
+
+function fireSession(
+  path: "/sessions/workout" | "/sessions/run",
+  body: unknown,
+  onUser: (user: ServerUserPartial) => void,
+): void {
+  const uid = generateUUID();
+  const bodyStr = JSON.stringify(body);
+  addToQueue({ uid, method: "POST", path, body: bodyStr });
+
+  fetch(`${API_BASE}/api${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: bodyStr,
+  })
+    .then(async (r) => {
+      if (!r.ok) return;
+      removeFromQueue(uid);
+      const json = (await r.json()) as { session?: unknown; user?: ServerUserPartial; duplicate?: boolean };
+      if (json.user) onUser(json.user);
     })
     .catch(() => {});
 }
@@ -375,379 +402,78 @@ async function drainPendingQueue(): Promise<void> {
 }
 
 const SEED_FRIENDS: Friend[] = [
-  {
-    id: "f1",
-    name: "Marcus Chen",
-    username: "mchen_lifts",
-    initials: "MC",
-    color: "#3b82f6",
-    streak: 14,
-    weeklyWorkouts: 5,
-    rank: 1,
-    totalPoints: 4820,
-    isOnline: true,
-  },
-  {
-    id: "f2",
-    name: "Sofia Reyes",
-    username: "sofia_runs",
-    initials: "SR",
-    color: "#8b5cf6",
-    streak: 9,
-    weeklyWorkouts: 4,
-    rank: 2,
-    totalPoints: 3940,
-    isOnline: false,
-  },
-  {
-    id: "f3",
-    name: "Jake Williams",
-    username: "jwilliams_fit",
-    initials: "JW",
-    color: "#f59e0b",
-    streak: 21,
-    weeklyWorkouts: 6,
-    rank: 3,
-    totalPoints: 3210,
-    isOnline: true,
-  },
-  {
-    id: "f4",
-    name: "Priya Patel",
-    username: "priya_active",
-    initials: "PP",
-    color: "#22c55e",
-    streak: 5,
-    weeklyWorkouts: 3,
-    rank: 5,
-    totalPoints: 2150,
-    isOnline: false,
-  },
+  { id: "f1", name: "Marcus Chen", username: "mchen_lifts", initials: "MC", color: "#3b82f6", streak: 14, weeklyWorkouts: 5, rank: 1, totalPoints: 4820, isOnline: true },
+  { id: "f2", name: "Sofia Reyes", username: "sofia_runs", initials: "SR", color: "#8b5cf6", streak: 9, weeklyWorkouts: 4, rank: 2, totalPoints: 3940, isOnline: false },
+  { id: "f3", name: "Jake Williams", username: "jwilliams_fit", initials: "JW", color: "#f59e0b", streak: 21, weeklyWorkouts: 6, rank: 3, totalPoints: 3210, isOnline: true },
+  { id: "f4", name: "Priya Patel", username: "priya_active", initials: "PP", color: "#22c55e", streak: 5, weeklyWorkouts: 3, rank: 5, totalPoints: 2150, isOnline: false },
 ];
 
 const SEED_CHALLENGES: Challenge[] = [
   {
-    id: "c1",
-    type: "steps",
-    title: "10K Steps Daily",
-    description: "Hit 10,000 steps every day for a week",
-    fromId: "f1",
-    fromName: "Marcus Chen",
+    id: "c1", type: "steps", title: "10K Steps Daily", description: "Hit 10,000 steps every day for a week",
+    fromId: "f1", fromName: "Marcus Chen",
     participants: [
       { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 8420, target: 10000 },
       { id: "f1", name: "Marcus", initials: "MC", color: "#3b82f6", progress: 9800, target: 10000 },
     ],
-    myProgress: 8420,
-    target: 10000,
-    unit: "steps",
-    deadline: "2026-06-28",
-    status: "active",
-    createdAt: "2026-06-21",
+    myProgress: 8420, target: 10000, unit: "steps", deadline: "2026-06-28", status: "active", createdAt: "2026-06-21",
   },
   {
-    id: "c2",
-    type: "lifting",
-    title: "Bench Press PR",
-    description: "Hit a new bench press max this week",
-    fromId: "f3",
-    fromName: "Jake Williams",
+    id: "c2", type: "lifting", title: "Bench Press PR", description: "Hit a new bench press max this week",
+    fromId: "f3", fromName: "Jake Williams",
     participants: [
       { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 185, target: 225 },
       { id: "f3", name: "Jake", initials: "JW", color: "#f59e0b", progress: 210, target: 225 },
     ],
-    myProgress: 185,
-    target: 225,
-    unit: "lbs",
-    deadline: "2026-06-30",
-    status: "active",
-    createdAt: "2026-06-20",
+    myProgress: 185, target: 225, unit: "lbs", deadline: "2026-06-30", status: "active", createdAt: "2026-06-20",
   },
   {
-    id: "c3",
-    type: "distance",
-    title: "30km Run Week",
-    description: "Run 30km total this week",
-    fromId: "f2",
-    fromName: "Sofia Reyes",
+    id: "c3", type: "distance", title: "30km Run Week", description: "Run 30km total this week",
+    fromId: "f2", fromName: "Sofia Reyes",
     participants: [
       { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 19.2, target: 30 },
       { id: "f2", name: "Sofia", initials: "SR", color: "#8b5cf6", progress: 24.5, target: 30 },
     ],
-    myProgress: 19.2,
-    target: 30,
-    unit: "km",
-    deadline: "2026-06-27",
-    status: "active",
-    createdAt: "2026-06-22",
+    myProgress: 19.2, target: 30, unit: "km", deadline: "2026-06-27", status: "active", createdAt: "2026-06-22",
   },
   {
-    id: "c4",
-    type: "streak",
-    title: "7-Day Streak",
-    description: "Train every day for 7 days straight",
-    fromId: null,
-    fromName: null,
-    participants: [
-      { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 5, target: 7 },
-    ],
-    myProgress: 5,
-    target: 7,
-    unit: "days",
-    deadline: "2026-06-26",
-    status: "active",
-    createdAt: "2026-06-19",
+    id: "c4", type: "streak", title: "7-Day Streak", description: "Train every day for 7 days straight",
+    fromId: null, fromName: null,
+    participants: [{ id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 5, target: 7 }],
+    myProgress: 5, target: 7, unit: "days", deadline: "2026-06-26", status: "active", createdAt: "2026-06-19",
   },
 ];
 
 const SEED_POSTS: Post[] = [
-  {
-    id: "p1",
-    userId: "f1",
-    userName: "Marcus Chen",
-    userInitials: "MC",
-    userColor: "#3b82f6",
-    type: "workout",
-    content: "Push day DONE. Hit a new bench PR at 245lbs. The grind never stops.",
-    likes: 24,
-    comments: 5,
-    liked: false,
-    time: "2h ago",
-    stats: { Volume: "18,400 lbs", Sets: "12", Duration: "58 min" },
-  },
-  {
-    id: "p2",
-    userId: "f2",
-    userName: "Sofia Reyes",
-    userInitials: "SR",
-    userColor: "#8b5cf6",
-    type: "milestone",
-    content: "Just crossed 500km run total for the year. Consistency is everything.",
-    likes: 41,
-    comments: 8,
-    liked: true,
-    time: "4h ago",
-    stats: { Distance: "10.2 km", Pace: "5:18 /km", Calories: "612" },
-  },
-  {
-    id: "p3",
-    userId: "f3",
-    userName: "Jake Williams",
-    userInitials: "JW",
-    userColor: "#f59e0b",
-    type: "achievement",
-    content: "21 day workout streak achieved. Body is adapting, mind is locked in.",
-    likes: 33,
-    comments: 12,
-    liked: false,
-    time: "6h ago",
-    stats: { Streak: "21 days", Workouts: "21", "Best Lift": "Squat 315 lbs" },
-  },
-  {
-    id: "p4",
-    userId: "f4",
-    userName: "Priya Patel",
-    userInitials: "PP",
-    userColor: "#22c55e",
-    type: "workout",
-    content: "Leg day is a sacred ritual. Squats, RDLs, lunges. Full send every time.",
-    likes: 18,
-    comments: 3,
-    liked: false,
-    time: "1d ago",
-    stats: { Volume: "12,800 lbs", Sets: "10", Duration: "52 min" },
-  },
-  {
-    id: "p5",
-    userId: "f1",
-    userName: "Marcus Chen",
-    userInitials: "MC",
-    userColor: "#3b82f6",
-    type: "challenge",
-    content: "Just sent a 10K steps challenge to the crew. Who is stepping up?",
-    likes: 9,
-    comments: 6,
-    liked: false,
-    time: "1d ago",
-    stats: {},
-  },
+  { id: "p1", userId: "f1", userName: "Marcus Chen", userInitials: "MC", userColor: "#3b82f6", type: "workout", content: "Push day DONE. Hit a new bench PR at 245lbs. The grind never stops.", likes: 24, comments: 5, liked: false, time: "2h ago", stats: { Volume: "18,400 lbs", Sets: "12", Duration: "58 min" } },
+  { id: "p2", userId: "f2", userName: "Sofia Reyes", userInitials: "SR", userColor: "#8b5cf6", type: "milestone", content: "Just crossed 500km run total for the year. Consistency is everything.", likes: 41, comments: 8, liked: true, time: "4h ago", stats: { Distance: "10.2 km", Pace: "5:18 /km", Calories: "612" } },
+  { id: "p3", userId: "f3", userName: "Jake Williams", userInitials: "JW", userColor: "#f59e0b", type: "achievement", content: "21 day workout streak achieved. Body is adapting, mind is locked in.", likes: 33, comments: 12, liked: false, time: "6h ago", stats: { Streak: "21 days", Workouts: "21", "Best Lift": "Squat 315 lbs" } },
+  { id: "p4", userId: "f4", userName: "Priya Patel", userInitials: "PP", userColor: "#22c55e", type: "workout", content: "Leg day is a sacred ritual. Squats, RDLs, lunges. Full send every time.", likes: 18, comments: 3, liked: false, time: "1d ago", stats: { Volume: "12,800 lbs", Sets: "10", Duration: "52 min" } },
+  { id: "p5", userId: "f1", userName: "Marcus Chen", userInitials: "MC", userColor: "#3b82f6", type: "challenge", content: "Just sent a 10K steps challenge to the crew. Who is stepping up?", likes: 9, comments: 6, liked: false, time: "1d ago", stats: {} },
 ];
 
 const SEED_CHAT_THREADS: ChatThread[] = [
-  {
-    id: "t1",
-    friendId: "f1",
-    friendName: "Marcus Chen",
-    friendInitials: "MC",
-    friendColor: "#3b82f6",
-    lastMessage: "You in for legs tomorrow?",
-    lastTime: "2h ago",
-    unread: 1,
-    isOnline: true,
-    messages: [
-      { id: "m1", senderId: "f1", text: "Bro that PR was insane", time: "Yesterday 8:22 PM" },
-      { id: "m2", senderId: ME_ID, text: "Thanks man, been grinding for it", time: "Yesterday 8:25 PM" },
-      { id: "m3", senderId: "f1", text: "You in for legs tomorrow?", time: "2h ago" },
-    ],
-  },
-  {
-    id: "t2",
-    friendId: "f2",
-    friendName: "Sofia Reyes",
-    friendInitials: "SR",
-    friendColor: "#8b5cf6",
-    lastMessage: "The 6am club is calling",
-    lastTime: "5h ago",
-    unread: 0,
-    isOnline: false,
-    messages: [
-      { id: "m4", senderId: "f2", text: "Morning run at 6?", time: "Yesterday 9:10 PM" },
-      { id: "m5", senderId: ME_ID, text: "I will try my best", time: "Yesterday 9:12 PM" },
-      { id: "m6", senderId: "f2", text: "The 6am club is calling", time: "5h ago" },
-    ],
-  },
-  {
-    id: "t3",
-    friendId: "f3",
-    friendName: "Jake Williams",
-    friendInitials: "JW",
-    friendColor: "#f59e0b",
-    lastMessage: "GG on the challenge!",
-    lastTime: "1d ago",
-    unread: 0,
-    isOnline: true,
-    messages: [
-      { id: "m7", senderId: ME_ID, text: "Challenge accepted Jake", time: "1d ago" },
-      { id: "m8", senderId: "f3", text: "GG on the challenge!", time: "1d ago" },
-    ],
-  },
+  { id: "t1", friendId: "f1", friendName: "Marcus Chen", friendInitials: "MC", friendColor: "#3b82f6", lastMessage: "You in for legs tomorrow?", lastTime: "2h ago", unread: 1, isOnline: true, messages: [{ id: "m1", senderId: "f1", text: "Bro that PR was insane", time: "Yesterday 8:22 PM" }, { id: "m2", senderId: ME_ID, text: "Thanks man, been grinding for it", time: "Yesterday 8:25 PM" }, { id: "m3", senderId: "f1", text: "You in for legs tomorrow?", time: "2h ago" }] },
+  { id: "t2", friendId: "f2", friendName: "Sofia Reyes", friendInitials: "SR", friendColor: "#8b5cf6", lastMessage: "The 6am club is calling", lastTime: "5h ago", unread: 0, isOnline: false, messages: [{ id: "m4", senderId: "f2", text: "Morning run at 6?", time: "Yesterday 9:10 PM" }, { id: "m5", senderId: ME_ID, text: "I will try my best", time: "Yesterday 9:12 PM" }, { id: "m6", senderId: "f2", text: "The 6am club is calling", time: "5h ago" }] },
+  { id: "t3", friendId: "f3", friendName: "Jake Williams", friendInitials: "JW", friendColor: "#f59e0b", lastMessage: "GG on the challenge!", lastTime: "1d ago", unread: 0, isOnline: true, messages: [{ id: "m7", senderId: ME_ID, text: "Challenge accepted Jake", time: "1d ago" }, { id: "m8", senderId: "f3", text: "GG on the challenge!", time: "1d ago" }] },
 ];
 
 const SEED_RUN_HISTORY: RunSession[] = [
-  {
-    id: "rh1",
-    date: "2026-06-23",
-    distance: 8.2,
-    duration: 2640,
-    avgPace: "5:22",
-    bestPace: "4:58",
-    calories: 533,
-    splits: [
-      { km: 1, pace: "5:41", elapsed: 341 },
-      { km: 2, pace: "5:28", elapsed: 669 },
-      { km: 3, pace: "5:15", elapsed: 984 },
-      { km: 4, pace: "5:10", elapsed: 1294 },
-      { km: 5, pace: "5:18", elapsed: 1612 },
-      { km: 6, pace: "5:22", elapsed: 1934 },
-      { km: 7, pace: "5:30", elapsed: 2264 },
-      { km: 8, pace: "4:58", elapsed: 2562 },
-    ],
-  },
-  {
-    id: "rh2",
-    date: "2026-06-20",
-    distance: 5.1,
-    duration: 1710,
-    avgPace: "5:35",
-    bestPace: "5:12",
-    calories: 332,
-    splits: [
-      { km: 1, pace: "5:48", elapsed: 348 },
-      { km: 2, pace: "5:35", elapsed: 683 },
-      { km: 3, pace: "5:28", elapsed: 1011 },
-      { km: 4, pace: "5:22", elapsed: 1333 },
-      { km: 5, pace: "5:12", elapsed: 1645 },
-    ],
-  },
-  {
-    id: "rh3",
-    date: "2026-06-17",
-    distance: 10.0,
-    duration: 3300,
-    avgPace: "5:30",
-    bestPace: "5:05",
-    calories: 650,
-    splits: [
-      { km: 1, pace: "5:52", elapsed: 352 },
-      { km: 2, pace: "5:40", elapsed: 692 },
-      { km: 3, pace: "5:32", elapsed: 1024 },
-      { km: 4, pace: "5:25", elapsed: 1349 },
-      { km: 5, pace: "5:20", elapsed: 1669 },
-      { km: 6, pace: "5:25", elapsed: 1994 },
-      { km: 7, pace: "5:28", elapsed: 2322 },
-      { km: 8, pace: "5:15", elapsed: 2637 },
-      { km: 9, pace: "5:18", elapsed: 2955 },
-      { km: 10, pace: "5:05", elapsed: 3260 },
-    ],
-  },
+  { id: "rh1", date: "2026-06-23", distance: 8.2, duration: 2640, avgPace: "5:22", bestPace: "4:58", calories: 533, splits: [{ km: 1, pace: "5:41", elapsed: 341 }, { km: 2, pace: "5:28", elapsed: 669 }, { km: 3, pace: "5:15", elapsed: 984 }, { km: 4, pace: "5:10", elapsed: 1294 }, { km: 5, pace: "5:18", elapsed: 1612 }, { km: 6, pace: "5:22", elapsed: 1934 }, { km: 7, pace: "5:30", elapsed: 2264 }, { km: 8, pace: "4:58", elapsed: 2562 }] },
+  { id: "rh2", date: "2026-06-20", distance: 5.1, duration: 1710, avgPace: "5:35", bestPace: "5:12", calories: 332, splits: [{ km: 1, pace: "5:48", elapsed: 348 }, { km: 2, pace: "5:35", elapsed: 683 }, { km: 3, pace: "5:28", elapsed: 1011 }, { km: 4, pace: "5:22", elapsed: 1333 }, { km: 5, pace: "5:12", elapsed: 1645 }] },
+  { id: "rh3", date: "2026-06-17", distance: 10.0, duration: 3300, avgPace: "5:30", bestPace: "5:05", calories: 650, splits: [{ km: 1, pace: "5:52", elapsed: 352 }, { km: 2, pace: "5:40", elapsed: 692 }, { km: 3, pace: "5:32", elapsed: 1024 }, { km: 4, pace: "5:25", elapsed: 1349 }, { km: 5, pace: "5:20", elapsed: 1669 }, { km: 6, pace: "5:25", elapsed: 1994 }, { km: 7, pace: "5:28", elapsed: 2322 }, { km: 8, pace: "5:15", elapsed: 2637 }, { km: 9, pace: "5:18", elapsed: 2955 }, { km: 10, pace: "5:05", elapsed: 3260 }] },
 ];
 
 const SEED_ROUTINES: Routine[] = [
-  {
-    id: "r1",
-    name: "Push Day",
-    exercises: [
-      { id: "ch-01", name: "Barbell Bench Press", category: "Chest", equipment: "Barbell", sets: 4, reps: 8, weight: 135, rest: 120 },
-      { id: "sh-04", name: "Dumbbell Lateral Raise", category: "Shoulders", equipment: "Dumbbell", sets: 3, reps: 15, weight: 15, rest: 60 },
-      { id: "am-13", name: "Cable Triceps Pushdown", category: "Arms", equipment: "Cable", sets: 3, reps: 12, weight: 50, rest: 60 },
-      { id: "sh-01", name: "Overhead Press", category: "Shoulders", equipment: "Barbell", sets: 3, reps: 8, weight: 95, rest: 120 },
-    ],
-  },
-  {
-    id: "r2",
-    name: "Pull Day",
-    exercises: [
-      { id: "bk-01", name: "Barbell Deadlift", category: "Back", equipment: "Barbell", sets: 3, reps: 5, weight: 225, rest: 180 },
-      { id: "bk-08", name: "Lat Pulldown", category: "Back", equipment: "Cable", sets: 3, reps: 10, weight: 100, rest: 90 },
-      { id: "am-01", name: "Barbell Biceps Curl", category: "Arms", equipment: "Barbell", sets: 3, reps: 10, weight: 50, rest: 60 },
-      { id: "bk-10", name: "Seated Cable Row", category: "Back", equipment: "Cable", sets: 3, reps: 10, weight: 90, rest: 90 },
-    ],
-  },
-  {
-    id: "r3",
-    name: "Leg Day",
-    exercises: [
-      { id: "lg-01", name: "Barbell Back Squat", category: "Legs", equipment: "Barbell", sets: 4, reps: 6, weight: 180, rest: 180 },
-      { id: "lg-03", name: "Romanian Deadlift", category: "Legs", equipment: "Barbell", sets: 3, reps: 8, weight: 155, rest: 120 },
-      { id: "lg-11", name: "Leg Press", category: "Legs", equipment: "Machine", sets: 3, reps: 10, weight: 220, rest: 90 },
-      { id: "lg-13", name: "Leg Extension", category: "Legs", equipment: "Machine", sets: 3, reps: 12, weight: 80, rest: 60 },
-    ],
-  },
+  { id: "r1", name: "Push Day", exercises: [{ id: "ch-01", name: "Barbell Bench Press", category: "Chest", equipment: "Barbell", sets: 4, reps: 8, weight: 135, rest: 120 }, { id: "sh-04", name: "Dumbbell Lateral Raise", category: "Shoulders", equipment: "Dumbbell", sets: 3, reps: 15, weight: 15, rest: 60 }, { id: "am-13", name: "Cable Triceps Pushdown", category: "Arms", equipment: "Cable", sets: 3, reps: 12, weight: 50, rest: 60 }, { id: "sh-01", name: "Overhead Press", category: "Shoulders", equipment: "Barbell", sets: 3, reps: 8, weight: 95, rest: 120 }] },
+  { id: "r2", name: "Pull Day", exercises: [{ id: "bk-01", name: "Barbell Deadlift", category: "Back", equipment: "Barbell", sets: 3, reps: 5, weight: 225, rest: 180 }, { id: "bk-08", name: "Lat Pulldown", category: "Back", equipment: "Cable", sets: 3, reps: 10, weight: 100, rest: 90 }, { id: "am-01", name: "Barbell Biceps Curl", category: "Arms", equipment: "Barbell", sets: 3, reps: 10, weight: 50, rest: 60 }, { id: "bk-10", name: "Seated Cable Row", category: "Back", equipment: "Cable", sets: 3, reps: 10, weight: 90, rest: 90 }] },
+  { id: "r3", name: "Leg Day", exercises: [{ id: "lg-01", name: "Barbell Back Squat", category: "Legs", equipment: "Barbell", sets: 4, reps: 6, weight: 180, rest: 180 }, { id: "lg-03", name: "Romanian Deadlift", category: "Legs", equipment: "Barbell", sets: 3, reps: 8, weight: 155, rest: 120 }, { id: "lg-11", name: "Leg Press", category: "Legs", equipment: "Machine", sets: 3, reps: 10, weight: 220, rest: 90 }, { id: "lg-13", name: "Leg Extension", category: "Legs", equipment: "Machine", sets: 3, reps: 12, weight: 80, rest: 60 }] },
 ];
 
 const SEED_HISTORY: WorkoutSession[] = [
-  {
-    id: "h1",
-    name: "Push Day",
-    date: "2026-06-22",
-    duration: 3240,
-    volume: 12400,
-    exercises: 3,
-    exerciseLog: [
-      { name: "Barbell Bench Press", category: "Chest", sets: [{ weight: 135, reps: 8 }, { weight: 140, reps: 7 }, { weight: 140, reps: 6 }, { weight: 135, reps: 8 }] },
-    ],
-  },
-  {
-    id: "h2",
-    name: "Pull Day",
-    date: "2026-06-20",
-    duration: 2880,
-    volume: 10800,
-    exercises: 3,
-    exerciseLog: [
-      { name: "Barbell Deadlift", category: "Back", sets: [{ weight: 225, reps: 5 }, { weight: 235, reps: 4 }] },
-    ],
-  },
-  {
-    id: "h3",
-    name: "Leg Day",
-    date: "2026-06-18",
-    duration: 3600,
-    volume: 18600,
-    exercises: 4,
-    exerciseLog: [
-      { name: "Barbell Back Squat", category: "Legs", sets: [{ weight: 180, reps: 6 }, { weight: 185, reps: 5 }, { weight: 185, reps: 5 }] },
-    ],
-  },
+  { id: "h1", name: "Push Day", date: "2026-06-22", duration: 3240, volume: 12400, exercises: 3, exerciseLog: [{ name: "Barbell Bench Press", category: "Chest", sets: [{ weight: 135, reps: 8 }, { weight: 140, reps: 7 }, { weight: 140, reps: 6 }, { weight: 135, reps: 8 }] }] },
+  { id: "h2", name: "Pull Day", date: "2026-06-20", duration: 2880, volume: 10800, exercises: 3, exerciseLog: [{ name: "Barbell Deadlift", category: "Back", sets: [{ weight: 225, reps: 5 }, { weight: 235, reps: 4 }] }] },
+  { id: "h3", name: "Leg Day", date: "2026-06-18", duration: 3600, volume: 18600, exercises: 4, exerciseLog: [{ name: "Barbell Back Squat", category: "Legs", sets: [{ weight: 180, reps: 6 }, { weight: 185, reps: 5 }, { weight: 185, reps: 5 }] }] },
 ];
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -824,7 +550,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       const userId = storedApiUserId ?? generateUUID();
       apiUserIdRef.current = userId;
-
       if (!storedApiUserId) {
         AsyncStorage.setItem(API_USER_ID_KEY, userId).catch(() => {});
       }
@@ -852,11 +577,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }),
         });
         if (r.ok) {
-          const user = (await r.json()) as {
-            totalPoints: number;
-            totalWorkouts: number;
-            streak: number;
-          };
+          const user = (await r.json()) as ServerUserPartial;
           setState((prev) => ({
             ...prev,
             userProfile: {
@@ -939,18 +660,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           totalPoints: prev.userProfile.totalPoints + points,
         },
       }));
-      if (apiUserIdRef.current) {
-        queueAndFire("POST", "/sessions/workout", {
-          id: session.id,
-          userId: apiUserIdRef.current,
-          name: session.name,
-          date: session.date,
-          durationSeconds: session.duration,
-          volumeKg: Math.round(session.volume * 0.453592),
-          exerciseCount: session.exercises,
-          exerciseLogJson: session.exerciseLog,
-          pointsEarned: points,
-        });
+      const userId = apiUserIdRef.current;
+      if (userId) {
+        fireSession(
+          "/sessions/workout",
+          {
+            id: session.id,
+            userId,
+            name: session.name,
+            date: session.date,
+            durationSeconds: session.duration,
+            volumeKg: Math.round(session.volume * 0.453592),
+            exerciseCount: session.exercises,
+            exerciseLogJson: session.exerciseLog,
+            pointsEarned: points,
+          },
+          (user) => {
+            update((prev) => ({
+              ...prev,
+              userProfile: {
+                ...prev.userProfile,
+                totalPoints: user.totalPoints,
+                totalWorkouts: user.totalWorkouts,
+                streak: user.streak,
+              },
+            }));
+          },
+        );
       }
     },
     [update],
@@ -977,7 +713,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         };
       });
       if (apiUserIdRef.current) {
-        queueAndFire("POST", "/nutrition", {
+        queueAndFire("POST", "/food-log", {
           id: entry.id,
           userId: apiUserIdRef.current,
           date,
@@ -1008,7 +744,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }));
       const userId = apiUserIdRef.current;
       if (userId) {
-        queueAndFire("DELETE", `/nutrition/${userId}/${entryId}`);
+        queueAndFire("DELETE", `/food-log/${userId}/${entryId}`);
       }
     },
     [update],
@@ -1020,12 +756,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         calorieLog: prev.calorieLog.map((d) =>
           d.date === date
-            ? {
-                ...d,
-                entries: d.entries.map((e) =>
-                  e.id === entryId ? { ...e, ...updates } : e,
-                ),
-              }
+            ? { ...d, entries: d.entries.map((e) => (e.id === entryId ? { ...e, ...updates } : e)) }
             : d,
         ),
       }));
@@ -1182,19 +913,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           totalPoints: prev.userProfile.totalPoints + points,
         },
       }));
-      if (apiUserIdRef.current) {
-        queueAndFire("POST", "/sessions/run", {
-          id: session.id,
-          userId: apiUserIdRef.current,
-          date: session.date,
-          durationSeconds: session.duration,
-          distanceKm: session.distance,
-          avgPace: session.avgPace,
-          bestPace: session.bestPace,
-          calories: session.calories,
-          splitsJson: session.splits,
-          pointsEarned: points,
-        });
+      const userId = apiUserIdRef.current;
+      if (userId) {
+        fireSession(
+          "/sessions/run",
+          {
+            id: session.id,
+            userId,
+            date: session.date,
+            durationSeconds: session.duration,
+            distanceKm: session.distance,
+            avgPace: session.avgPace,
+            bestPace: session.bestPace,
+            calories: session.calories,
+            splitsJson: session.splits,
+            pointsEarned: points,
+          },
+          (user) => {
+            update((prev) => ({
+              ...prev,
+              userProfile: {
+                ...prev.userProfile,
+                totalPoints: user.totalPoints,
+                totalWorkouts: user.totalWorkouts,
+                streak: user.streak,
+              },
+            }));
+          },
+        );
       }
     },
     [update],
@@ -1320,57 +1066,57 @@ function hydrateFromApi(
   userId: string,
   setState: React.Dispatch<React.SetStateAction<AppState>>,
 ): void {
-  fetch(`${API_BASE}/api/sessions/workout/${userId}`)
+  fetch(`${API_BASE}/api/sessions/${userId}`)
     .then((r) => (r.ok ? r.json() : []))
     .then((rows: any[]) => {
-      if (!rows.length) return;
-      const apiSessions: WorkoutSession[] = rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        date: r.date,
-        duration: r.durationSeconds,
-        volume: Math.round(r.volumeKg / 0.453592),
-        exercises: r.exerciseCount,
-        exerciseLog: (r.exerciseLogJson as ExerciseLog[]) ?? [],
-      }));
-      setState((prev) => {
-        const apiIds = new Set(apiSessions.map((s) => s.id));
-        const localOnly = prev.workoutHistory.filter((s) => !apiIds.has(s.id));
-        const merged = [...apiSessions, ...localOnly].sort(
-          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-        );
-        return { ...prev, workoutHistory: merged };
-      });
-    })
-    .catch(() => {});
+      const workoutRows = rows.filter((r) => r.type === "workout");
+      const runRows = rows.filter((r) => r.type === "run");
 
-  fetch(`${API_BASE}/api/sessions/run/${userId}`)
-    .then((r) => (r.ok ? r.json() : []))
-    .then((rows: any[]) => {
-      if (!rows.length) return;
-      const apiRuns: RunSession[] = rows.map((r) => ({
-        id: r.id,
-        date: r.date,
-        distance: r.distanceKm,
-        duration: r.durationSeconds,
-        avgPace: r.avgPace,
-        bestPace: r.bestPace,
-        calories: r.calories,
-        splits: (r.splitsJson as RunSplit[]) ?? [],
-      }));
-      setState((prev) => {
-        const apiIds = new Set(apiRuns.map((r) => r.id));
-        const localOnly = prev.runHistory.filter((r) => !apiIds.has(r.id));
-        const merged = [...apiRuns, ...localOnly].sort(
-          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-        );
-        return { ...prev, runHistory: merged };
-      });
+      if (workoutRows.length) {
+        const apiSessions: WorkoutSession[] = workoutRows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          date: r.date,
+          duration: r.durationSeconds,
+          volume: Math.round((r.volumeKg ?? 0) / 0.453592),
+          exercises: r.exerciseCount ?? 0,
+          exerciseLog: (r.exerciseLogJson as ExerciseLog[]) ?? [],
+        }));
+        setState((prev) => {
+          const apiIds = new Set(apiSessions.map((s) => s.id));
+          const localOnly = prev.workoutHistory.filter((s) => !apiIds.has(s.id));
+          const merged = [...apiSessions, ...localOnly].sort(
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+          );
+          return { ...prev, workoutHistory: merged };
+        });
+      }
+
+      if (runRows.length) {
+        const apiRuns: RunSession[] = runRows.map((r) => ({
+          id: r.id,
+          date: r.date,
+          distance: r.distanceKm ?? 0,
+          duration: r.durationSeconds,
+          avgPace: r.avgPace ?? "",
+          bestPace: r.bestPace ?? "",
+          calories: r.calories ?? 0,
+          splits: (r.splitsJson as RunSplit[]) ?? [],
+        }));
+        setState((prev) => {
+          const apiIds = new Set(apiRuns.map((r) => r.id));
+          const localOnly = prev.runHistory.filter((r) => !apiIds.has(r.id));
+          const merged = [...apiRuns, ...localOnly].sort(
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+          );
+          return { ...prev, runHistory: merged };
+        });
+      }
     })
     .catch(() => {});
 
   const today = todayStr();
-  fetch(`${API_BASE}/api/nutrition/${userId}/${today}`)
+  fetch(`${API_BASE}/api/food-log/${userId}/${today}`)
     .then((r) => (r.ok ? r.json() : []))
     .then((rows: any[]) => {
       if (!rows.length) return;
@@ -1385,10 +1131,7 @@ function hydrateFromApi(
         sugar: r.sugar ?? undefined,
         sodium: r.sodium ?? undefined,
         meal: r.meal as FoodEntry["meal"],
-        time: new Date(r.loggedAt).toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-        }),
+        time: new Date(r.loggedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
       }));
       setState((prev) => {
         const existing = prev.calorieLog.find((d) => d.date === today);
@@ -1422,12 +1165,7 @@ function hydrateFromApi(
         id: r.id,
         name: r.name,
         username: r.username,
-        initials: r.name
-          .split(" ")
-          .map((n: string) => n[0])
-          .join("")
-          .slice(0, 2)
-          .toUpperCase(),
+        initials: r.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
         color: AVATAR_COLORS[i % AVATAR_COLORS.length],
         streak: r.streak,
         weeklyWorkouts: r.totalWorkouts,

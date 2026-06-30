@@ -4,7 +4,7 @@ import { db, foodEntries, insertFoodEntrySchema } from "@workspace/db";
 
 const router = Router();
 
-router.post("/nutrition", async (req, res) => {
+router.post("/food-log", async (req, res) => {
   const parsed = insertFoodEntrySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues });
@@ -25,7 +25,7 @@ router.post("/nutrition", async (req, res) => {
   res.status(201).json(rows[0]);
 });
 
-router.get("/nutrition/:userId/:date", async (req, res) => {
+router.get("/food-log/:userId/:date", async (req, res) => {
   const rows = await db
     .select()
     .from(foodEntries)
@@ -39,7 +39,7 @@ router.get("/nutrition/:userId/:date", async (req, res) => {
   res.json(rows);
 });
 
-router.delete("/nutrition/:userId/:entryId", async (req, res) => {
+router.delete("/food-log/:userId/:entryId", async (req, res) => {
   await db
     .delete(foodEntries)
     .where(
