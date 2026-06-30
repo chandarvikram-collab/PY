@@ -307,6 +307,8 @@ type PendingItem = {
   method: "POST" | "PATCH" | "DELETE";
   path: string;
   body?: string;
+  retryCount: number;
+  lastAttemptAt: number;
 };
 
 type ServerUserPartial = { totalPoints: number; totalWorkouts: number; streak: number };
@@ -329,6 +331,13 @@ let _queueChain: Promise<void> = Promise.resolve();
 let _isDraining = false;
 let _drainTimer: ReturnType<typeof setTimeout> | null = null;
 const DRAIN_DEBOUNCE_MS = 500;
+const MAX_RETRIES = 5;
+const BASE_BACKOFF_MS = 30_000;
+const MAX_BACKOFF_MS = 60 * 60 * 1000;
+
+function backoffMs(retryCount: number): number {
+  return Math.min(BASE_BACKOFF_MS * Math.pow(2, retryCount), MAX_BACKOFF_MS);
+}
 
 function _mutateQueue(fn: (q: PendingItem[]) => PendingItem[]): void {
   _queueChain = _queueChain.then(async () => {
@@ -354,12 +363,18 @@ function queueAndFire(method: "POST" | "PATCH" | "DELETE", path: string, body?: 
     method,
     path,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    retryCount: 0,
+    lastAttemptAt: Date.now(),
   };
   addToQueue(item);
 
   const headers: Record<string, string> = item.body ? { "Content-Type": "application/json" } : {};
   fetch(`${API_BASE}/api${path}`, { method, headers, body: item.body })
-    .then((r) => { if (r.ok) removeFromQueue(item.uid); })
+    .then((r) => {
+      if (r.ok || (r.status >= 400 && r.status < 500)) {
+        removeFromQueue(item.uid);
+      }
+    })
     .catch(() => {});
 }
 
@@ -370,7 +385,7 @@ function fireSession(
 ): void {
   const uid = generateUUID();
   const bodyStr = JSON.stringify(body);
-  addToQueue({ uid, method: "POST", path, body: bodyStr });
+  addToQueue({ uid, method: "POST", path, body: bodyStr, retryCount: 0, lastAttemptAt: Date.now() });
 
   fetch(`${API_BASE}/api${path}`, {
     method: "POST",
@@ -378,6 +393,10 @@ function fireSession(
     body: bodyStr,
   })
     .then(async (r) => {
+      if (r.status >= 400 && r.status < 500) {
+        removeFromQueue(uid);
+        return;
+      }
       if (!r.ok) return;
       removeFromQueue(uid);
       const json = (await r.json()) as { session?: unknown; user?: ServerUserPartial; duplicate?: boolean };
@@ -412,9 +431,16 @@ async function drainPendingQueue(): Promise<void> {
     }
     queue = Array.from(seen.values());
 
-    const succeeded: string[] = [];
+    const now = Date.now();
+    const updatedItems = new Map<string, PendingItem>();
+    const removedUids = new Set<string>();
+
     await Promise.allSettled(
       queue.map(async (item) => {
+        const elapsed = now - (item.lastAttemptAt ?? 0);
+        const due = elapsed >= backoffMs(item.retryCount ?? 0);
+        if (!due) return;
+
         try {
           const headers: Record<string, string> = item.body ? { "Content-Type": "application/json" } : {};
           const r = await fetch(`${API_BASE}/api${item.path}`, {
@@ -422,14 +448,43 @@ async function drainPendingQueue(): Promise<void> {
             headers,
             body: item.body,
           });
-          if (r.ok) succeeded.push(item.uid);
-        } catch {}
+
+          if (r.ok) {
+            removedUids.add(item.uid);
+          } else if (r.status >= 400 && r.status < 500) {
+            removedUids.add(item.uid);
+          } else {
+            const nextRetryCount = (item.retryCount ?? 0) + 1;
+            if (nextRetryCount >= MAX_RETRIES) {
+              removedUids.add(item.uid);
+            } else {
+              updatedItems.set(item.uid, {
+                ...item,
+                retryCount: nextRetryCount,
+                lastAttemptAt: Date.now(),
+              });
+            }
+          }
+        } catch {
+          const nextRetryCount = (item.retryCount ?? 0) + 1;
+          if (nextRetryCount >= MAX_RETRIES) {
+            removedUids.add(item.uid);
+          } else {
+            updatedItems.set(item.uid, {
+              ...item,
+              retryCount: nextRetryCount,
+              lastAttemptAt: Date.now(),
+            });
+          }
+        }
       }),
     );
 
-    if (succeeded.length) {
-      const remaining = queue.filter((q) => !succeeded.includes(q.uid));
-      await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(remaining)).catch(() => {});
+    if (removedUids.size > 0 || updatedItems.size > 0) {
+      const next = queue
+        .filter((q) => !removedUids.has(q.uid))
+        .map((q) => updatedItems.get(q.uid) ?? q);
+      await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(next)).catch(() => {});
     }
   } finally {
     _isDraining = false;
