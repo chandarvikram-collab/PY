@@ -568,9 +568,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             name: profile.name,
             username: profile.username,
             level: profile.level,
-            streak: profile.streak,
-            totalWorkouts: profile.totalWorkouts,
-            totalPoints: profile.totalPoints,
+            streak: 0,
+            totalWorkouts: 0,
+            totalPoints: 0,
             calorieGoal: profile.calorieGoal,
             proteinGoal: profile.proteinGoal,
             joinDate: profile.joinDate,
@@ -578,22 +578,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }),
         });
         if (r.ok) {
-          const user = await r.json() as {
-            name: string; username: string; level: string;
-            calorieGoal: number; proteinGoal: number; joinDate: string; bio: string;
-            totalPoints: number; totalWorkouts: number; streak: number;
-          };
+          const user = (await r.json()) as ServerUserPartial;
           setState((prev) => ({
             ...prev,
             userProfile: {
               ...prev.userProfile,
-              name: user.name,
-              username: user.username,
-              level: user.level as ExperienceLevel,
-              calorieGoal: user.calorieGoal,
-              proteinGoal: user.proteinGoal,
-              joinDate: user.joinDate,
-              bio: user.bio,
               totalPoints: user.totalPoints,
               totalWorkouts: user.totalWorkouts,
               streak: user.streak,
@@ -1109,59 +1098,50 @@ function hydrateFromApi(
   setState: React.Dispatch<React.SetStateAction<AppState>>,
 ): void {
   fetch(`${API_BASE}/api/sessions/${userId}`)
-    .then((r) => (r.ok ? r.json() : []))
-    .then((rows: any[]) => {
+    .then((r) => {
+      if (!r.ok) throw new Error("sessions fetch failed");
+      return r.json() as Promise<any[]>;
+    })
+    .then((rows) => {
       const workoutRows = rows.filter((r) => r.type === "workout");
       const runRows = rows.filter((r) => r.type === "run");
 
-      if (workoutRows.length) {
-        const apiSessions: WorkoutSession[] = workoutRows.map((r) => ({
-          id: r.id,
-          name: r.name,
-          date: r.date,
-          duration: r.durationSeconds,
-          volume: Math.round((r.volumeKg ?? 0) / 0.453592),
-          exercises: r.exerciseCount ?? 0,
-          exerciseLog: (r.exerciseLogJson as ExerciseLog[]) ?? [],
-        }));
-        setState((prev) => {
-          const apiIds = new Set(apiSessions.map((s) => s.id));
-          const localOnly = prev.workoutHistory.filter((s) => !apiIds.has(s.id));
-          const merged = [...apiSessions, ...localOnly].sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-          );
-          return { ...prev, workoutHistory: merged };
-        });
-      }
+      const apiSessions: WorkoutSession[] = workoutRows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        date: r.date,
+        duration: r.durationSeconds,
+        volume: Math.round((r.volumeKg ?? 0) / 0.453592),
+        exercises: r.exerciseCount ?? 0,
+        exerciseLog: (r.exerciseLogJson as ExerciseLog[]) ?? [],
+      })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      if (runRows.length) {
-        const apiRuns: RunSession[] = runRows.map((r) => ({
-          id: r.id,
-          date: r.date,
-          distance: r.distanceKm ?? 0,
-          duration: r.durationSeconds,
-          avgPace: r.avgPace ?? "",
-          bestPace: r.bestPace ?? "",
-          calories: r.calories ?? 0,
-          splits: (r.splitsJson as RunSplit[]) ?? [],
-        }));
-        setState((prev) => {
-          const apiIds = new Set(apiRuns.map((r) => r.id));
-          const localOnly = prev.runHistory.filter((r) => !apiIds.has(r.id));
-          const merged = [...apiRuns, ...localOnly].sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-          );
-          return { ...prev, runHistory: merged };
-        });
-      }
+      const apiRuns: RunSession[] = runRows.map((r) => ({
+        id: r.id,
+        date: r.date,
+        distance: r.distanceKm ?? 0,
+        duration: r.durationSeconds,
+        avgPace: r.avgPace ?? "",
+        bestPace: r.bestPace ?? "",
+        calories: r.calories ?? 0,
+        splits: (r.splitsJson as RunSplit[]) ?? [],
+      })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      setState((prev) => ({
+        ...prev,
+        workoutHistory: apiSessions,
+        runHistory: apiRuns,
+      }));
     })
     .catch(() => {});
 
   const today = todayStr();
   fetch(`${API_BASE}/api/food-log/${userId}/${today}`)
-    .then((r) => (r.ok ? r.json() : []))
-    .then((rows: any[]) => {
-      if (!rows.length) return;
+    .then((r) => {
+      if (!r.ok) throw new Error("food-log fetch failed");
+      return r.json() as Promise<any[]>;
+    })
+    .then((rows) => {
       const apiEntries: FoodEntry[] = rows.map((r) => ({
         id: r.id,
         name: r.name,
@@ -1177,14 +1157,11 @@ function hydrateFromApi(
       }));
       setState((prev) => {
         const existing = prev.calorieLog.find((d) => d.date === today);
-        const apiIds = new Set(apiEntries.map((e) => e.id));
-        const localEntries = (existing?.entries ?? []).filter((e) => !apiIds.has(e.id));
-        const merged = [...apiEntries, ...localEntries];
         if (existing) {
           return {
             ...prev,
             calorieLog: prev.calorieLog.map((d) =>
-              d.date === today ? { ...d, entries: merged } : d,
+              d.date === today ? { ...d, entries: apiEntries } : d,
             ),
           };
         }
@@ -1192,7 +1169,7 @@ function hydrateFromApi(
           ...prev,
           calorieLog: [
             ...prev.calorieLog,
-            { date: today, goal: prev.userProfile.calorieGoal, water: 0, entries: merged },
+            { date: today, goal: prev.userProfile.calorieGoal, water: 0, entries: apiEntries },
           ],
         };
       });
