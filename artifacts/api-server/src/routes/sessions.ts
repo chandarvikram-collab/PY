@@ -1,8 +1,49 @@
 import { Router } from "express";
 import { eq, desc, sql } from "drizzle-orm";
-import { db, workoutSessions, runSessions, users, insertWorkoutSessionSchema, insertRunSessionSchema } from "@workspace/db";
+import {
+  db,
+  workoutSessions,
+  runSessions,
+  users,
+  insertWorkoutSessionSchema,
+  insertRunSessionSchema,
+} from "@workspace/db";
 
 const router = Router();
+
+async function calculateStreak(userId: string): Promise<number> {
+  const [workouts, runs] = await Promise.all([
+    db.select({ date: workoutSessions.date }).from(workoutSessions).where(eq(workoutSessions.userId, userId)),
+    db.select({ date: runSessions.date }).from(runSessions).where(eq(runSessions.userId, userId)),
+  ]);
+
+  const allDates = [...workouts.map((r) => r.date), ...runs.map((r) => r.date)];
+  const unique = Array.from(new Set(allDates)).sort().reverse();
+
+  if (!unique.length) return 0;
+
+  const now = new Date();
+  now.setUTCHours(0, 0, 0, 0);
+  const todayStr = now.toISOString().slice(0, 10);
+  const yesterday = new Date(now);
+  yesterday.setUTCDate(now.getUTCDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+  if (unique[0] !== todayStr && unique[0] !== yesterdayStr) return 0;
+
+  let streak = 1;
+  for (let i = 1; i < unique.length; i++) {
+    const prev = new Date(unique[i - 1] + "T00:00:00Z");
+    const curr = new Date(unique[i] + "T00:00:00Z");
+    const diffDays = Math.round((prev.getTime() - curr.getTime()) / 86400000);
+    if (diffDays === 1) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
 
 router.post("/sessions/workout", async (req, res) => {
   const parsed = insertWorkoutSessionSchema.safeParse(req.body);
@@ -12,19 +53,31 @@ router.post("/sessions/workout", async (req, res) => {
   }
   const data = parsed.data;
 
-  const [row] = await db.insert(workoutSessions).values(data).returning();
+  const rows = await db
+    .insert(workoutSessions)
+    .values(data)
+    .onConflictDoNothing({ target: workoutSessions.id })
+    .returning();
+
+  if (!rows.length) {
+    res.status(200).json({ duplicate: true });
+    return;
+  }
+
+  const streak = await calculateStreak(data.userId);
 
   await db
     .update(users)
     .set({
       totalPoints: sql`${users.totalPoints} + ${data.pointsEarned}`,
       totalWorkouts: sql`${users.totalWorkouts} + 1`,
+      streak,
       updatedAt: new Date(),
     })
     .where(eq(users.id, data.userId));
 
-  req.log.info({ sessionId: row.id }, "workout session saved");
-  res.status(201).json(row);
+  req.log.info({ sessionId: rows[0].id }, "workout session saved");
+  res.status(201).json(rows[0]);
 });
 
 router.get("/sessions/workout/:userId", async (req, res) => {
@@ -45,18 +98,30 @@ router.post("/sessions/run", async (req, res) => {
   }
   const data = parsed.data;
 
-  const [row] = await db.insert(runSessions).values(data).returning();
+  const rows = await db
+    .insert(runSessions)
+    .values(data)
+    .onConflictDoNothing({ target: runSessions.id })
+    .returning();
+
+  if (!rows.length) {
+    res.status(200).json({ duplicate: true });
+    return;
+  }
+
+  const streak = await calculateStreak(data.userId);
 
   await db
     .update(users)
     .set({
       totalPoints: sql`${users.totalPoints} + ${data.pointsEarned}`,
+      streak,
       updatedAt: new Date(),
     })
     .where(eq(users.id, data.userId));
 
-  req.log.info({ sessionId: row.id }, "run session saved");
-  res.status(201).json(row);
+  req.log.info({ sessionId: rows[0].id }, "run session saved");
+  res.status(201).json(rows[0]);
 });
 
 router.get("/sessions/run/:userId", async (req, res) => {

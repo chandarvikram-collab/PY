@@ -10,9 +10,19 @@ router.post("/nutrition", async (req, res) => {
     res.status(400).json({ error: parsed.error.issues });
     return;
   }
-  const [row] = await db.insert(foodEntries).values(parsed.data).returning();
-  req.log.info({ entryId: row.id }, "food entry saved");
-  res.status(201).json(row);
+  const rows = await db
+    .insert(foodEntries)
+    .values(parsed.data)
+    .onConflictDoNothing({ target: foodEntries.id })
+    .returning();
+
+  if (!rows.length) {
+    res.status(200).json({ duplicate: true });
+    return;
+  }
+
+  req.log.info({ entryId: rows[0].id }, "food entry saved");
+  res.status(201).json(rows[0]);
 });
 
 router.get("/nutrition/:userId/:date", async (req, res) => {
@@ -29,8 +39,15 @@ router.get("/nutrition/:userId/:date", async (req, res) => {
   res.json(rows);
 });
 
-router.delete("/nutrition/:entryId", async (req, res) => {
-  await db.delete(foodEntries).where(eq(foodEntries.id, req.params.entryId));
+router.delete("/nutrition/:userId/:entryId", async (req, res) => {
+  await db
+    .delete(foodEntries)
+    .where(
+      and(
+        eq(foodEntries.id, req.params.entryId),
+        eq(foodEntries.userId, req.params.userId),
+      ),
+    );
   res.status(204).send();
 });
 

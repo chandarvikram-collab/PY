@@ -279,13 +279,13 @@ type AppContextType = {
 };
 
 const ME_ID = "me";
+const STORAGE_KEY = "ironpace_v1";
+const API_USER_ID_KEY = "ironpace_api_user_id";
+const PENDING_KEY = "ironpace_pending_sync";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
   : "";
-
-const STORAGE_KEY = "ironpace_v1";
-const API_USER_ID_KEY = "ironpace_api_user_id";
 
 const AVATAR_COLORS = ["#3b82f6", "#8b5cf6", "#f59e0b", "#22c55e", "#ec4899", "#14b8a6"];
 
@@ -297,24 +297,81 @@ function generateUUID(): string {
   });
 }
 
-function apiPost(path: string, body: unknown): void {
-  fetch(`${API_BASE}/api${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).catch(() => {});
+type PendingItem = {
+  uid: string;
+  method: "POST" | "PATCH" | "DELETE";
+  path: string;
+  body?: string;
+};
+
+function queueAndFire(method: "POST" | "PATCH" | "DELETE", path: string, body?: unknown): void {
+  const item: PendingItem = {
+    uid: generateUUID(),
+    method,
+    path,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  };
+
+  AsyncStorage.getItem(PENDING_KEY)
+    .then((raw) => {
+      const queue: PendingItem[] = raw ? (JSON.parse(raw) as PendingItem[]) : [];
+      queue.push(item);
+      return AsyncStorage.setItem(PENDING_KEY, JSON.stringify(queue));
+    })
+    .catch(() => {});
+
+  const headers: Record<string, string> = item.body ? { "Content-Type": "application/json" } : {};
+  fetch(`${API_BASE}/api${path}`, { method, headers, body: item.body })
+    .then((r) => {
+      if (r.ok) {
+        AsyncStorage.getItem(PENDING_KEY)
+          .then((raw) => {
+            const queue: PendingItem[] = raw ? (JSON.parse(raw) as PendingItem[]) : [];
+            const updated = queue.filter((q) => q.uid !== item.uid);
+            return AsyncStorage.setItem(PENDING_KEY, JSON.stringify(updated));
+          })
+          .catch(() => {});
+      }
+    })
+    .catch(() => {});
 }
 
-function apiPatch(path: string, body: unknown): void {
-  fetch(`${API_BASE}/api${path}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).catch(() => {});
-}
+async function drainPendingQueue(): Promise<void> {
+  let raw: string | null = null;
+  try {
+    raw = await AsyncStorage.getItem(PENDING_KEY);
+  } catch {
+    return;
+  }
+  if (!raw) return;
 
-function apiDelete(path: string): void {
-  fetch(`${API_BASE}/api${path}`, { method: "DELETE" }).catch(() => {});
+  let queue: PendingItem[] = [];
+  try {
+    queue = JSON.parse(raw) as PendingItem[];
+  } catch {
+    return;
+  }
+  if (!queue.length) return;
+
+  const succeeded: string[] = [];
+  await Promise.allSettled(
+    queue.map(async (item) => {
+      try {
+        const headers: Record<string, string> = item.body ? { "Content-Type": "application/json" } : {};
+        const r = await fetch(`${API_BASE}/api${item.path}`, {
+          method: item.method,
+          headers,
+          body: item.body,
+        });
+        if (r.ok) succeeded.push(item.uid);
+      } catch {}
+    }),
+  );
+
+  if (succeeded.length) {
+    const remaining = queue.filter((q) => !succeeded.includes(q.uid));
+    await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(remaining)).catch(() => {});
+  }
 }
 
 const SEED_FRIENDS: Friend[] = [
@@ -377,22 +434,8 @@ const SEED_CHALLENGES: Challenge[] = [
     fromId: "f1",
     fromName: "Marcus Chen",
     participants: [
-      {
-        id: ME_ID,
-        name: "You",
-        initials: "ME",
-        color: "#E8151B",
-        progress: 8420,
-        target: 10000,
-      },
-      {
-        id: "f1",
-        name: "Marcus",
-        initials: "MC",
-        color: "#3b82f6",
-        progress: 9800,
-        target: 10000,
-      },
+      { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 8420, target: 10000 },
+      { id: "f1", name: "Marcus", initials: "MC", color: "#3b82f6", progress: 9800, target: 10000 },
     ],
     myProgress: 8420,
     target: 10000,
@@ -409,22 +452,8 @@ const SEED_CHALLENGES: Challenge[] = [
     fromId: "f3",
     fromName: "Jake Williams",
     participants: [
-      {
-        id: ME_ID,
-        name: "You",
-        initials: "ME",
-        color: "#E8151B",
-        progress: 185,
-        target: 225,
-      },
-      {
-        id: "f3",
-        name: "Jake",
-        initials: "JW",
-        color: "#f59e0b",
-        progress: 210,
-        target: 225,
-      },
+      { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 185, target: 225 },
+      { id: "f3", name: "Jake", initials: "JW", color: "#f59e0b", progress: 210, target: 225 },
     ],
     myProgress: 185,
     target: 225,
@@ -441,22 +470,8 @@ const SEED_CHALLENGES: Challenge[] = [
     fromId: "f2",
     fromName: "Sofia Reyes",
     participants: [
-      {
-        id: ME_ID,
-        name: "You",
-        initials: "ME",
-        color: "#E8151B",
-        progress: 19.2,
-        target: 30,
-      },
-      {
-        id: "f2",
-        name: "Sofia",
-        initials: "SR",
-        color: "#8b5cf6",
-        progress: 24.5,
-        target: 30,
-      },
+      { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 19.2, target: 30 },
+      { id: "f2", name: "Sofia", initials: "SR", color: "#8b5cf6", progress: 24.5, target: 30 },
     ],
     myProgress: 19.2,
     target: 30,
@@ -473,14 +488,7 @@ const SEED_CHALLENGES: Challenge[] = [
     fromId: null,
     fromName: null,
     participants: [
-      {
-        id: ME_ID,
-        name: "You",
-        initials: "ME",
-        color: "#E8151B",
-        progress: 5,
-        target: 7,
-      },
+      { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 5, target: 7 },
     ],
     myProgress: 5,
     target: 7,
@@ -797,7 +805,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const apiUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    AsyncStorage.multiGet([STORAGE_KEY, API_USER_ID_KEY]).then((pairs) => {
+    const run = async () => {
+      const pairs = await AsyncStorage.multiGet([STORAGE_KEY, API_USER_ID_KEY]);
       const raw = pairs[0][1];
       const storedApiUserId = pairs[1][1];
 
@@ -823,8 +832,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setState(loadedState);
       setLoaded(true);
 
-      hydrateFromApi(userId, loadedState, setState);
-    });
+      const profile = loadedState.userProfile;
+      try {
+        const r = await fetch(`${API_BASE}/api/users`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: userId,
+            name: profile.name,
+            username: profile.username,
+            level: profile.level,
+            streak: profile.streak,
+            totalWorkouts: profile.totalWorkouts,
+            totalPoints: profile.totalPoints,
+            calorieGoal: profile.calorieGoal,
+            proteinGoal: profile.proteinGoal,
+            joinDate: profile.joinDate,
+            bio: profile.bio,
+          }),
+        });
+        if (r.ok) {
+          const user = (await r.json()) as {
+            totalPoints: number;
+            totalWorkouts: number;
+            streak: number;
+          };
+          setState((prev) => ({
+            ...prev,
+            userProfile: {
+              ...prev.userProfile,
+              totalPoints: user.totalPoints,
+              totalWorkouts: user.totalWorkouts,
+              streak: user.streak,
+            },
+          }));
+        }
+      } catch {}
+
+      await drainPendingQueue();
+
+      hydrateFromApi(userId, setState);
+    };
+
+    run().catch(() => {});
   }, []);
 
   const persist = useCallback((next: AppState) => {
@@ -839,7 +889,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
     },
-    [persist]
+    [persist],
   );
 
   const updateProfile = useCallback(
@@ -859,11 +909,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (updates.streak !== undefined) patch.streak = updates.streak;
         if (updates.totalPoints !== undefined) patch.totalPoints = updates.totalPoints;
         if (Object.keys(patch).length > 0) {
-          apiPatch(`/users/${apiUserIdRef.current}`, patch);
+          queueAndFire("PATCH", `/users/${apiUserIdRef.current}`, patch);
         }
       }
     },
-    [update]
+    [update],
   );
 
   const saveAIPlan = useCallback(
@@ -873,7 +923,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         userProfile: { ...prev.userProfile, aiPlan: plan, hasCompletedOnboarding: true },
       }));
     },
-    [update]
+    [update],
   );
 
   const addWorkoutSession = useCallback(
@@ -890,7 +940,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         },
       }));
       if (apiUserIdRef.current) {
-        apiPost("/sessions/workout", {
+        queueAndFire("POST", "/sessions/workout", {
           id: session.id,
           userId: apiUserIdRef.current,
           name: session.name,
@@ -903,7 +953,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [update]
+    [update],
   );
 
   const addFoodEntry = useCallback(
@@ -914,7 +964,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return {
             ...prev,
             calorieLog: prev.calorieLog.map((d) =>
-              d.date === date ? { ...d, entries: [...d.entries, entry] } : d
+              d.date === date ? { ...d, entries: [...d.entries, entry] } : d,
             ),
           };
         }
@@ -927,7 +977,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         };
       });
       if (apiUserIdRef.current) {
-        apiPost("/nutrition", {
+        queueAndFire("POST", "/nutrition", {
           id: entry.id,
           userId: apiUserIdRef.current,
           date,
@@ -943,7 +993,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [update]
+    [update],
   );
 
   const removeFoodEntry = useCallback(
@@ -953,12 +1003,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         calorieLog: prev.calorieLog.map((d) =>
           d.date === date
             ? { ...d, entries: d.entries.filter((e) => e.id !== entryId) }
-            : d
+            : d,
         ),
       }));
-      apiDelete(`/nutrition/${entryId}`);
+      const userId = apiUserIdRef.current;
+      if (userId) {
+        queueAndFire("DELETE", `/nutrition/${userId}/${entryId}`);
+      }
     },
-    [update]
+    [update],
   );
 
   const updateFoodEntry = useCallback(
@@ -970,14 +1023,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             ? {
                 ...d,
                 entries: d.entries.map((e) =>
-                  e.id === entryId ? { ...e, ...updates } : e
+                  e.id === entryId ? { ...e, ...updates } : e,
                 ),
               }
-            : d
+            : d,
         ),
       }));
     },
-    [update]
+    [update],
   );
 
   const updateWater = useCallback(
@@ -985,11 +1038,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       update((prev) => ({
         ...prev,
         calorieLog: prev.calorieLog.map((d) =>
-          d.date === date ? { ...d, water: Math.max(0, cups) } : d
+          d.date === date ? { ...d, water: Math.max(0, cups) } : d,
         ),
       }));
     },
-    [update]
+    [update],
   );
 
   const likePost = useCallback(
@@ -999,25 +1052,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         posts: prev.posts.map((p) =>
           p.id === postId
             ? { ...p, liked: !p.liked, likes: p.liked ? p.likes - 1 : p.likes + 1 }
-            : p
+            : p,
         ),
       }));
     },
-    [update]
+    [update],
   );
 
   const addPost = useCallback(
     (post: Post) => {
       update((prev) => ({ ...prev, posts: [post, ...prev.posts] }));
     },
-    [update]
+    [update],
   );
 
   const sendChallenge = useCallback(
     (challenge: Challenge) => {
       update((prev) => ({ ...prev, challenges: [challenge, ...prev.challenges] }));
     },
-    [update]
+    [update],
   );
 
   const acceptChallenge = useCallback(
@@ -1025,11 +1078,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       update((prev) => ({
         ...prev,
         challenges: prev.challenges.map((c) =>
-          c.id === challengeId ? { ...c, status: "active" as const } : c
+          c.id === challengeId ? { ...c, status: "active" as const } : c,
         ),
       }));
     },
-    [update]
+    [update],
   );
 
   const updateChallengeProgress = useCallback(
@@ -1042,14 +1095,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 ...c,
                 myProgress: progress,
                 participants: c.participants.map((p) =>
-                  p.id === ME_ID ? { ...p, progress } : p
+                  p.id === ME_ID ? { ...p, progress } : p,
                 ),
               }
-            : c
+            : c,
         ),
       }));
     },
-    [update]
+    [update],
   );
 
   const sendMessage = useCallback(
@@ -1065,11 +1118,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         chatThreads: prev.chatThreads.map((t) =>
           t.id === threadId
             ? { ...t, messages: [...t.messages, msg], lastMessage: text, lastTime: "Just now" }
-            : t
+            : t,
         ),
       }));
     },
-    [update]
+    [update],
   );
 
   const markThreadRead = useCallback(
@@ -1077,11 +1130,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       update((prev) => ({
         ...prev,
         chatThreads: prev.chatThreads.map((t) =>
-          t.id === threadId ? { ...t, unread: 0 } : t
+          t.id === threadId ? { ...t, unread: 0 } : t,
         ),
       }));
     },
-    [update]
+    [update],
   );
 
   const getTodayCalories = useCallback((): DayCalories => {
@@ -1115,7 +1168,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     (routine: Routine) => {
       update((prev) => ({ ...prev, routines: [...prev.routines, routine] }));
     },
-    [update]
+    [update],
   );
 
   const addRunSession = useCallback(
@@ -1130,7 +1183,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         },
       }));
       if (apiUserIdRef.current) {
-        apiPost("/sessions/run", {
+        queueAndFire("POST", "/sessions/run", {
           id: session.id,
           userId: apiUserIdRef.current,
           date: session.date,
@@ -1144,7 +1197,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [update]
+    [update],
   );
 
   const saveMealTemplate = useCallback(
@@ -1167,7 +1220,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       update((prev) => ({ ...prev, mealTemplates: [template, ...prev.mealTemplates] }));
     },
-    [update]
+    [update],
   );
 
   const deleteMealTemplate = useCallback(
@@ -1177,7 +1230,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         mealTemplates: prev.mealTemplates.filter((t) => t.id !== templateId),
       }));
     },
-    [update]
+    [update],
   );
 
   const loadMealTemplate = useCallback(
@@ -1205,7 +1258,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return {
             ...prev,
             calorieLog: prev.calorieLog.map((d) =>
-              d.date === date ? { ...d, entries: [...d.entries, ...newEntries] } : d
+              d.date === date ? { ...d, entries: [...d.entries, ...newEntries] } : d,
             ),
           };
         }
@@ -1218,7 +1271,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         };
       });
     },
-    [update]
+    [update],
   );
 
   if (!loaded) return null;
@@ -1265,44 +1318,8 @@ export const ME_USER_ID = ME_ID;
 
 function hydrateFromApi(
   userId: string,
-  localState: AppState,
-  setState: React.Dispatch<React.SetStateAction<AppState>>
+  setState: React.Dispatch<React.SetStateAction<AppState>>,
 ): void {
-  const profile = localState.userProfile;
-
-  fetch(`${API_BASE}/api/users`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      id: userId,
-      name: profile.name,
-      username: profile.username,
-      level: profile.level,
-      streak: profile.streak,
-      totalWorkouts: profile.totalWorkouts,
-      totalPoints: profile.totalPoints,
-      calorieGoal: profile.calorieGoal,
-      proteinGoal: profile.proteinGoal,
-      joinDate: profile.joinDate,
-      bio: profile.bio,
-    }),
-  })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((user: any) => {
-      if (user && user.totalPoints > profile.totalPoints) {
-        setState((prev) => ({
-          ...prev,
-          userProfile: {
-            ...prev.userProfile,
-            totalPoints: user.totalPoints,
-            totalWorkouts: user.totalWorkouts,
-            streak: user.streak,
-          },
-        }));
-      }
-    })
-    .catch(() => {});
-
   fetch(`${API_BASE}/api/sessions/workout/${userId}`)
     .then((r) => (r.ok ? r.json() : []))
     .then((rows: any[]) => {
@@ -1320,7 +1337,7 @@ function hydrateFromApi(
         const apiIds = new Set(apiSessions.map((s) => s.id));
         const localOnly = prev.workoutHistory.filter((s) => !apiIds.has(s.id));
         const merged = [...apiSessions, ...localOnly].sort(
-          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
         );
         return { ...prev, workoutHistory: merged };
       });
@@ -1345,7 +1362,7 @@ function hydrateFromApi(
         const apiIds = new Set(apiRuns.map((r) => r.id));
         const localOnly = prev.runHistory.filter((r) => !apiIds.has(r.id));
         const merged = [...apiRuns, ...localOnly].sort(
-          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
         );
         return { ...prev, runHistory: merged };
       });
@@ -1382,7 +1399,7 @@ function hydrateFromApi(
           return {
             ...prev,
             calorieLog: prev.calorieLog.map((d) =>
-              d.date === today ? { ...d, entries: merged } : d
+              d.date === today ? { ...d, entries: merged } : d,
             ),
           };
         }
@@ -1400,8 +1417,7 @@ function hydrateFromApi(
   fetch(`${API_BASE}/api/leaderboard`)
     .then((r) => (r.ok ? r.json() : []))
     .then((rows: any[]) => {
-      const others = rows.filter((r) => r.id !== userId);
-      if (others.length < 2) return;
+      const others = rows.filter((r: any) => r.id !== userId);
       const friends: Friend[] = others.map((r: any, i: number) => ({
         id: r.id,
         name: r.name,
