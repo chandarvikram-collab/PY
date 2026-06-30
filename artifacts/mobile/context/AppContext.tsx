@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -279,6 +280,43 @@ type AppContextType = {
 
 const ME_ID = "me";
 
+const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : "";
+
+const STORAGE_KEY = "ironpace_v1";
+const API_USER_ID_KEY = "ironpace_api_user_id";
+
+const AVATAR_COLORS = ["#3b82f6", "#8b5cf6", "#f59e0b", "#22c55e", "#ec4899", "#14b8a6"];
+
+function generateUUID(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function apiPost(path: string, body: unknown): void {
+  fetch(`${API_BASE}/api${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch(() => {});
+}
+
+function apiPatch(path: string, body: unknown): void {
+  fetch(`${API_BASE}/api${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch(() => {});
+}
+
+function apiDelete(path: string): void {
+  fetch(`${API_BASE}/api${path}`, { method: "DELETE" }).catch(() => {});
+}
+
 const SEED_FRIENDS: Friend[] = [
   {
     id: "f1",
@@ -538,12 +576,7 @@ const SEED_CHAT_THREADS: ChatThread[] = [
     unread: 1,
     isOnline: true,
     messages: [
-      {
-        id: "m1",
-        senderId: "f1",
-        text: "Bro that PR was insane",
-        time: "Yesterday 8:22 PM",
-      },
+      { id: "m1", senderId: "f1", text: "Bro that PR was insane", time: "Yesterday 8:22 PM" },
       { id: "m2", senderId: ME_ID, text: "Thanks man, been grinding for it", time: "Yesterday 8:25 PM" },
       { id: "m3", senderId: "f1", text: "You in for legs tomorrow?", time: "2h ago" },
     ],
@@ -559,12 +592,7 @@ const SEED_CHAT_THREADS: ChatThread[] = [
     unread: 0,
     isOnline: false,
     messages: [
-      {
-        id: "m4",
-        senderId: "f2",
-        text: "Morning run at 6?",
-        time: "Yesterday 9:10 PM",
-      },
+      { id: "m4", senderId: "f2", text: "Morning run at 6?", time: "Yesterday 9:10 PM" },
       { id: "m5", senderId: ME_ID, text: "I will try my best", time: "Yesterday 9:12 PM" },
       { id: "m6", senderId: "f2", text: "The 6am club is calling", time: "5h ago" },
     ],
@@ -580,12 +608,7 @@ const SEED_CHAT_THREADS: ChatThread[] = [
     unread: 0,
     isOnline: true,
     messages: [
-      {
-        id: "m7",
-        senderId: ME_ID,
-        text: "Challenge accepted Jake",
-        time: "1d ago",
-      },
+      { id: "m7", senderId: ME_ID, text: "Challenge accepted Jake", time: "1d ago" },
       { id: "m8", senderId: "f3", text: "GG on the challenge!", time: "1d ago" },
     ],
   },
@@ -766,29 +789,42 @@ const DEFAULT_STATE: AppState = {
   runHistory: SEED_RUN_HISTORY,
 };
 
-const STORAGE_KEY = "ironpace_v1";
-
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
   const [loaded, setLoaded] = useState(false);
+  const apiUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((raw) => {
-        if (raw) {
-          try {
-            const saved = JSON.parse(raw) as Partial<AppState>;
-            setState((prev) => ({
-              ...prev,
-              ...saved,
-              userProfile: { ...prev.userProfile, ...(saved.userProfile ?? {}) },
-            }));
-          } catch {}
-        }
-      })
-      .finally(() => setLoaded(true));
+    AsyncStorage.multiGet([STORAGE_KEY, API_USER_ID_KEY]).then((pairs) => {
+      const raw = pairs[0][1];
+      const storedApiUserId = pairs[1][1];
+
+      let loadedState: AppState = DEFAULT_STATE;
+      if (raw) {
+        try {
+          const saved = JSON.parse(raw) as Partial<AppState>;
+          loadedState = {
+            ...DEFAULT_STATE,
+            ...saved,
+            userProfile: { ...DEFAULT_PROFILE, ...(saved.userProfile ?? {}) },
+          };
+        } catch {}
+      }
+
+      const userId = storedApiUserId ?? generateUUID();
+      apiUserIdRef.current = userId;
+
+      if (!storedApiUserId) {
+        AsyncStorage.setItem(API_USER_ID_KEY, userId).catch(() => {});
+      }
+
+      setState(loadedState);
+      setLoaded(true);
+
+      hydrateFromApi(userId, loadedState, setState);
+    });
   }, []);
 
   const persist = useCallback((next: AppState) => {
@@ -812,6 +848,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         userProfile: { ...prev.userProfile, ...updates },
       }));
+      if (apiUserIdRef.current) {
+        const patch: Record<string, unknown> = {};
+        if (updates.name !== undefined) patch.name = updates.name;
+        if (updates.username !== undefined) patch.username = updates.username;
+        if (updates.level !== undefined) patch.level = updates.level;
+        if (updates.calorieGoal !== undefined) patch.calorieGoal = updates.calorieGoal;
+        if (updates.proteinGoal !== undefined) patch.proteinGoal = updates.proteinGoal;
+        if (updates.bio !== undefined) patch.bio = updates.bio;
+        if (updates.streak !== undefined) patch.streak = updates.streak;
+        if (updates.totalPoints !== undefined) patch.totalPoints = updates.totalPoints;
+        if (Object.keys(patch).length > 0) {
+          apiPatch(`/users/${apiUserIdRef.current}`, patch);
+        }
+      }
     },
     [update]
   );
@@ -828,6 +878,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addWorkoutSession = useCallback(
     (session: WorkoutSession) => {
+      const points = Math.floor(session.volume / 100) + 50;
       update((prev) => ({
         ...prev,
         workoutHistory: [session, ...prev.workoutHistory],
@@ -835,9 +886,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...prev.userProfile,
           totalWorkouts: prev.userProfile.totalWorkouts + 1,
           streak: prev.userProfile.streak + 1,
-          totalPoints: prev.userProfile.totalPoints + Math.floor(session.volume / 100) + 50,
+          totalPoints: prev.userProfile.totalPoints + points,
         },
       }));
+      if (apiUserIdRef.current) {
+        apiPost("/sessions/workout", {
+          id: session.id,
+          userId: apiUserIdRef.current,
+          name: session.name,
+          date: session.date,
+          durationSeconds: session.duration,
+          volumeKg: Math.round(session.volume * 0.453592),
+          exerciseCount: session.exercises,
+          exerciseLogJson: session.exerciseLog,
+          pointsEarned: points,
+        });
+      }
     },
     [update]
   );
@@ -862,6 +926,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ],
         };
       });
+      if (apiUserIdRef.current) {
+        apiPost("/nutrition", {
+          id: entry.id,
+          userId: apiUserIdRef.current,
+          date,
+          meal: entry.meal,
+          name: entry.name,
+          calories: entry.calories,
+          protein: entry.protein,
+          carbs: entry.carbs,
+          fat: entry.fat,
+          fiber: entry.fiber ?? null,
+          sugar: entry.sugar ?? null,
+          sodium: entry.sodium ?? null,
+        });
+      }
     },
     [update]
   );
@@ -876,6 +956,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             : d
         ),
       }));
+      apiDelete(`/nutrition/${entryId}`);
     },
     [update]
   );
@@ -1006,8 +1087,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const getTodayCalories = useCallback((): DayCalories => {
     const today = todayStr();
     const log = state.calorieLog.find((d) => d.date === today);
-    // Always override stored goal with the live profile value so that
-    // changes made in the Profile Nutrition Goals editor take effect immediately.
     return log
       ? { ...log, goal: state.userProfile.calorieGoal }
       : { date: today, goal: state.userProfile.calorieGoal, water: 0, entries: [] };
@@ -1041,14 +1120,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addRunSession = useCallback(
     (session: RunSession) => {
+      const points = Math.floor(session.distance * 10) + 20;
       update((prev) => ({
         ...prev,
         runHistory: [session, ...prev.runHistory],
         userProfile: {
           ...prev.userProfile,
-          totalPoints: prev.userProfile.totalPoints + Math.floor(session.distance * 10) + 20,
+          totalPoints: prev.userProfile.totalPoints + points,
         },
       }));
+      if (apiUserIdRef.current) {
+        apiPost("/sessions/run", {
+          id: session.id,
+          userId: apiUserIdRef.current,
+          date: session.date,
+          durationSeconds: session.duration,
+          distanceKm: session.distance,
+          avgPace: session.avgPace,
+          bestPace: session.bestPace,
+          calories: session.calories,
+          splitsJson: session.splits,
+          pointsEarned: points,
+        });
+      }
     },
     [update]
   );
@@ -1168,3 +1262,164 @@ export function useApp() {
 }
 
 export const ME_USER_ID = ME_ID;
+
+function hydrateFromApi(
+  userId: string,
+  localState: AppState,
+  setState: React.Dispatch<React.SetStateAction<AppState>>
+): void {
+  const profile = localState.userProfile;
+
+  fetch(`${API_BASE}/api/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: userId,
+      name: profile.name,
+      username: profile.username,
+      level: profile.level,
+      streak: profile.streak,
+      totalWorkouts: profile.totalWorkouts,
+      totalPoints: profile.totalPoints,
+      calorieGoal: profile.calorieGoal,
+      proteinGoal: profile.proteinGoal,
+      joinDate: profile.joinDate,
+      bio: profile.bio,
+    }),
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((user: any) => {
+      if (user && user.totalPoints > profile.totalPoints) {
+        setState((prev) => ({
+          ...prev,
+          userProfile: {
+            ...prev.userProfile,
+            totalPoints: user.totalPoints,
+            totalWorkouts: user.totalWorkouts,
+            streak: user.streak,
+          },
+        }));
+      }
+    })
+    .catch(() => {});
+
+  fetch(`${API_BASE}/api/sessions/workout/${userId}`)
+    .then((r) => (r.ok ? r.json() : []))
+    .then((rows: any[]) => {
+      if (!rows.length) return;
+      const apiSessions: WorkoutSession[] = rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        date: r.date,
+        duration: r.durationSeconds,
+        volume: Math.round(r.volumeKg / 0.453592),
+        exercises: r.exerciseCount,
+        exerciseLog: (r.exerciseLogJson as ExerciseLog[]) ?? [],
+      }));
+      setState((prev) => {
+        const apiIds = new Set(apiSessions.map((s) => s.id));
+        const localOnly = prev.workoutHistory.filter((s) => !apiIds.has(s.id));
+        const merged = [...apiSessions, ...localOnly].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+        return { ...prev, workoutHistory: merged };
+      });
+    })
+    .catch(() => {});
+
+  fetch(`${API_BASE}/api/sessions/run/${userId}`)
+    .then((r) => (r.ok ? r.json() : []))
+    .then((rows: any[]) => {
+      if (!rows.length) return;
+      const apiRuns: RunSession[] = rows.map((r) => ({
+        id: r.id,
+        date: r.date,
+        distance: r.distanceKm,
+        duration: r.durationSeconds,
+        avgPace: r.avgPace,
+        bestPace: r.bestPace,
+        calories: r.calories,
+        splits: (r.splitsJson as RunSplit[]) ?? [],
+      }));
+      setState((prev) => {
+        const apiIds = new Set(apiRuns.map((r) => r.id));
+        const localOnly = prev.runHistory.filter((r) => !apiIds.has(r.id));
+        const merged = [...apiRuns, ...localOnly].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+        return { ...prev, runHistory: merged };
+      });
+    })
+    .catch(() => {});
+
+  const today = todayStr();
+  fetch(`${API_BASE}/api/nutrition/${userId}/${today}`)
+    .then((r) => (r.ok ? r.json() : []))
+    .then((rows: any[]) => {
+      if (!rows.length) return;
+      const apiEntries: FoodEntry[] = rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        calories: r.calories,
+        protein: r.protein,
+        carbs: r.carbs,
+        fat: r.fat,
+        fiber: r.fiber ?? undefined,
+        sugar: r.sugar ?? undefined,
+        sodium: r.sodium ?? undefined,
+        meal: r.meal as FoodEntry["meal"],
+        time: new Date(r.loggedAt).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+      }));
+      setState((prev) => {
+        const existing = prev.calorieLog.find((d) => d.date === today);
+        const apiIds = new Set(apiEntries.map((e) => e.id));
+        const localEntries = (existing?.entries ?? []).filter((e) => !apiIds.has(e.id));
+        const merged = [...apiEntries, ...localEntries];
+        if (existing) {
+          return {
+            ...prev,
+            calorieLog: prev.calorieLog.map((d) =>
+              d.date === today ? { ...d, entries: merged } : d
+            ),
+          };
+        }
+        return {
+          ...prev,
+          calorieLog: [
+            ...prev.calorieLog,
+            { date: today, goal: prev.userProfile.calorieGoal, water: 0, entries: merged },
+          ],
+        };
+      });
+    })
+    .catch(() => {});
+
+  fetch(`${API_BASE}/api/leaderboard`)
+    .then((r) => (r.ok ? r.json() : []))
+    .then((rows: any[]) => {
+      const others = rows.filter((r) => r.id !== userId);
+      if (others.length < 2) return;
+      const friends: Friend[] = others.map((r: any, i: number) => ({
+        id: r.id,
+        name: r.name,
+        username: r.username,
+        initials: r.name
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase(),
+        color: AVATAR_COLORS[i % AVATAR_COLORS.length],
+        streak: r.streak,
+        weeklyWorkouts: r.totalWorkouts,
+        rank: i + 1,
+        totalPoints: r.totalPoints,
+        isOnline: false,
+      }));
+      setState((prev) => ({ ...prev, friends }));
+    })
+    .catch(() => {});
+}

@@ -1,0 +1,1 @@
+- [DB sync strategy](db-sync-strategy.md) — fire-and-forget API sync over AsyncStorage cache; device UUID as userId stored separately
