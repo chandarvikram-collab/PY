@@ -15,6 +15,14 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
+import { AuthProvider } from "@/lib/auth";
+
+import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
+import * as SecureStore from "expo-secure-store";
+
+const domain = process.env.EXPO_PUBLIC_DOMAIN;
+if (domain) setBaseUrl(`https://${domain}`);
+setAuthTokenGetter(() => SecureStore.getItemAsync("auth_session_token"));
 
 SplashScreen.preventAutoHideAsync();
 
@@ -89,13 +97,15 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <AppProvider>
-            <GestureHandlerRootView style={{ flex: 1 }}>
+          <AuthProvider>
+            <AppProvider>
+              <GestureHandlerRootView style={{ flex: 1 }}>
               <KeyboardProvider>
                 <RootLayoutNav />
               </KeyboardProvider>
             </GestureHandlerRootView>
           </AppProvider>
+          </AuthProvider>
         </QueryClientProvider>
       </ErrorBoundary>
     </SafeAreaProvider>

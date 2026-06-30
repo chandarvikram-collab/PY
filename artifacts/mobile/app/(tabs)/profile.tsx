@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { useAuth } from "@/lib/auth";
 
 function Avatar({ initials, color, size = 72 }: { initials: string; color: string; size?: number }) {
   return (
@@ -50,6 +51,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { state, updateProfile } = useApp();
   const { userProfile, workoutHistory, challenges } = state;
+  const { user: authUser, isAuthenticated, login, logout } = useAuth();
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
@@ -130,8 +132,14 @@ export default function ProfileScreen() {
         <View style={styles.heroTop}>
           <Avatar initials={userInitials} color={colors.primary} size={72} />
           <View style={{ flex: 1, marginLeft: 16 }}>
-            <Text style={[styles.heroName, { color: colors.foreground }]}>{userProfile.name}</Text>
-            <Text style={[styles.heroUsername, { color: colors.mutedForeground }]}>@{userProfile.username}</Text>
+            <Text style={[styles.heroName, { color: colors.foreground }]}>
+              {isAuthenticated && authUser?.firstName
+                ? `${authUser.firstName}${authUser.lastName ? ` ${authUser.lastName}` : ""}`
+                : userProfile.name}
+            </Text>
+            <Text style={[styles.heroUsername, { color: colors.mutedForeground }]}>
+              {isAuthenticated && authUser?.email ? authUser.email : `@${userProfile.username}`}
+            </Text>
             <View style={[styles.levelBadge, { backgroundColor: colors.primary + "22" }]}>
               <Text style={[styles.levelText, { color: colors.primary }]}>
                 {userProfile.level.charAt(0).toUpperCase() + userProfile.level.slice(1)}
@@ -293,7 +301,11 @@ export default function ProfileScreen() {
         <View style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <MenuRow icon="settings" label="Settings" onPress={() => {}} />
           <MenuRow icon="help-circle" label="Help & Support" onPress={() => {}} />
-          <MenuRow icon="log-out" label="Sign Out" onPress={() => {}} danger />
+          {isAuthenticated ? (
+            <MenuRow icon="log-out" label="Sign Out" onPress={logout} danger />
+          ) : (
+            <MenuRow icon="log-in" label="Log in with Replit" onPress={login} />
+          )}
         </View>
       </View>
 
