@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { eq, desc } from "drizzle-orm";
-import { db, users, insertUserSchema, updateUserSchema } from "@workspace/db";
+import { db, users, insertUserSchema, profilePatchSchema } from "@workspace/db";
 
 const router = Router();
 
@@ -33,7 +33,7 @@ router.get("/users/:id", async (req, res) => {
 });
 
 router.patch("/users/:id", async (req, res) => {
-  const parsed = updateUserSchema.safeParse(req.body);
+  const parsed = profilePatchSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues });
     return;

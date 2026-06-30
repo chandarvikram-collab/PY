@@ -29,6 +29,15 @@ export const updateUserSchema = createInsertSchema(users).omit({
   updatedAt: true,
 }).partial();
 
+export const profilePatchSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  streak: true,
+  totalWorkouts: true,
+  totalPoints: true,
+}).partial();
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpdateUser = z.infer<typeof updateUserSchema>;

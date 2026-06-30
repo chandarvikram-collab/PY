@@ -307,23 +307,24 @@ type PendingItem = {
 
 type ServerUserPartial = { totalPoints: number; totalWorkouts: number; streak: number };
 
-function addToQueue(item: PendingItem): void {
-  AsyncStorage.getItem(PENDING_KEY)
-    .then((raw) => {
+let _queueChain: Promise<void> = Promise.resolve();
+
+function _mutateQueue(fn: (q: PendingItem[]) => PendingItem[]): void {
+  _queueChain = _queueChain.then(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(PENDING_KEY);
       const queue: PendingItem[] = raw ? (JSON.parse(raw) as PendingItem[]) : [];
-      queue.push(item);
-      return AsyncStorage.setItem(PENDING_KEY, JSON.stringify(queue));
-    })
-    .catch(() => {});
+      await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(fn(queue)));
+    } catch {}
+  });
+}
+
+function addToQueue(item: PendingItem): void {
+  _mutateQueue((q) => [...q, item]);
 }
 
 function removeFromQueue(uid: string): void {
-  AsyncStorage.getItem(PENDING_KEY)
-    .then((raw) => {
-      const queue: PendingItem[] = raw ? (JSON.parse(raw) as PendingItem[]) : [];
-      return AsyncStorage.setItem(PENDING_KEY, JSON.stringify(queue.filter((q) => q.uid !== uid)));
-    })
-    .catch(() => {});
+  _mutateQueue((q) => q.filter((x) => x.uid !== uid));
 }
 
 function queueAndFire(method: "POST" | "PATCH" | "DELETE", path: string, body?: unknown): void {
@@ -1114,7 +1115,7 @@ function hydrateFromApi(
         volume: Math.round((r.volumeKg ?? 0) / 0.453592),
         exercises: r.exerciseCount ?? 0,
         exerciseLog: (r.exerciseLogJson as ExerciseLog[]) ?? [],
-      })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      }));
 
       const apiRuns: RunSession[] = runRows.map((r) => ({
         id: r.id,
@@ -1125,13 +1126,21 @@ function hydrateFromApi(
         bestPace: r.bestPace ?? "",
         calories: r.calories ?? 0,
         splits: (r.splitsJson as RunSplit[]) ?? [],
-      })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      setState((prev) => ({
-        ...prev,
-        workoutHistory: apiSessions,
-        runHistory: apiRuns,
       }));
+
+      setState((prev) => {
+        const sessionApiIds = new Set(apiSessions.map((s) => s.id));
+        const runApiIds = new Set(apiRuns.map((r) => r.id));
+        const pendingSessionsLocal = prev.workoutHistory.filter((s) => !sessionApiIds.has(s.id));
+        const pendingRunsLocal = prev.runHistory.filter((r) => !runApiIds.has(r.id));
+        const mergedSessions = [...apiSessions, ...pendingSessionsLocal].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+        );
+        const mergedRuns = [...apiRuns, ...pendingRunsLocal].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+        );
+        return { ...prev, workoutHistory: mergedSessions, runHistory: mergedRuns };
+      });
     })
     .catch(() => {});
 
@@ -1157,11 +1166,14 @@ function hydrateFromApi(
       }));
       setState((prev) => {
         const existing = prev.calorieLog.find((d) => d.date === today);
+        const apiIds = new Set(apiEntries.map((e) => e.id));
+        const pendingLocal = (existing?.entries ?? []).filter((e) => !apiIds.has(e.id));
+        const merged = [...apiEntries, ...pendingLocal];
         if (existing) {
           return {
             ...prev,
             calorieLog: prev.calorieLog.map((d) =>
-              d.date === today ? { ...d, entries: apiEntries } : d,
+              d.date === today ? { ...d, entries: merged } : d,
             ),
           };
         }
@@ -1169,7 +1181,7 @@ function hydrateFromApi(
           ...prev,
           calorieLog: [
             ...prev.calorieLog,
-            { date: today, goal: prev.userProfile.calorieGoal, water: 0, entries: apiEntries },
+            { date: today, goal: prev.userProfile.calorieGoal, water: 0, entries: merged },
           ],
         };
       });
