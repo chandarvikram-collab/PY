@@ -307,6 +307,20 @@ type PendingItem = {
 
 type ServerUserPartial = { totalPoints: number; totalWorkouts: number; streak: number };
 
+type ServerUser = {
+  id: string;
+  name: string;
+  username: string;
+  bio: string;
+  level: string;
+  joinDate: string;
+  calorieGoal: number;
+  proteinGoal: number;
+  totalPoints: number;
+  totalWorkouts: number;
+  streak: number;
+};
+
 let _queueChain: Promise<void> = Promise.resolve();
 
 function _mutateQueue(fn: (q: PendingItem[]) => PendingItem[]): void {
@@ -579,11 +593,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }),
         });
         if (r.ok) {
-          const user = (await r.json()) as ServerUserPartial;
+          const user = (await r.json()) as ServerUser;
           setState((prev) => ({
             ...prev,
             userProfile: {
               ...prev.userProfile,
+              name: user.name,
+              username: user.username,
+              bio: user.bio,
+              level: user.level as ExperienceLevel,
+              joinDate: user.joinDate,
+              calorieGoal: user.calorieGoal,
+              proteinGoal: user.proteinGoal,
               totalPoints: user.totalPoints,
               totalWorkouts: user.totalWorkouts,
               streak: user.streak,
@@ -599,11 +620,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         const r = await fetch(`${API_BASE}/api/users/${userId}`);
         if (r.ok) {
-          const user = (await r.json()) as ServerUserPartial;
+          const user = (await r.json()) as ServerUser;
           setState((prev) => ({
             ...prev,
             userProfile: {
               ...prev.userProfile,
+              name: user.name,
+              username: user.username,
+              bio: user.bio,
+              level: user.level as ExperienceLevel,
+              joinDate: user.joinDate,
+              calorieGoal: user.calorieGoal,
+              proteinGoal: user.proteinGoal,
               totalPoints: user.totalPoints,
               totalWorkouts: user.totalWorkouts,
               streak: user.streak,
@@ -618,12 +646,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     run().catch(() => {});
   }, []);
 
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
+
   useEffect(() => {
     let wasConnected: boolean | null = null;
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      const isNowConnected = state.isConnected === true;
+    const unsubscribe = NetInfo.addEventListener((netState) => {
+      const isNowConnected = netState.isConnected === true;
       if (wasConnected === false && isNowConnected) {
-        drainPendingQueue().catch(() => {});
+        const userId = apiUserIdRef.current;
+        const profile = stateRef.current.userProfile;
+        if (userId) {
+          fetch(`${API_BASE}/api/users`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: userId,
+              name: profile.name,
+              username: profile.username,
+              level: profile.level,
+              streak: 0,
+              totalWorkouts: 0,
+              totalPoints: 0,
+              calorieGoal: profile.calorieGoal,
+              proteinGoal: profile.proteinGoal,
+              joinDate: profile.joinDate,
+              bio: profile.bio,
+            }),
+          })
+            .catch(() => {})
+            .finally(() => { drainPendingQueue().catch(() => {}); });
+        } else {
+          drainPendingQueue().catch(() => {});
+        }
       }
       wasConnected = isNowConnected;
     });
@@ -659,8 +714,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (updates.calorieGoal !== undefined) patch.calorieGoal = updates.calorieGoal;
         if (updates.proteinGoal !== undefined) patch.proteinGoal = updates.proteinGoal;
         if (updates.bio !== undefined) patch.bio = updates.bio;
-        if (updates.streak !== undefined) patch.streak = updates.streak;
-        if (updates.totalPoints !== undefined) patch.totalPoints = updates.totalPoints;
         if (Object.keys(patch).length > 0) {
           queueAndFire("PATCH", `/users/${apiUserIdRef.current}`, patch);
         }
