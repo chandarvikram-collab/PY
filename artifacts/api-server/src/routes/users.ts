@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { eq, desc, sql } from "drizzle-orm";
-import { db, users, workoutSessions, insertUserSchema, profilePatchSchema } from "@workspace/db";
+import { db, users, workoutSessions, foodEntries, runSessions, insertUserSchema, profilePatchSchema } from "@workspace/db";
 
 const router = Router();
 
@@ -48,6 +48,54 @@ router.patch("/users/:id", async (req, res) => {
     return;
   }
   res.json(row);
+});
+
+router.post("/users/clerk-link", async (req, res) => {
+  const { clerkId, localUuid } = req.body as { clerkId?: string; localUuid?: string };
+  if (!clerkId) {
+    res.status(400).json({ error: "clerkId is required" });
+    return;
+  }
+
+  const existing = await db.select().from(users).where(eq(users.clerkId, clerkId)).limit(1);
+  if (existing.length > 0) {
+    const canonicalUser = existing[0];
+    if (localUuid && localUuid !== canonicalUser.id) {
+      const localUser = await db.select().from(users).where(eq(users.id, localUuid)).limit(1);
+      if (localUser.length > 0) {
+        await Promise.all([
+          db.update(workoutSessions).set({ userId: canonicalUser.id }).where(eq(workoutSessions.userId, localUuid)),
+          db.update(foodEntries).set({ userId: canonicalUser.id }).where(eq(foodEntries.userId, localUuid)),
+          db.update(runSessions).set({ userId: canonicalUser.id }).where(eq(runSessions.userId, localUuid)),
+        ]);
+        await db.delete(users).where(eq(users.id, localUuid));
+        req.log.info({ clerkId, localUuid, canonicalId: canonicalUser.id }, "migrated anonymous data to authenticated account");
+      }
+    }
+    res.json({ user: canonicalUser, migrated: localUuid !== canonicalUser.id });
+    return;
+  }
+
+  if (localUuid) {
+    const localUser = await db.select().from(users).where(eq(users.id, localUuid)).limit(1);
+    if (localUser.length > 0) {
+      const [updated] = await db
+        .update(users)
+        .set({ clerkId, updatedAt: new Date() })
+        .where(eq(users.id, localUuid))
+        .returning();
+      req.log.info({ clerkId, userId: updated.id }, "linked clerk id to existing user");
+      res.json({ user: updated, migrated: false });
+      return;
+    }
+  }
+
+  const [newUser] = await db
+    .insert(users)
+    .values({ clerkId, name: "Athlete", username: "athlete", joinDate: new Date().toISOString().slice(0, 10) })
+    .returning();
+  req.log.info({ clerkId, userId: newUser.id }, "created new user for clerk id");
+  res.status(201).json({ user: newUser, migrated: false });
 });
 
 router.get("/leaderboard", async (req, res) => {

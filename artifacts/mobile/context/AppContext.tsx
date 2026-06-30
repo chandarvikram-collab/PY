@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
+import { useAuth } from "@clerk/expo";
 import React, {
   createContext,
   useCallback,
@@ -544,10 +545,41 @@ const DEFAULT_STATE: AppState = {
 
 const AppContext = createContext<AppContextType | null>(null);
 
+const CLERK_LINKED_KEY = "ironpace_clerk_linked";
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
   const [loaded, setLoaded] = useState(false);
   const apiUserIdRef = useRef<string | null>(null);
+  const { userId: clerkUserId, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (!isSignedIn || !clerkUserId || !loaded) return;
+
+    (async () => {
+      try {
+        const alreadyLinked = await AsyncStorage.getItem(CLERK_LINKED_KEY);
+        if (alreadyLinked === clerkUserId) return;
+
+        const localUuid = apiUserIdRef.current;
+        const r = await fetch(`${API_BASE}/api/users/clerk-link`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clerkId: clerkUserId, localUuid }),
+        });
+        if (!r.ok) return;
+
+        const { user } = (await r.json()) as { user: { id: string } };
+        await AsyncStorage.setItem(CLERK_LINKED_KEY, clerkUserId);
+
+        if (user.id !== localUuid) {
+          apiUserIdRef.current = user.id;
+          await AsyncStorage.setItem(API_USER_ID_KEY, user.id);
+          hydrateFromApi(user.id, setState);
+        }
+      } catch {}
+    })();
+  }, [isSignedIn, clerkUserId, loaded]);
 
   useEffect(() => {
     const run = async () => {

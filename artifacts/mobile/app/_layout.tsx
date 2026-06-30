@@ -25,20 +25,24 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { ClerkProvider, ClerkLoaded } from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
+
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider, useApp } from "@/context/AppContext";
-import { AuthProvider, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 
-import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
-import * as SecureStore from "expo-secure-store";
+import { setBaseUrl } from "@workspace/api-client-react";
 
 const domain = process.env.EXPO_PUBLIC_DOMAIN;
 if (domain) setBaseUrl(`https://${domain}`);
-setAuthTokenGetter(() => SecureStore.getItemAsync("auth_session_token"));
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
+
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
+const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
 const AUTH_INITIALIZED_KEY = "ironpace_auth_initialized";
 
@@ -47,27 +51,18 @@ function slugify(name: string): string {
 }
 
 function NamePickerModal({ visible, onDone }: { visible: boolean; onDone: (name: string, username: string) => void }) {
-  const { user: authUser } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const suggestedName =
-    authUser?.firstName
-      ? `${authUser.firstName}${authUser.lastName ? ` ${authUser.lastName}` : ""}`
-      : "";
-
-  const [name, setName] = useState(suggestedName);
-  const [username, setUsername] = useState(slugify(suggestedName));
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const usernameRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (visible) {
-      const n = authUser?.firstName
-        ? `${authUser.firstName}${authUser.lastName ? ` ${authUser.lastName}` : ""}`
-        : "";
-      setName(n);
-      setUsername(slugify(n));
+      setName("");
+      setUsername("");
     }
-  }, [visible, authUser]);
+  }, [visible]);
 
   const handleNameChange = useCallback((v: string) => {
     setName(v);
@@ -184,6 +179,7 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen
         name="ai-plan"
         options={{ headerShown: false, presentation: "modal" }}
@@ -229,22 +225,28 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <AppProvider>
-              <FirstLoginHandler />
-              <GestureHandlerRootView style={{ flex: 1 }}>
-                <KeyboardProvider>
-                  <RootLayoutNav />
-                </KeyboardProvider>
-              </GestureHandlerRootView>
-            </AppProvider>
-          </AuthProvider>
-        </QueryClientProvider>
-      </ErrorBoundary>
-    </SafeAreaProvider>
+    <ClerkProvider
+      publishableKey={publishableKey}
+      tokenCache={tokenCache}
+      proxyUrl={proxyUrl}
+    >
+      <ClerkLoaded>
+        <SafeAreaProvider>
+          <ErrorBoundary>
+            <QueryClientProvider client={queryClient}>
+              <AppProvider>
+                <FirstLoginHandler />
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                  <KeyboardProvider>
+                    <RootLayoutNav />
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </AppProvider>
+            </QueryClientProvider>
+          </ErrorBoundary>
+        </SafeAreaProvider>
+      </ClerkLoaded>
+    </ClerkProvider>
   );
 }
 
