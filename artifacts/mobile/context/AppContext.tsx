@@ -326,6 +326,9 @@ type ServerUser = {
 };
 
 let _queueChain: Promise<void> = Promise.resolve();
+let _isDraining = false;
+let _drainTimer: ReturnType<typeof setTimeout> | null = null;
+const DRAIN_DEBOUNCE_MS = 500;
 
 function _mutateQueue(fn: (q: PendingItem[]) => PendingItem[]): void {
   _queueChain = _queueChain.then(async () => {
@@ -384,41 +387,63 @@ function fireSession(
 }
 
 async function drainPendingQueue(): Promise<void> {
-  let raw: string | null = null;
+  if (_isDraining) return;
+  _isDraining = true;
   try {
-    raw = await AsyncStorage.getItem(PENDING_KEY);
-  } catch {
-    return;
-  }
-  if (!raw) return;
+    let raw: string | null = null;
+    try {
+      raw = await AsyncStorage.getItem(PENDING_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
 
-  let queue: PendingItem[] = [];
-  try {
-    queue = JSON.parse(raw) as PendingItem[];
-  } catch {
-    return;
-  }
-  if (!queue.length) return;
+    let queue: PendingItem[] = [];
+    try {
+      queue = JSON.parse(raw) as PendingItem[];
+    } catch {
+      return;
+    }
+    if (!queue.length) return;
 
-  const succeeded: string[] = [];
-  await Promise.allSettled(
-    queue.map(async (item) => {
-      try {
-        const headers: Record<string, string> = item.body ? { "Content-Type": "application/json" } : {};
-        const r = await fetch(`${API_BASE}/api${item.path}`, {
-          method: item.method,
-          headers,
-          body: item.body,
-        });
-        if (r.ok) succeeded.push(item.uid);
-      } catch {}
-    }),
-  );
+    const seen = new Map<string, PendingItem>();
+    for (const item of queue) {
+      seen.set(item.uid, item);
+    }
+    queue = Array.from(seen.values());
 
-  if (succeeded.length) {
-    const remaining = queue.filter((q) => !succeeded.includes(q.uid));
-    await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(remaining)).catch(() => {});
+    const succeeded: string[] = [];
+    await Promise.allSettled(
+      queue.map(async (item) => {
+        try {
+          const headers: Record<string, string> = item.body ? { "Content-Type": "application/json" } : {};
+          const r = await fetch(`${API_BASE}/api${item.path}`, {
+            method: item.method,
+            headers,
+            body: item.body,
+          });
+          if (r.ok) succeeded.push(item.uid);
+        } catch {}
+      }),
+    );
+
+    if (succeeded.length) {
+      const remaining = queue.filter((q) => !succeeded.includes(q.uid));
+      await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(remaining)).catch(() => {});
+    }
+  } finally {
+    _isDraining = false;
   }
+}
+
+function scheduleDrain(): void {
+  if (_drainTimer !== null) {
+    clearTimeout(_drainTimer);
+  }
+  _drainTimer = setTimeout(() => {
+    _drainTimer = null;
+    drainPendingQueue().catch(() => {});
+  }, DRAIN_DEBOUNCE_MS);
 }
 
 const SEED_FRIENDS: Friend[] = [
@@ -710,9 +735,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             }),
           })
             .catch(() => {})
-            .finally(() => { drainPendingQueue().catch(() => {}); });
+            .finally(() => { scheduleDrain(); });
         } else {
-          drainPendingQueue().catch(() => {});
+          scheduleDrain();
         }
       }
       wasConnected = isNowConnected;
@@ -724,7 +749,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let lastAppState = RNAppState.currentState;
     const subscription = RNAppState.addEventListener("change", (nextAppState) => {
       if (lastAppState !== "active" && nextAppState === "active") {
-        drainPendingQueue().catch(() => {});
+        scheduleDrain();
       }
       lastAppState = nextAppState;
     });
