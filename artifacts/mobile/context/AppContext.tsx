@@ -257,6 +257,7 @@ type AppState = {
 
 type AppContextType = {
   state: AppState;
+  resetForAuthUser: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => void;
   saveAIPlan: (plan: AIPlan) => void;
   addWorkoutSession: (session: WorkoutSession) => void;
@@ -701,6 +702,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => {});
   }, []);
 
+  const resetForAuthUser = useCallback(async (): Promise<void> => {
+    const today = todayStr();
+    const clean: AppState = {
+      userProfile: {
+        ...DEFAULT_PROFILE,
+        id: state.userProfile.id,
+        goals: state.userProfile.goals,
+        equipment: state.userProfile.equipment,
+        calorieGoal: state.userProfile.calorieGoal,
+        proteinGoal: state.userProfile.proteinGoal,
+        hasCompletedOnboarding: state.userProfile.hasCompletedOnboarding,
+        aiPlan: state.userProfile.aiPlan,
+        streak: 0,
+        totalWorkouts: 0,
+        totalPoints: 0,
+        joinDate: today,
+      },
+      routines: [],
+      workoutHistory: [],
+      mealTemplates: [],
+      calorieLog: [{ date: today, goal: state.userProfile.calorieGoal ?? 2000, water: 0, entries: [] }],
+      friends: [],
+      challenges: [],
+      posts: [],
+      chatThreads: [],
+      runHistory: [],
+    };
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+    setState(clean);
+  }, [state.userProfile]);
+
   const update = useCallback(
     (fn: (prev: AppState) => AppState) => {
       setState((prev) => {
@@ -1123,6 +1155,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider
       value={{
         state,
+        resetForAuthUser,
         updateProfile,
         saveAIPlan,
         addWorkoutSession,

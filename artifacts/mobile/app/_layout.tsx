@@ -8,14 +8,15 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AppProvider } from "@/context/AppContext";
-import { AuthProvider } from "@/lib/auth";
+import { AppProvider, useApp } from "@/context/AppContext";
+import { AuthProvider, useAuth } from "@/lib/auth";
 
 import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 import * as SecureStore from "expo-secure-store";
@@ -27,6 +28,33 @@ setAuthTokenGetter(() => SecureStore.getItemAsync("auth_session_token"));
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
+
+const AUTH_INITIALIZED_KEY = "ironpace_auth_initialized";
+
+function FirstLoginHandler() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const { resetForAuthUser } = useApp();
+  const prevAuthRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const prev = prevAuthRef.current;
+    prevAuthRef.current = isAuthenticated;
+
+    if (!isAuthenticated || prev === true) return;
+
+    (async () => {
+      const done = await AsyncStorage.getItem(AUTH_INITIALIZED_KEY);
+      if (!done) {
+        await resetForAuthUser();
+        await AsyncStorage.setItem(AUTH_INITIALIZED_KEY, "1");
+      }
+    })();
+  }, [isAuthenticated, isLoading, resetForAuthUser]);
+
+  return null;
+}
 
 function RootLayoutNav() {
   return (
@@ -99,12 +127,13 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <AppProvider>
+              <FirstLoginHandler />
               <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
-                <RootLayoutNav />
-              </KeyboardProvider>
-            </GestureHandlerRootView>
-          </AppProvider>
+                <KeyboardProvider>
+                  <RootLayoutNav />
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </AppProvider>
           </AuthProvider>
         </QueryClientProvider>
       </ErrorBoundary>
