@@ -1,9 +1,7 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import {
-  Dimensions,
   Platform,
   Pressable,
   ScrollView,
@@ -16,29 +14,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 
-const { width: SCREEN_W } = Dimensions.get("window");
-
-function fmtDuration(secs: number) {
-  const m = Math.floor(secs / 60);
-  const h = Math.floor(m / 60);
-  return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
-}
-
 function Avatar({ initials, color, size = 40 }: { initials: string; color: string; size?: number }) {
   return (
     <View style={[styles.avatarBase, { width: size, height: size, borderRadius: size / 2, backgroundColor: color + "33", borderColor: color + "66" }]}>
       <Text style={[styles.avatarText, { color, fontSize: size * 0.35 }]}>{initials}</Text>
-    </View>
-  );
-}
-
-function StatPill({ label, value, icon }: { label: string; value: string; icon: string }) {
-  const colors = useColors();
-  return (
-    <View style={[styles.statPill, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Feather name={icon as any} size={14} color={colors.primary} />
-      <Text style={[styles.statValue, { color: colors.foreground }]}>{value}</Text>
-      <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
     </View>
   );
 }
@@ -148,22 +127,6 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Quick Start */}
-      <Pressable
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          router.push("/session");
-        }}
-        style={({ pressed }) => [
-          styles.quickStart,
-          { backgroundColor: colors.primary, opacity: pressed ? 0.88 : 1 },
-        ]}
-      >
-        <Feather name="play-circle" size={22} color="#fff" />
-        <Text style={styles.quickStartText}>Start a Workout</Text>
-        <Feather name="chevron-right" size={20} color="rgba(255,255,255,0.7)" />
-      </Pressable>
-
       {/* Active Challenge */}
       {activeChallenge && (
         <View style={[styles.section]}>
@@ -269,32 +232,6 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Recent Activity */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Recent Workouts</Text>
-        {workoutHistory.slice(0, 3).map((session) => (
-          <View
-            key={session.id}
-            style={[styles.activityRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <View style={[styles.activityIcon, { backgroundColor: colors.primary + "22" }]}>
-              <Feather name="activity" size={16} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={[styles.activityName, { color: colors.foreground }]}>{session.name}</Text>
-              <Text style={[styles.activityMeta, { color: colors.mutedForeground }]}>
-                {session.date} · {fmtDuration(session.duration)}
-              </Text>
-            </View>
-            <View style={{ alignItems: "flex-end" }}>
-              <Text style={[styles.activityVol, { color: colors.foreground }]}>
-                {Math.round(session.volume / 1000).toFixed(1)}k
-              </Text>
-              <Text style={[styles.activityVolLabel, { color: colors.mutedForeground }]}>lbs</Text>
-            </View>
-          </View>
-        ))}
-      </View>
     </ScrollView>
   );
 }
@@ -316,15 +253,6 @@ const styles = StyleSheet.create({
   statSub: { fontSize: 11, fontFamily: "Inter_500Medium", marginBottom: 6 },
   progressBar: { height: 4, borderRadius: 2, overflow: "hidden" },
   progressFill: { height: "100%", borderRadius: 2 },
-  quickStart: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    borderRadius: 16,
-    gap: 10,
-    marginBottom: 20,
-  },
-  quickStartText: { flex: 1, fontSize: 16, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 0.3 },
   section: { marginBottom: 22 },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   sectionTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
@@ -343,15 +271,6 @@ const styles = StyleSheet.create({
   leaderSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
   points: { fontSize: 15, fontFamily: "Inter_700Bold" },
   pointsLabel: { fontSize: 10, fontFamily: "Inter_500Medium" },
-  activityRow: { flexDirection: "row", alignItems: "center", borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 8 },
-  activityIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  activityName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  activityMeta: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  activityVol: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  activityVolLabel: { fontSize: 10, fontFamily: "Inter_500Medium" },
   avatarBase: { alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
   avatarText: { fontFamily: "Inter_700Bold" },
-  statPill: {},
-  statValue: {},
-  statLabel: {},
 });
