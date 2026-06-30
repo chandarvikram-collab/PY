@@ -285,6 +285,7 @@ const ME_ID = "me";
 const STORAGE_KEY = "ironpace_v1";
 const API_USER_ID_KEY = "ironpace_api_user_id";
 const PENDING_KEY = "ironpace_pending_sync";
+const SEED_FOOD_IDS = new Set(["fe1", "fe2", "fe3"]);
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -1265,7 +1266,9 @@ function hydrateFromApi(
       setState((prev) => {
         const existing = prev.calorieLog.find((d) => d.date === today);
         const apiIds = new Set(apiEntries.map((e) => e.id));
-        const pendingLocal = (existing?.entries ?? []).filter((e) => !apiIds.has(e.id));
+        const pendingLocal = (existing?.entries ?? []).filter(
+          (e) => !apiIds.has(e.id) && !SEED_FOOD_IDS.has(e.id),
+        );
         const merged = [...apiEntries, ...pendingLocal];
         if (existing) {
           return {
