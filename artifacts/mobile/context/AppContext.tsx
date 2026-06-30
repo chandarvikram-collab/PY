@@ -8,6 +8,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { AppState as RNAppState } from "react-native";
 
 export type ExperienceLevel = "beginner" | "intermediate" | "advanced";
 
@@ -683,6 +684,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       wasConnected = isNowConnected;
     });
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    let lastAppState = RNAppState.currentState;
+    const subscription = RNAppState.addEventListener("change", (nextAppState) => {
+      if (lastAppState !== "active" && nextAppState === "active") {
+        drainPendingQueue().catch(() => {});
+      }
+      lastAppState = nextAppState;
+    });
+    return () => subscription.remove();
   }, []);
 
   const persist = useCallback((next: AppState) => {
