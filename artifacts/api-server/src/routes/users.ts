@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { eq, desc } from "drizzle-orm";
-import { db, users, insertUserSchema, profilePatchSchema } from "@workspace/db";
+import { eq, desc, sql } from "drizzle-orm";
+import { db, users, workoutSessions, insertUserSchema, profilePatchSchema } from "@workspace/db";
 
 const router = Router();
 
@@ -51,6 +51,20 @@ router.patch("/users/:id", async (req, res) => {
 });
 
 router.get("/leaderboard", async (req, res) => {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const cutoff = sevenDaysAgo.toISOString().slice(0, 10);
+
+  const weeklySubquery = db
+    .select({
+      userId: workoutSessions.userId,
+      weeklyWorkouts: sql<number>`cast(count(*) as int)`.as("weekly_workouts"),
+    })
+    .from(workoutSessions)
+    .where(sql`${workoutSessions.date} >= ${cutoff}`)
+    .groupBy(workoutSessions.userId)
+    .as("weekly");
+
   const rows = await db
     .select({
       id: users.id,
@@ -58,9 +72,10 @@ router.get("/leaderboard", async (req, res) => {
       username: users.username,
       totalPoints: users.totalPoints,
       streak: users.streak,
-      totalWorkouts: users.totalWorkouts,
+      weeklyWorkouts: sql<number>`coalesce(${weeklySubquery.weeklyWorkouts}, 0)`,
     })
     .from(users)
+    .leftJoin(weeklySubquery, eq(users.id, weeklySubquery.userId))
     .orderBy(desc(users.totalPoints))
     .limit(20);
   res.json(rows);

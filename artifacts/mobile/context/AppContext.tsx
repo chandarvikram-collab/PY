@@ -1300,7 +1300,7 @@ function hydrateFromApi(
         initials: r.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
         color: AVATAR_COLORS[i % AVATAR_COLORS.length],
         streak: r.streak,
-        weeklyWorkouts: r.totalWorkouts,
+        weeklyWorkouts: r.weeklyWorkouts ?? 0,
         rank: i + 1,
         totalPoints: r.totalPoints,
         isOnline: false,
