@@ -125,10 +125,16 @@ function createApp() {
   app.use(express.json());
   // Provide a req.log stub so route handlers that call req.log.info() don't crash
   app.use((req: Request, _res: Response, next: NextFunction) => {
-    (req as Request & { log: unknown }).log = {
+    (req as any).log = {
       info: () => {},
       error: () => {},
       warn: () => {},
+      fatal: () => {},
+      debug: () => {},
+      trace: () => {},
+      silent: () => {},
+      level: "info",
+      child: () => ({}) as any,
     };
     next();
   });

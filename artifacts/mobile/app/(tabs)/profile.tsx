@@ -3,7 +3,9 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  FlatList,
   Image,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -58,7 +60,9 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { state, updateProfile } = useApp();
-  const { userProfile, workoutHistory, challenges } = state;
+  const { userProfile, workoutHistory, challenges, friends, followingIds } = state;
+  const followingList = friends.filter((f) => followingIds.includes(f.id));
+  const [showFriends, setShowFriends] = useState(false);
   const { isAuthenticated, signOut } = useAuth();
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -129,6 +133,7 @@ export default function ProfileScreen() {
   ];
 
   return (
+    <>
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingTop: topPad + 12, paddingBottom: insets.bottom + 90 }}
@@ -298,7 +303,7 @@ export default function ProfileScreen() {
           <MenuRow icon="message-circle" label="Messages" onPress={() => router.push("/chat")} value={`${state.chatThreads.reduce((s, t) => s + t.unread, 0) || ""}`} />
           <MenuRow icon="zap" label="Calorie Tracker" onPress={() => router.push("/calories")} />
           <MenuRow icon="bar-chart-2" label="Progress & Analytics" onPress={() => {}} />
-          <MenuRow icon="users" label="Friends" onPress={() => {}} value={`${state.friends.length}`} />
+          <MenuRow icon="users" label="Following" onPress={() => setShowFriends(true)} value={`${followingList.length}`} />
           <MenuRow icon="trophy" label="Achievements" onPress={() => {}} value={`${completedChallenges} completed`} />
         </View>
       </View>
@@ -317,6 +322,53 @@ export default function ProfileScreen() {
 
       <Text style={[styles.version, { color: colors.mutedForeground }]}>IronPace v1.0</Text>
     </ScrollView>
+
+    {/* Friends / Following Sheet */}
+    <Modal visible={showFriends} animationType="slide" transparent onRequestClose={() => setShowFriends(false)}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+        <View style={[styles.friendsSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 8 }]}>
+          <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+          <View style={styles.sheetHeaderRow}>
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Following</Text>
+            <Pressable onPress={() => setShowFriends(false)} hitSlop={10}>
+              <Feather name="x" size={20} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+
+          {followingList.length === 0 ? (
+            <View style={{ alignItems: "center", paddingVertical: 50, gap: 12 }}>
+              <Feather name="users" size={36} color={colors.mutedForeground} />
+              <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 14 }}>
+                You're not following anyone yet
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={followingList}
+              keyExtractor={(f) => f.id}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 12 }}
+              ItemSeparatorComponent={() => <View style={[styles.friendDivider, { backgroundColor: colors.border }]} />}
+              renderItem={({ item }) => (
+                <View style={styles.friendRow}>
+                  <View style={[styles.friendAvatar, { backgroundColor: item.color + "33", borderColor: item.color }]}>
+                    <Text style={{ color: item.color, fontSize: 14, fontFamily: "Inter_700Bold" }}>{item.initials}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: colors.foreground }}>{item.name}</Text>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground }}>@{item.username}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end", gap: 2 }}>
+                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: colors.foreground }}>🔥 {item.streak}d</Text>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground }}>{item.weeklyWorkouts} workouts</Text>
+                  </View>
+                </View>
+              )}
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -362,4 +414,11 @@ const styles = StyleSheet.create({
   menuLabel: { fontSize: 15, fontFamily: "Inter_500Medium" },
   menuValue: { fontSize: 13, fontFamily: "Inter_400Regular", marginRight: 4 },
   version: { textAlign: "center", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 8, marginBottom: 20 },
+  friendsSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, maxHeight: "80%" },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 14 },
+  sheetHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, marginBottom: 12 },
+  sheetTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  friendRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
+  friendAvatar: { width: 46, height: 46, borderRadius: 23, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  friendDivider: { height: 1 },
 });

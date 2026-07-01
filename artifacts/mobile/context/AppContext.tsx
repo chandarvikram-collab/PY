@@ -250,6 +250,18 @@ export type AppNotification = {
   actorImageUrl?: string | null;
 };
 
+export type DiscoverUser = {
+  id: string;
+  name: string;
+  username: string;
+  imageUrl?: string | null;
+  level: string;
+  streak: number;
+  totalWorkouts: number;
+  totalPoints: number;
+  sharedLevel: boolean;
+};
+
 export type ChatMessage = {
   id: string;
   senderId: string;
@@ -315,6 +327,7 @@ type AppContextType = {
   addComment: (postId: string, content: string) => Promise<Comment | null>;
   refreshNotifications: () => Promise<void>;
   markNotificationsRead: () => Promise<void>;
+  fetchDiscover: (userLevel: string) => Promise<DiscoverUser[]>;
 };
 
 const ME_ID = "me";
@@ -1185,6 +1198,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
+  const fetchDiscover = useCallback(async (userLevel: string): Promise<DiscoverUser[]> => {
+    try {
+      const r = await socialFetch(`/users/discover?level=${encodeURIComponent(userLevel)}`);
+      if (!r.ok) return [];
+      return (await r.json()) as DiscoverUser[];
+    } catch {
+      return [];
+    }
+  }, []);
+
   const addPost = useCallback(
     (post: Post) => {
       update((prev) => ({ ...prev, posts: [post, ...prev.posts] }));
@@ -1516,6 +1539,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addComment,
         refreshNotifications,
         markNotificationsRead,
+        fetchDiscover,
       }}
     >
       {children}

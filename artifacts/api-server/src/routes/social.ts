@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   db,
@@ -339,8 +339,58 @@ router.get("/follows", requireAuth, async (req, res) => {
   res.json(following);
 });
 
+router.get("/follows/following", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+
+  const following = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      imageUrl: users.imageUrl,
+      level: users.level,
+      streak: users.streak,
+      totalWorkouts: users.totalWorkouts,
+      totalPoints: users.totalPoints,
+    })
+    .from(follows)
+    .innerJoin(users, eq(follows.followingId, users.id))
+    .where(eq(follows.followerId, userId));
+
+  res.json(following);
+});
+
+router.get("/follows/followers", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+
+  const followers = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      imageUrl: users.imageUrl,
+      level: users.level,
+      streak: users.streak,
+      totalWorkouts: users.totalWorkouts,
+      totalPoints: users.totalPoints,
+    })
+    .from(follows)
+    .innerJoin(users, eq(follows.followerId, users.id))
+    .where(eq(follows.followingId, userId));
+
+  res.json(followers);
+});
+
 router.get("/users/discover", requireAuth, async (req, res) => {
   const userId = req.localUserId!;
+  const userLevel = (req.query.level as string) || "";
+
+  const followingRows = await db
+    .select({ id: follows.followingId })
+    .from(follows)
+    .where(eq(follows.followerId, userId));
+
+  const excludeIds = [userId, ...followingRows.map((f) => f.id)];
 
   const discovered = await db
     .select({
@@ -348,16 +398,29 @@ router.get("/users/discover", requireAuth, async (req, res) => {
       name: users.name,
       username: users.username,
       imageUrl: users.imageUrl,
+      level: users.level,
       streak: users.streak,
       totalWorkouts: users.totalWorkouts,
       totalPoints: users.totalPoints,
     })
     .from(users)
-    .where(sql`${users.id} != ${userId}::uuid`)
+    .where(notInArray(users.id, excludeIds))
     .orderBy(desc(users.totalPoints))
     .limit(50);
 
-  res.json(discovered);
+  const sorted = [...discovered].sort((a, b) => {
+    const aMatch = userLevel && a.level === userLevel ? 1 : 0;
+    const bMatch = userLevel && b.level === userLevel ? 1 : 0;
+    if (bMatch !== aMatch) return bMatch - aMatch;
+    return b.totalPoints - a.totalPoints;
+  });
+
+  res.json(
+    sorted.map((u) => ({
+      ...u,
+      sharedLevel: userLevel ? u.level === userLevel : false,
+    })),
+  );
 });
 
 // ─── Notifications ──────────────────────────────────────────────────────────

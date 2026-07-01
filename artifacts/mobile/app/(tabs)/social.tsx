@@ -24,7 +24,7 @@ import { useAuth } from "@clerk/expo";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import type { AppNotification, Comment, Post } from "@/context/AppContext";
+import type { AppNotification, Comment, DiscoverUser, Post } from "@/context/AppContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -307,6 +307,49 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ─── Discover User Card ───────────────────────────────────────────────────────
+
+function DiscoverUserCard({ user, isFollowing, onFollow, onUnfollow }: {
+  user: DiscoverUser;
+  isFollowing: boolean;
+  onFollow: () => void;
+  onUnfollow: () => void;
+}) {
+  const colors = useColors();
+  const userColor = colorFromId(user.id);
+  const userInitials = user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+  const levelColor = user.sharedLevel ? colors.primary : colors.mutedForeground;
+
+  return (
+    <View style={[styles.discoverCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Avatar initials={userInitials} color={userColor} size={46} />
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: colors.foreground }}>{user.name}</Text>
+        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground }}>@{user.username}</Text>
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 5, alignItems: "center", flexWrap: "wrap" }}>
+          <View style={[styles.levelBadge, { backgroundColor: levelColor + "22", borderColor: levelColor + "55" }]}>
+            <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: levelColor }}>
+              {user.level.charAt(0).toUpperCase() + user.level.slice(1)}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
+            🔥 {user.streak}d
+          </Text>
+          <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
+            💪 {user.totalWorkouts}
+          </Text>
+        </View>
+      </View>
+      <FollowButton
+        userId={user.id}
+        isFollowing={isFollowing}
+        onFollow={onFollow}
+        onUnfollow={onUnfollow}
+      />
+    </View>
+  );
+}
+
 // ─── Post Card ────────────────────────────────────────────────────────────────
 
 function PostCard({ post, onLike, onOpenComments }: { post: Post; onLike: () => void; onOpenComments: () => void }) {
@@ -429,7 +472,7 @@ export default function SocialScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
-  const { state, likePost, addPost, followUser, unfollowUser, refreshNotifications } = useApp();
+  const { state, likePost, addPost, followUser, unfollowUser, refreshNotifications, fetchDiscover } = useApp();
   const { posts, friends, followingIds, userProfile, workoutHistory, notifications } = state;
   const [tab, setTab] = useState<"feed" | "explore">("feed");
   const [composing, setComposing] = useState(false);
@@ -442,6 +485,9 @@ export default function SocialScreen() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [activeCommentPost, setActiveCommentPost] = useState<Post | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [discoverUsers, setDiscoverUsers] = useState<DiscoverUser[]>([]);
+  const [discoverQuery, setDiscoverQuery] = useState("");
+  const [discoverLoading, setDiscoverLoading] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -452,6 +498,14 @@ export default function SocialScreen() {
       refreshNotifications().catch(() => {});
     }, [refreshNotifications]),
   );
+
+  useEffect(() => {
+    if (tab !== "explore") return;
+    setDiscoverLoading(true);
+    fetchDiscover(userProfile.level)
+      .then(setDiscoverUsers)
+      .finally(() => setDiscoverLoading(false));
+  }, [tab, userProfile.level]);
 
   function openComposer() {
     setComposerStep("pick-type");
@@ -578,16 +632,15 @@ export default function SocialScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
-  const EXPLORE_REELS = [
-    { id: "e1", title: "5 min ab finisher", views: "42k", initials: "TF", color: "#8b5cf6" },
-    { id: "e2", title: "Deadlift form check", views: "18k", initials: "LP", color: "#3b82f6" },
-    { id: "e3", title: "Pre-workout routine", views: "31k", initials: "KM", color: "#22c55e" },
-    { id: "e4", title: "PR attempt 405 lbs", views: "88k", initials: "RJ", color: "#f59e0b" },
-    { id: "e5", title: "Morning mobility", views: "25k", initials: "AN", color: "#06b6d4" },
-    { id: "e6", title: "Arm day superset", views: "14k", initials: "DS", color: "#ef4444" },
-  ];
-
   const recentWorkouts = workoutHistory.slice(0, 5);
+
+  const filteredDiscover = discoverQuery.trim()
+    ? discoverUsers.filter(
+        (u) =>
+          u.name.toLowerCase().includes(discoverQuery.toLowerCase()) ||
+          u.username.toLowerCase().includes(discoverQuery.toLowerCase()),
+      )
+    : discoverUsers;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -684,38 +737,56 @@ export default function SocialScreen() {
           )}
         />
       ) : (
-        <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 14, paddingBottom: insets.bottom + 90 }}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 14 }]}>
-            Short-Form Content
-          </Text>
-          <View style={styles.reelsGrid}>
-            {EXPLORE_REELS.map((reel) => (
-              <Pressable
-                key={reel.id}
-                style={({ pressed }) => [
-                  styles.reelCard,
-                  { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.8 : 1 },
-                ]}
-              >
-                <View style={[styles.reelThumb, { backgroundColor: reel.color + "22" }]}>
-                  <View style={[styles.reelAvatarMini, { backgroundColor: reel.color + "44" }]}>
-                    <Text style={[styles.reelInitials, { color: reel.color }]}>{reel.initials}</Text>
-                  </View>
-                  <View style={[styles.playBadge, { backgroundColor: "rgba(0,0,0,0.6)" }]}>
-                    <Feather name="play" size={12} color="#fff" />
-                  </View>
-                </View>
-                <View style={{ padding: 8 }}>
-                  <Text style={[styles.reelTitle, { color: colors.foreground }]} numberOfLines={2}>{reel.title}</Text>
-                  <Text style={[styles.reelViews, { color: colors.mutedForeground }]}>{reel.views} views</Text>
-                </View>
-              </Pressable>
-            ))}
+        <View style={{ flex: 1 }}>
+          {/* Search bar */}
+          <View style={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 6 }}>
+            <View style={[styles.searchBar, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Feather name="search" size={16} color={colors.mutedForeground} />
+              <TextInput
+                style={{ flex: 1, color: colors.foreground, fontFamily: "Inter_400Regular", fontSize: 14, marginLeft: 8 }}
+                value={discoverQuery}
+                onChangeText={setDiscoverQuery}
+                placeholder="Search athletes..."
+                placeholderTextColor={colors.mutedForeground}
+              />
+              {discoverQuery.length > 0 && (
+                <Pressable onPress={() => setDiscoverQuery("")} hitSlop={8}>
+                  <Feather name="x" size={14} color={colors.mutedForeground} />
+                </Pressable>
+              )}
+            </View>
           </View>
-        </ScrollView>
+
+          {discoverLoading ? (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : (
+            <FlatList
+              data={filteredDiscover}
+              keyExtractor={(u) => u.id}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: insets.bottom + 90 }}
+              ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={() => (
+                <View style={{ alignItems: "center", paddingTop: 60, gap: 12 }}>
+                  <Feather name="users" size={40} color={colors.mutedForeground} />
+                  <Text style={{ color: colors.mutedForeground, fontSize: 15, fontFamily: "Inter_500Medium" }}>
+                    {discoverQuery ? "No athletes found" : "No suggestions yet"}
+                  </Text>
+                </View>
+              )}
+              renderItem={({ item }) => (
+                <DiscoverUserCard
+                  user={item}
+                  isFollowing={followingIds.includes(item.id)}
+                  onFollow={() => followUser(item.id)}
+                  onUnfollow={() => unfollowUser(item.id)}
+                />
+              )}
+            />
+          )}
+        </View>
       )}
 
       {/* Compose Flow */}
@@ -934,14 +1005,9 @@ const styles = StyleSheet.create({
   actionBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   actionCount: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   sectionTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
-  reelsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  reelCard: { width: "47%", borderRadius: 14, borderWidth: 1, overflow: "hidden" },
-  reelThumb: { height: 120, alignItems: "center", justifyContent: "center" },
-  reelAvatarMini: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  reelInitials: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  playBadge: { position: "absolute", bottom: 8, right: 8, width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
-  reelTitle: { fontSize: 12, fontFamily: "Inter_600SemiBold", lineHeight: 16 },
-  reelViews: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 3 },
+  searchBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, borderWidth: 1 },
+  discoverCard: { flexDirection: "row", alignItems: "center", padding: 14, borderRadius: 16, borderWidth: 1 },
+  levelBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
   composeSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
   composeHeaderRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
   composeName: { flex: 1, fontSize: 15, fontFamily: "Inter_600SemiBold" },
