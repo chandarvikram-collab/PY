@@ -6,3 +6,4 @@ export * from "./run_sessions";
 export * from "./food_entries";
 export * from "./auth";
 export * from "./social";
+export * from "./routines";

@@ -7,6 +7,7 @@ import sessionsRouter from "./sessions";
 import nutritionRouter from "./nutrition";
 import socialRouter from "./social";
 import storageRouter from "./storage";
+import routinesRouter from "./routines";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(sessionsRouter);
 router.use(nutritionRouter);
 router.use(socialRouter);
 router.use(storageRouter);
+router.use(routinesRouter);
 
 export default router;

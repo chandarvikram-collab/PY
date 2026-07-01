@@ -1,3 +1,4 @@
+import { useAuth } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -11,10 +12,46 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { z } from "zod/v4";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import type { AIPlan, AIPlanExercise, AIPlanWeek, ExperienceLevel, Exercise, Routine } from "@/context/AppContext";
+
+const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : "";
+
+const routineExercisePayloadSchema = z.object({
+  name: z.string(),
+  sets: z.number().int().positive(),
+  reps: z.string(),
+  restSeconds: z.number().int().nonnegative(),
+});
+
+const aiRoutinePayloadSchema = z.object({
+  name: z.string().min(1),
+  exercises: z.array(routineExercisePayloadSchema).min(1),
+});
+
+type AIRoutinePayload = z.infer<typeof aiRoutinePayloadSchema>;
+
+function workoutToPayload(workoutName: string, exercises: AIPlanExercise[]): AIRoutinePayload | null {
+  const result = aiRoutinePayloadSchema.safeParse({
+    name: workoutName,
+    exercises: exercises.map((ex) => ({
+      name: ex.name,
+      sets: ex.sets,
+      reps: ex.reps,
+      restSeconds: ex.rest,
+    })),
+  });
+  if (!result.success) {
+    console.warn("[ai-plan] payload validation failed:", result.error.issues);
+    return null;
+  }
+  return result.data;
+}
 
 function parseReps(reps: string): number {
   const cleaned = reps.trim().toLowerCase();
@@ -37,9 +74,9 @@ function inferCategory(name: string): string {
   return "General";
 }
 
-function aiExercisesToRoutine(workoutName: string, exercises: AIPlanExercise[], planEquipment: string[]): Routine {
+function payloadToLocalRoutine(payload: AIRoutinePayload, planEquipment: string[]): Routine {
   const primaryEquipment = planEquipment[0] ?? "Bodyweight";
-  const converted: Exercise[] = exercises.map((ex, i) => ({
+  const converted: Exercise[] = payload.exercises.map((ex, i) => ({
     id: `ai-${Date.now()}-${i}`,
     name: ex.name,
     category: inferCategory(ex.name),
@@ -47,11 +84,11 @@ function aiExercisesToRoutine(workoutName: string, exercises: AIPlanExercise[], 
     sets: ex.sets,
     reps: parseReps(ex.reps),
     weight: 0,
-    rest: ex.rest,
+    rest: ex.restSeconds,
   }));
   return {
     id: `ai-routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    name: workoutName,
+    name: payload.name,
     exercises: converted,
   };
 }
@@ -199,6 +236,7 @@ export default function AIPlanScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { state, saveAIPlan, addRoutine } = useApp();
+  const { getToken } = useAuth();
   const { userProfile } = state;
 
   const [step, setStep] = useState(0);
@@ -235,24 +273,60 @@ export default function AIPlanScreen() {
     }, 1800);
   }
 
-  function handleSaveToRoutines() {
+  async function handleSaveToRoutines() {
     if (!plan || saveState === "saving" || saveState === "saved") return;
+    const week = plan.weeks[viewingWeek];
+    if (!week || week.workouts.length === 0) {
+      setSaveState("error");
+      return;
+    }
+
+    const payloads = week.workouts
+      .filter((w) => w.exercises && w.exercises.length > 0)
+      .map((w) => workoutToPayload(w.name, w.exercises));
+
+    if (payloads.some((p) => p === null)) {
+      console.warn("[ai-plan] one or more workout payloads failed Zod validation — aborting save");
+      setSaveState("error");
+      return;
+    }
+
+    setSaveState("saving");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     try {
-      setSaveState("saving");
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const week = plan.weeks[viewingWeek];
-      if (!week || week.workouts.length === 0) {
+      const token = await getToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+
+      const results = await Promise.all(
+        (payloads as AIRoutinePayload[]).map((payload) =>
+          fetch(`${API_BASE}/api/routines`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ userId: userProfile.id, routine: payload }),
+          })
+        )
+      );
+
+      const allOk = results.every((r) => r.ok || r.status === 201);
+      if (!allOk) {
+        const statuses = results.map((r) => r.status).join(", ");
+        console.warn(`[ai-plan] some routine saves failed (statuses: ${statuses})`);
         setSaveState("error");
         return;
       }
-      for (const workout of week.workouts) {
-        if (!workout.exercises || workout.exercises.length === 0) continue;
-        const routine = aiExercisesToRoutine(workout.name, workout.exercises, plan.equipment);
-        addRoutine(routine);
+
+      for (const payload of payloads as AIRoutinePayload[]) {
+        addRoutine(payloadToLocalRoutine(payload, plan.equipment));
       }
+
       setSaveState("saved");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
+    } catch (err) {
+      console.warn("[ai-plan] routine save error:", err);
       setSaveState("error");
     }
   }
