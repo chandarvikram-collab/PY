@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { eq, desc, sql } from "drizzle-orm";
 import { db, users, workoutSessions, foodEntries, runSessions, insertUserSchema, profilePatchSchema } from "@workspace/db";
+import { requireAuth, requireOwner } from "../middlewares/requireAuth";
 
 const router = Router();
 
@@ -24,7 +25,8 @@ router.post("/users", async (req, res) => {
 });
 
 router.get("/users/:id", async (req, res) => {
-  const [row] = await db.select().from(users).where(eq(users.id, req.params.id)).limit(1);
+  const id = req.params.id as string;
+  const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   if (!row) {
     res.status(404).json({ error: "User not found" });
     return;
@@ -32,7 +34,8 @@ router.get("/users/:id", async (req, res) => {
   res.json(row);
 });
 
-router.patch("/users/:id", async (req, res) => {
+router.patch("/users/:id", requireAuth, requireOwner((req) => req.params.id), async (req, res) => {
+  const id = req.params.id as string;
   const parsed = profilePatchSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues });
@@ -41,7 +44,7 @@ router.patch("/users/:id", async (req, res) => {
   const [row] = await db
     .update(users)
     .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(users.id, req.params.id))
+    .where(eq(users.id, id))
     .returning();
   if (!row) {
     res.status(404).json({ error: "User not found" });

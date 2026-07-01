@@ -8,6 +8,7 @@ import {
   insertWorkoutSessionSchema,
   insertRunSessionSchema,
 } from "@workspace/db";
+import { requireAuth, requireOwner } from "../middlewares/requireAuth";
 
 const router = Router();
 
@@ -45,7 +46,7 @@ async function calculateStreak(userId: string): Promise<number> {
   return streak;
 }
 
-router.post("/sessions/workout", async (req, res) => {
+router.post("/sessions/workout", requireAuth, requireOwner((req) => req.body?.userId), async (req, res) => {
   const parsed = insertWorkoutSessionSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues });
@@ -81,17 +82,18 @@ router.post("/sessions/workout", async (req, res) => {
   res.status(201).json({ session: rows[0], user: updatedUser });
 });
 
-router.get("/sessions/workout/:userId", async (req, res) => {
+router.get("/sessions/workout/:userId", requireAuth, requireOwner((req) => req.params.userId), async (req, res) => {
+  const userId = req.params.userId as string;
   const rows = await db
     .select()
     .from(workoutSessions)
-    .where(eq(workoutSessions.userId, req.params.userId))
+    .where(eq(workoutSessions.userId, userId))
     .orderBy(desc(workoutSessions.createdAt))
     .limit(100);
   res.json(rows);
 });
 
-router.post("/sessions/run", async (req, res) => {
+router.post("/sessions/run", requireAuth, requireOwner((req) => req.body?.userId), async (req, res) => {
   const parsed = insertRunSessionSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues });
@@ -126,28 +128,30 @@ router.post("/sessions/run", async (req, res) => {
   res.status(201).json({ session: rows[0], user: updatedUser });
 });
 
-router.get("/sessions/run/:userId", async (req, res) => {
+router.get("/sessions/run/:userId", requireAuth, requireOwner((req) => req.params.userId), async (req, res) => {
+  const userId = req.params.userId as string;
   const rows = await db
     .select()
     .from(runSessions)
-    .where(eq(runSessions.userId, req.params.userId))
+    .where(eq(runSessions.userId, userId))
     .orderBy(desc(runSessions.createdAt))
     .limit(100);
   res.json(rows);
 });
 
-router.get("/sessions/:userId", async (req, res) => {
+router.get("/sessions/:userId", requireAuth, requireOwner((req) => req.params.userId), async (req, res) => {
+  const userId = req.params.userId as string;
   const [workouts, runs] = await Promise.all([
     db
       .select()
       .from(workoutSessions)
-      .where(eq(workoutSessions.userId, req.params.userId))
+      .where(eq(workoutSessions.userId, userId))
       .orderBy(desc(workoutSessions.createdAt))
       .limit(100),
     db
       .select()
       .from(runSessions)
-      .where(eq(runSessions.userId, req.params.userId))
+      .where(eq(runSessions.userId, userId))
       .orderBy(desc(runSessions.createdAt))
       .limit(100),
   ]);
