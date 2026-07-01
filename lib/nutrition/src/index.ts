@@ -108,3 +108,56 @@ export function calculateNutrition(profile: NutritionProfile): NutritionResult {
     fatG,
   };
 }
+
+/* ── MET-based run calorie calculator ───────────────────────────────────── */
+
+const MET_TABLE = [
+  { paceMinPerKm: 10.0, met: 4.0 },   // 10:00/km walking
+  { paceMinPerKm: 7.5, met: 6.0 },   // 7:30/km slow jog
+  { paceMinPerKm: 6.0, met: 8.0 },   // 6:00/km easy run
+  { paceMinPerKm: 5.0, met: 10.0 },  // 5:00/km moderate run
+  { paceMinPerKm: 4.0, met: 12.0 },  // 4:00/km fast run
+  { paceMinPerKm: 3.0, met: 14.0 },  // 3:00/km sprint
+];
+
+function parsePace(avgPace: string): number {
+  const [minStr, secStr] = avgPace.split(":");
+  const mins = parseInt(minStr || "0", 10);
+  const secs = parseInt(secStr || "0", 10);
+  return mins + secs / 60;
+}
+
+function lookupMET(paceMinPerKm: number): number {
+  const table = MET_TABLE;
+  if (paceMinPerKm >= table[0].paceMinPerKm) return table[0].met;
+  if (paceMinPerKm <= table[table.length - 1].paceMinPerKm) return table[table.length - 1].met;
+  for (let i = 0; i < table.length - 1; i++) {
+    const a = table[i];
+    const b = table[i + 1];
+    if (paceMinPerKm <= a.paceMinPerKm && paceMinPerKm >= b.paceMinPerKm) {
+      const t = (a.paceMinPerKm - paceMinPerKm) / (a.paceMinPerKm - b.paceMinPerKm);
+      return a.met + t * (b.met - a.met);
+    }
+  }
+  return table[0].met;
+}
+
+/**
+ * Calculate calories burned during a run using the MET formula.
+ *
+ * calories = (MET × 3.5 × weight_kg / 200) × duration_minutes
+ *
+ * MET is linearly interpolated from a pace lookup table.
+ */
+export function calcRunCalories(
+  distanceKm: number,
+  durationSeconds: number,
+  weightKg: number,
+  avgPace: string,
+): number {
+  const paceMinPerKm = parsePace(avgPace);
+  const met = lookupMET(paceMinPerKm);
+  const durationMinutes = durationSeconds / 60;
+  const calories = (met * 3.5 * weightKg / 200) * durationMinutes;
+  return Math.round(calories);
+}

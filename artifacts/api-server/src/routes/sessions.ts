@@ -139,6 +139,45 @@ router.get("/sessions/run/:userId", requireAuth, requireOwner((req) => req.param
   res.json(rows);
 });
 
+router.get("/sessions/workout/:id", async (req, res) => {
+  const id = req.params.id as string;
+  const [row] = await db.select().from(workoutSessions).where(eq(workoutSessions.id, id)).limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Workout session not found" });
+    return;
+  }
+  res.json(row);
+});
+
+router.get("/sessions/run/:id", async (req, res) => {
+  const id = req.params.id as string;
+  const [row] = await db.select().from(runSessions).where(eq(runSessions.id, id)).limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Run session not found" });
+    return;
+  }
+  res.json(row);
+});
+
+router.patch("/sessions/workout/:id", requireAuth, async (req, res) => {
+  const id = req.params.id as string;
+  const { exerciseLogJson } = req.body as { exerciseLogJson?: unknown };
+  if (!exerciseLogJson) {
+    res.status(400).json({ error: "exerciseLogJson is required" });
+    return;
+  }
+  const [row] = await db
+    .update(workoutSessions)
+    .set({ exerciseLogJson })
+    .where(eq(workoutSessions.id, id))
+    .returning();
+  if (!row) {
+    res.status(404).json({ error: "Workout session not found" });
+    return;
+  }
+  res.json(row);
+});
+
 router.get("/sessions/:userId", requireAuth, requireOwner((req) => req.params.userId), async (req, res) => {
   const userId = req.params.userId as string;
   const [workouts, runs] = await Promise.all([
@@ -157,8 +196,8 @@ router.get("/sessions/:userId", requireAuth, requireOwner((req) => req.params.us
   ]);
 
   const combined = [
-    ...workouts.map((w) => ({ type: "workout" as const, ...w })),
-    ...runs.map((r) => ({ type: "run" as const, ...r })),
+    ...workouts.map((w) => ({ ...w })),
+    ...runs.map((r) => ({ ...r })),
   ]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 100);

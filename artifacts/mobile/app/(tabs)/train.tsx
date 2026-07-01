@@ -278,7 +278,14 @@ export default function TrainScreen() {
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Workout History</Text>
             {workoutHistory.map((session) => (
-              <View key={session.id} style={[styles.historyRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Pressable
+                key={session.id}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push({ pathname: "/workout-detail", params: { id: session.id } });
+                }}
+                style={({ pressed }) => [styles.historyRow, { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.8 : 1 }]}
+              >
                 <View style={[styles.historyIcon, { backgroundColor: colors.primary + "22" }]}>
                   <Feather name="activity" size={16} color={colors.primary} />
                 </View>
@@ -294,7 +301,7 @@ export default function TrainScreen() {
                   </Text>
                   <Text style={[styles.historyExCount, { color: colors.mutedForeground }]}>{session.exercises} exercises</Text>
                 </View>
-              </View>
+              </Pressable>
             ))}
           </View>
         </>
@@ -367,7 +374,16 @@ export default function TrainScreen() {
             <View style={[styles.section, { marginTop: 4 }]}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Run History</Text>
               {runHistory.map((run) => (
-                <RunHistoryCard key={run.id} run={run} isPR={prRun?.id === run.id} />
+                <Pressable
+                  key={run.id}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push({ pathname: "/run-detail", params: { id: run.id } });
+                  }}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
+                >
+                  <RunHistoryCard run={run} isPR={prRun?.id === run.id} />
+                </Pressable>
               ))}
             </View>
           )}

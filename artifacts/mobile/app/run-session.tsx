@@ -250,6 +250,7 @@ export default function RunSessionScreen() {
 
     const session: RunSession = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+      type: "run",
       date: new Date().toISOString().split("T")[0],
       distance: Math.round(dist * 100) / 100,
       duration: dur,

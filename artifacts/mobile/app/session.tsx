@@ -158,11 +158,12 @@ export default function SessionScreen() {
         category: e.exercise.category,
         sets: e.sets
           .filter((s) => s.done)
-          .map((s): SetLog => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),
+          .map((s): SetLog => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0, restSeconds: 90 })),
       }));
 
     const session: WorkoutSession = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+      type: "lift",
       name: routine?.name ?? "Quick Workout",
       date: new Date().toISOString().split("T")[0],
       duration: elapsed,

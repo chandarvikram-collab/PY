@@ -7,6 +7,7 @@ import { users } from "./users";
 export const workoutSessions = pgTable("workout_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: text("type").notNull().default("lift"),
   name: text("name").notNull(),
   date: text("date").notNull(),
   durationSeconds: integer("duration_seconds").notNull().default(0),
