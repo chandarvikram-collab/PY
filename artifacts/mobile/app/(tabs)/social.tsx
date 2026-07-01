@@ -257,16 +257,19 @@ export default function SocialScreen() {
   }
 
   async function uploadMedia(media: { uri: string; contentType: string; name: string }): Promise<string> {
-    const fileResponse = await fetch(media.uri);
-    const blob = await fileResponse.blob();
-    const { uploadURL, objectPath } = await requestUploadUrl(media.name, blob.size, media.contentType);
-    const put = await fetch(uploadURL, {
-      method: "PUT",
-      body: blob,
-      headers: { "Content-Type": media.contentType },
+    const token = await getToken();
+    const formData = new FormData();
+    formData.append("file", { uri: media.uri, type: media.contentType, name: media.name } as unknown as Blob);
+    const r = await fetch(`${API_BASE}/api/posts/upload`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
     });
-    if (!put.ok) throw new Error("Upload failed");
-    return `${API_BASE}/api/storage${objectPath}`;
+    if (!r.ok) throw new Error("Upload failed");
+    const json = await r.json() as { url: string };
+    return json.url;
   }
 
   async function submitPost() {

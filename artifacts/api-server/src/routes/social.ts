@@ -26,14 +26,14 @@ function extractObjectPath(url: string): string | null {
   }
 }
 
-async function setPublicAcl(url: string, ownerId: string): Promise<void> {
+async function setPublicAcl(url: string, ownerId: string, log: { error: (obj: object, msg: string) => void }): Promise<void> {
   const objectPath = extractObjectPath(url);
-  if (!objectPath) return;
-  try {
-    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-    await setObjectAclPolicy(objectFile, { owner: ownerId, visibility: "public" });
-  } catch {
+  if (!objectPath) {
+    log.error({ url }, "setPublicAcl: could not extract objectPath from URL");
+    throw new Error(`Cannot derive object path from media URL: ${url}`);
   }
+  const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+  await setObjectAclPolicy(objectFile, { owner: ownerId, visibility: "public" });
 }
 
 const router = Router();
@@ -142,8 +142,23 @@ router.post("/posts", requireAuth, async (req, res) => {
     .where(eq(posts.id, row.id))
     .limit(1);
 
-  if (mediaUrl) await setPublicAcl(mediaUrl, userId);
-  if (thumbnailUrl) await setPublicAcl(thumbnailUrl, userId);
+  if (mediaUrl) {
+    try {
+      await setPublicAcl(mediaUrl, userId, req.log);
+    } catch (err) {
+      req.log.error({ err, mediaUrl }, "Failed to set public ACL on media; rolling back post");
+      await db.delete(posts).where(eq(posts.id, row.id));
+      res.status(500).json({ error: "Failed to make media accessible. Please retry." });
+      return;
+    }
+  }
+  if (thumbnailUrl) {
+    try {
+      await setPublicAcl(thumbnailUrl, userId, req.log);
+    } catch (err) {
+      req.log.error({ err, thumbnailUrl }, "Failed to set public ACL on thumbnail; continuing without thumbnail");
+    }
+  }
 
   req.log.info({ postId: row.id, userId }, "post created");
   res.status(201).json({ ...withUser, likeCount: 0, isLiked: false });
