@@ -70,7 +70,7 @@ export default function ProfileScreen() {
   const { state, updateProfile, fetchFollowing } = useApp();
   const { userProfile, workoutHistory, challenges } = state;
   const [showFriends, setShowFriends] = useState(false);
-  const [followingList, setFollowingList] = useState<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; rank: number }>>([]);
+  const [followingList, setFollowingList] = useState<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
   const { isAuthenticated, signOut } = useAuth();
 
@@ -386,7 +386,7 @@ export default function ProfileScreen() {
                     </View>
                     <View style={{ alignItems: "flex-end", gap: 2 }}>
                       <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: colors.foreground }}>🔥 {item.streak}d</Text>
-                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground }}>{item.totalWorkouts} workouts</Text>
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground }}>{item.weeklyWorkouts} this week</Text>
                     </View>
                   </View>
                 );

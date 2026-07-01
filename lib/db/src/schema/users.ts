@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { integer, pgTable, real, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -16,6 +17,8 @@ export const users = pgTable("users", {
   proteinGoal: integer("protein_goal").notNull().default(150),
   joinDate: text("join_date").notNull().default(""),
   bio: text("bio").notNull().default(""),
+  goals: text("goals").array().notNull().default(sql`ARRAY[]::text[]`),
+  equipment: text("equipment").array().notNull().default(sql`ARRAY[]::text[]`),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

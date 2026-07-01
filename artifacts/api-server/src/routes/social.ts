@@ -11,6 +11,7 @@ import {
   notifications,
   challenges,
   challengeParticipants,
+  workoutSessions,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -342,6 +343,20 @@ router.get("/follows", requireAuth, async (req, res) => {
 router.get("/follows/following", requireAuth, async (req, res) => {
   const userId = req.localUserId!;
 
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const cutoff = sevenDaysAgo.toISOString().slice(0, 10);
+
+  const weeklySubquery = db
+    .select({
+      userId: workoutSessions.userId,
+      weeklyWorkouts: sql<number>`cast(count(*) as int)`.as("weekly_workouts"),
+    })
+    .from(workoutSessions)
+    .where(sql`${workoutSessions.date} >= ${cutoff}`)
+    .groupBy(workoutSessions.userId)
+    .as("weekly");
+
   const following = await db
     .select({
       id: users.id,
@@ -352,9 +367,11 @@ router.get("/follows/following", requireAuth, async (req, res) => {
       streak: users.streak,
       totalWorkouts: users.totalWorkouts,
       totalPoints: users.totalPoints,
+      weeklyWorkouts: sql<number>`coalesce(${weeklySubquery.weeklyWorkouts}, 0)`,
     })
     .from(follows)
     .innerJoin(users, eq(follows.followingId, users.id))
+    .leftJoin(weeklySubquery, eq(users.id, weeklySubquery.userId))
     .where(eq(follows.followerId, userId));
 
   res.json(following);
@@ -384,6 +401,12 @@ router.get("/follows/followers", requireAuth, async (req, res) => {
 router.get("/discover", requireAuth, async (req, res) => {
   const userId = req.localUserId!;
   const userLevel = (req.query.level as string) || "";
+  const userGoals: string[] = req.query.goals
+    ? String(req.query.goals).split(",").filter(Boolean)
+    : [];
+  const userEquipment: string[] = req.query.equipment
+    ? String(req.query.equipment).split(",").filter(Boolean)
+    : [];
 
   const followingRows = await db
     .select({ id: follows.followingId })
@@ -402,23 +425,44 @@ router.get("/discover", requireAuth, async (req, res) => {
       streak: users.streak,
       totalWorkouts: users.totalWorkouts,
       totalPoints: users.totalPoints,
+      goals: users.goals,
+      equipment: users.equipment,
     })
     .from(users)
     .where(notInArray(users.id, excludeIds))
     .orderBy(desc(users.totalPoints))
     .limit(50);
 
-  const sorted = [...discovered].sort((a, b) => {
-    const aMatch = userLevel && a.level === userLevel ? 1 : 0;
-    const bMatch = userLevel && b.level === userLevel ? 1 : 0;
-    if (bMatch !== aMatch) return bMatch - aMatch;
-    return b.totalPoints - a.totalPoints;
+  const goalSet = new Set(userGoals);
+  const equipSet = new Set(userEquipment);
+
+  const scored = discovered.map((u) => {
+    const sharedGoals = (u.goals ?? []).filter((g) => goalSet.has(g));
+    const sharedEquipment = (u.equipment ?? []).filter((e) => equipSet.has(e));
+    const sharedLevel = userLevel ? u.level === userLevel : false;
+    const score =
+      sharedGoals.length * 3 +
+      sharedEquipment.length * 2 +
+      (sharedLevel ? 2 : 0) +
+      Math.log1p(u.totalPoints) * 0.1;
+    return { u, sharedGoals, sharedEquipment, sharedLevel, score };
   });
 
+  scored.sort((a, b) => b.score - a.score);
+
   res.json(
-    sorted.map((u) => ({
-      ...u,
-      sharedLevel: userLevel ? u.level === userLevel : false,
+    scored.map(({ u, sharedGoals, sharedEquipment, sharedLevel }) => ({
+      id: u.id,
+      name: u.name,
+      username: u.username,
+      imageUrl: u.imageUrl,
+      level: u.level,
+      streak: u.streak,
+      totalWorkouts: u.totalWorkouts,
+      totalPoints: u.totalPoints,
+      sharedLevel,
+      sharedGoals,
+      sharedEquipment,
     })),
   );
 });

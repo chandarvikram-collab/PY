@@ -338,17 +338,29 @@ function DiscoverUserCard({ user, isFollowing, onFollow, onUnfollow }: {
       <View style={{ flex: 1, marginLeft: 12 }}>
         <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: colors.foreground }}>{user.name}</Text>
         <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground }}>@{user.username}</Text>
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 5, alignItems: "center", flexWrap: "wrap" }}>
+        <View style={{ flexDirection: "row", gap: 6, marginTop: 5, alignItems: "center", flexWrap: "wrap" }}>
           <View style={[styles.levelBadge, { backgroundColor: levelColor + "22", borderColor: levelColor + "55" }]}>
             <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: levelColor }}>
               {user.sharedLevel ? "✓ " : ""}{user.level.charAt(0).toUpperCase() + user.level.slice(1)}
             </Text>
           </View>
+          {user.sharedGoals.map((g) => (
+            <View key={g} style={[styles.levelBadge, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "55" }]}>
+              <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: colors.primary }}>🎯 {g}</Text>
+            </View>
+          ))}
+          {user.sharedEquipment.map((e) => (
+            <View key={e} style={[styles.levelBadge, { backgroundColor: colors.primary + "11", borderColor: colors.primary + "44" }]}>
+              <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: colors.primary }}>🏋️ {e}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
           <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
-            🔥 {user.streak}d
+            🔥 {user.streak}d streak
           </Text>
           <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
-            💪 {user.totalWorkouts}
+            💪 {user.totalWorkouts} workouts
           </Text>
         </View>
       </View>
@@ -514,10 +526,10 @@ export default function SocialScreen() {
   useEffect(() => {
     if (tab !== "explore") return;
     setDiscoverLoading(true);
-    fetchDiscover(userProfile.level)
+    fetchDiscover(userProfile.level, userProfile.goals, userProfile.equipment)
       .then(setDiscoverUsers)
       .finally(() => setDiscoverLoading(false));
-  }, [tab, userProfile.level]);
+  }, [tab, userProfile.level, userProfile.goals, userProfile.equipment]);
 
   function openComposer() {
     setComposerStep("pick-type");

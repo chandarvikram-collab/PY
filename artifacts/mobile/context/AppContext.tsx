@@ -260,6 +260,8 @@ export type DiscoverUser = {
   totalWorkouts: number;
   totalPoints: number;
   sharedLevel: boolean;
+  sharedGoals: string[];
+  sharedEquipment: string[];
 };
 
 export type ChatMessage = {
@@ -327,8 +329,8 @@ type AppContextType = {
   addComment: (postId: string, content: string) => Promise<Comment | null>;
   refreshNotifications: () => Promise<void>;
   markNotificationsRead: () => Promise<void>;
-  fetchDiscover: (userLevel: string) => Promise<DiscoverUser[]>;
-  fetchFollowing: () => Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; rank: number }>>;
+  fetchDiscover: (userLevel: string, goals: string[], equipment: string[]) => Promise<DiscoverUser[]>;
+  fetchFollowing: () => Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>>;
 };
 
 const ME_ID = "me";
@@ -1199,9 +1201,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  const fetchDiscover = useCallback(async (userLevel: string): Promise<DiscoverUser[]> => {
+  const fetchDiscover = useCallback(async (userLevel: string, goals: string[], equipment: string[]): Promise<DiscoverUser[]> => {
     try {
-      const r = await socialFetch(`/discover?level=${encodeURIComponent(userLevel)}`);
+      const params = new URLSearchParams({ level: userLevel });
+      if (goals.length) params.set("goals", goals.join(","));
+      if (equipment.length) params.set("equipment", equipment.join(","));
+      const r = await socialFetch(`/discover?${params.toString()}`);
       if (!r.ok) return [];
       return (await r.json()) as DiscoverUser[];
     } catch {
@@ -1209,11 +1214,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const fetchFollowing = useCallback(async (): Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; rank: number }>> => {
+  const fetchFollowing = useCallback(async (): Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>> => {
     try {
       const r = await socialFetch("/follows/following");
       if (!r.ok) return [];
-      const rows = (await r.json()) as Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number }>;
+      const rows = (await r.json()) as Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number }>;
       return rows
         .sort((a, b) => b.totalPoints - a.totalPoints)
         .map((u, i) => ({ ...u, rank: i + 1 }));
