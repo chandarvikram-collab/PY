@@ -1,6 +1,8 @@
-import { useSignIn } from "@clerk/expo";
+import { useSignIn, useSSO } from "@clerk/expo";
 import { Link, useRouter } from "expo-router";
-import React, { useState } from "react";
+import * as AuthSession from "expo-auth-session";
+import * as WebBrowser from "expo-web-browser";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,8 +15,23 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+WebBrowser.maybeCompleteAuthSession();
+
+function useWarmUpBrowser() {
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    void WebBrowser.warmUpAsync();
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
+  }, []);
+}
+
 export default function SignInScreen() {
+  useWarmUpBrowser();
+
   const { signIn, fetchStatus } = useSignIn();
+  const { startSSOFlow } = useSSO();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -23,8 +40,34 @@ export default function SignInScreen() {
   const [error, setError] = useState("");
   const [verifyCode, setVerifyCode] = useState("");
   const [needsVerify, setNeedsVerify] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const isLoading = fetchStatus === "fetching";
+
+  const handleGoogleSignIn = useCallback(async () => {
+    setError("");
+    setGoogleLoading(true);
+    try {
+      const { createdSessionId, setActive } = await startSSOFlow({
+        strategy: "oauth_google",
+        redirectUrl: AuthSession.makeRedirectUri(),
+      });
+      if (createdSessionId) {
+        setActive!({
+          session: createdSessionId,
+          navigate: async ({ decorateUrl }) => {
+            const url = decorateUrl("/");
+            if (url.startsWith("http")) return;
+            router.replace("/");
+          },
+        });
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "Google sign-in failed");
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [startSSOFlow, router]);
 
   const handleSignIn = async () => {
     if (!email || !password) return;
@@ -127,6 +170,27 @@ export default function SignInScreen() {
         <Text style={styles.title}>Welcome back</Text>
         <Text style={styles.subtitle}>Sign in to sync your data across devices</Text>
 
+        <Pressable
+          style={[styles.googleBtn, googleLoading && styles.btnDisabled]}
+          onPress={handleGoogleSignIn}
+          disabled={googleLoading}
+        >
+          {googleLoading ? (
+            <ActivityIndicator color="#f9fafb" />
+          ) : (
+            <>
+              <Text style={styles.googleIcon}>G</Text>
+              <Text style={styles.googleBtnText}>Continue with Google</Text>
+            </>
+          )}
+        </Pressable>
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
         <Text style={styles.label}>Email</Text>
         <TextInput
           style={styles.input}
@@ -211,6 +275,43 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 32,
     lineHeight: 22,
+  },
+  googleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#18181b",
+    borderWidth: 1,
+    borderColor: "#27272a",
+    borderRadius: 12,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  googleIcon: {
+    color: "#f9fafb",
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+  },
+  googleBtnText: {
+    color: "#f9fafb",
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 20,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#27272a",
+  },
+  dividerText: {
+    color: "#6b7280",
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
   },
   label: {
     color: "#d1d5db",
