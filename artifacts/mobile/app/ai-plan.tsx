@@ -16,7 +16,7 @@ import { z } from "zod/v4";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import type { AIPlan, AIRoutinePayload, AIPlanWeek, ExperienceLevel, Exercise, Routine } from "@/context/AppContext";
+import type { AIPlan, AIRoutinePayload, ExperienceLevel, Exercise, Routine } from "@/context/AppContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -317,26 +317,28 @@ export default function AIPlanScreen() {
             <Feather name="refresh-cw" size={14} color={colors.mutedForeground} />
             <Text style={[styles.regenText, { color: colors.mutedForeground }]}>Redo</Text>
           </Pressable>
-          <Pressable
-            onPress={handleSaveToRoutines}
-            disabled={saveState === "saved" || saveState === "saving"}
-            style={[
-              styles.regenBtn,
-              {
-                borderColor: saveState === "saved" ? "#22c55e" : saveState === "error" ? "#ef4444" : colors.primary,
-                backgroundColor: saveState === "saved" ? "#22c55e22" : saveState === "error" ? "#ef444422" : colors.primary + "18",
-              },
-            ]}
-          >
-            <Feather
-              name={saveState === "saved" ? "check" : saveState === "error" ? "alert-circle" : "bookmark"}
-              size={14}
-              color={saveState === "saved" ? "#22c55e" : saveState === "error" ? "#ef4444" : colors.primary}
-            />
-            <Text style={[styles.regenText, { color: saveState === "saved" ? "#22c55e" : saveState === "error" ? "#ef4444" : colors.primary }]}>
-              {saveState === "saved" ? "Saved!" : saveState === "error" ? "Error" : "Save"}
-            </Text>
-          </Pressable>
+          {validateAiRoutinePayload(plan.ai_routine_payload) !== null && (
+            <Pressable
+              onPress={handleSaveToRoutines}
+              disabled={saveState === "saved" || saveState === "saving"}
+              style={[
+                styles.regenBtn,
+                {
+                  borderColor: saveState === "saved" ? "#22c55e" : saveState === "error" ? "#ef4444" : colors.primary,
+                  backgroundColor: saveState === "saved" ? "#22c55e22" : saveState === "error" ? "#ef444422" : colors.primary + "18",
+                },
+              ]}
+            >
+              <Feather
+                name={saveState === "saved" ? "check" : saveState === "error" ? "alert-circle" : "bookmark"}
+                size={14}
+                color={saveState === "saved" ? "#22c55e" : saveState === "error" ? "#ef4444" : colors.primary}
+              />
+              <Text style={[styles.regenText, { color: saveState === "saved" ? "#22c55e" : saveState === "error" ? "#ef4444" : colors.primary }]}>
+                {saveState === "saved" ? "Saved!" : saveState === "error" ? "Error" : "Save"}
+              </Text>
+            </Pressable>
+          )}
         </View>
 
         <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 16, paddingBottom: insets.bottom + 40 }} showsVerticalScrollIndicator={false}>
@@ -349,7 +351,7 @@ export default function AIPlanScreen() {
             <View style={[styles.saveBanner, { backgroundColor: "#22c55e18", borderColor: "#22c55e44" }]}>
               <Feather name="check-circle" size={15} color="#22c55e" />
               <Text style={[styles.saveBannerText, { color: "#22c55e" }]}>
-                {plan.weeks[viewingWeek].workouts.length} routines saved to your Training tab
+                Routine saved to your Training tab
               </Text>
             </View>
           )}
@@ -357,7 +359,7 @@ export default function AIPlanScreen() {
             <View style={[styles.saveBanner, { backgroundColor: "#ef444418", borderColor: "#ef444444" }]}>
               <Feather name="alert-circle" size={15} color="#ef4444" />
               <Text style={[styles.saveBannerText, { color: "#ef4444" }]}>
-                Could not save routines — plan may be incomplete
+                Could not save routine — please try again
               </Text>
             </View>
           )}
