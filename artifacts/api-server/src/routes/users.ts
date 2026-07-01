@@ -170,9 +170,10 @@ router.post("/users/:id/nutrition-goals", requireAuth, requireOwner((req) => req
     activityLevel: data.activityLevel,
     primaryGoal: data.primaryGoal,
     weeklyPaceLbs: data.weeklyPaceLbs ?? null,
+    age: data.age,
     updatedAt: new Date(),
   };
-  if (data.equipment !== undefined && data.equipment.length > 0) {
+  if (data.equipment !== undefined) {
     updateData.equipment = data.equipment;
   }
 

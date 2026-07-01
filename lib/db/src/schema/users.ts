@@ -23,6 +23,7 @@ export const users = pgTable("users", {
   activityLevel: text("activity_level"),
   weeklyPaceLbs: integer("weekly_pace_lbs"),
   primaryGoal: text("primary_goal"),
+  age: integer("age"),
   joinDate: text("join_date").notNull().default(""),
   bio: text("bio").notNull().default(""),
   goals: text("goals").array().notNull().default(sql`ARRAY[]::text[]`),

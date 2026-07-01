@@ -94,7 +94,7 @@ export default function OnboardingScreen() {
       ? userProfile.biologicalSex
       : undefined
   );
-  const [age, setAge] = useState(userProfile.biologicalSex ? "" : "25");
+  const [age, setAge] = useState(userProfile.age ? String(userProfile.age) : "25");
   const [heightCm, setHeightCm] = useState(userProfile.heightCm ? String(userProfile.heightCm) : "");
   const [weightKg, setWeightKg] = useState(userProfile.weightKg ? String(userProfile.weightKg) : "");
   const [activity, setActivity] = useState<string | undefined>(userProfile.activityLevel ?? undefined);
@@ -171,6 +171,7 @@ export default function OnboardingScreen() {
           biologicalSex: payload.biologicalSex,
           heightCm: payload.heightCm,
           weightKg: payload.weightKg,
+          age: payload.age,
           activityLevel: payload.activityLevel,
           primaryGoal: payload.primaryGoal,
           weeklyPaceLbs: payload.weeklyPaceLbs,

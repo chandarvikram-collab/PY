@@ -38,6 +38,7 @@ export type UserProfile = {
   activityLevel?: string;
   primaryGoal?: string;
   weeklyPaceLbs?: number;
+  age?: number;
 };
 
 export type AIRoutinePayload = {
@@ -438,6 +439,7 @@ type ServerUser = {
   activityLevel?: string | null;
   primaryGoal?: string | null;
   weeklyPaceLbs?: number | null;
+  age?: number | null;
   equipment?: string[];
   totalPoints: number;
   totalWorkouts: number;
@@ -896,6 +898,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               activityLevel: user.activityLevel ?? undefined,
               primaryGoal: user.primaryGoal ?? undefined,
               weeklyPaceLbs: user.weeklyPaceLbs ?? undefined,
+              age: user.age ?? undefined,
               equipment: user.equipment ?? prev.userProfile.equipment,
               totalPoints: user.totalPoints,
               totalWorkouts: user.totalWorkouts,
@@ -933,6 +936,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               activityLevel: user.activityLevel ?? undefined,
               primaryGoal: user.primaryGoal ?? undefined,
               weeklyPaceLbs: user.weeklyPaceLbs ?? undefined,
+              age: user.age ?? undefined,
               equipment: user.equipment ?? prev.userProfile.equipment,
               totalPoints: user.totalPoints,
               totalWorkouts: user.totalWorkouts,
