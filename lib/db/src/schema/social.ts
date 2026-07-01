@@ -10,6 +10,10 @@ export const posts = pgTable("posts", {
   type: text("type").notNull().default("workout"),
   content: text("content").notNull(),
   statsJson: jsonb("stats_json").$type<Record<string, string>>(),
+  mediaUrl: text("media_url"),
+  mediaType: text("media_type"),
+  thumbnailUrl: text("thumbnail_url"),
+  workoutSnapshot: jsonb("workout_snapshot").$type<Record<string, string>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

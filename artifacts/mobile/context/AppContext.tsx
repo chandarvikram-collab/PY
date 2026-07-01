@@ -222,6 +222,10 @@ export type Post = {
   liked: boolean;
   time: string;
   stats?: Record<string, string>;
+  mediaUrl?: string;
+  mediaType?: "photo" | "video" | "text";
+  thumbnailUrl?: string;
+  workoutSnapshot?: Record<string, string>;
 };
 
 export type ChatMessage = {
@@ -1112,6 +1116,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           type: post.type,
           content: post.content,
           stats: post.stats && Object.keys(post.stats).length > 0 ? post.stats : undefined,
+          mediaUrl: post.mediaUrl,
+          mediaType: post.mediaType,
+          thumbnailUrl: post.thumbnailUrl,
+          workoutSnapshot: post.workoutSnapshot,
         }),
       })
         .then(async (r) => {
@@ -1619,6 +1627,10 @@ function hydrateSocialFromApi(
         liked: Boolean(r.isLiked),
         time: relativeTime(new Date(r.createdAt)),
         stats: (r.statsJson as Record<string, string>) ?? {},
+        mediaUrl: r.mediaUrl ?? undefined,
+        mediaType: (r.mediaType as Post["mediaType"]) ?? undefined,
+        thumbnailUrl: r.thumbnailUrl ?? undefined,
+        workoutSnapshot: (r.workoutSnapshot as Record<string, string>) ?? undefined,
       }));
       setState((prev) => ({ ...prev, posts: feedPosts }));
     })

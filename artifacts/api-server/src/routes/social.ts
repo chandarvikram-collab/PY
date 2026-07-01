@@ -43,6 +43,10 @@ router.get("/feed", requireAuth, async (req, res) => {
       type: posts.type,
       content: posts.content,
       statsJson: posts.statsJson,
+      mediaUrl: posts.mediaUrl,
+      mediaType: posts.mediaType,
+      thumbnailUrl: posts.thumbnailUrl,
+      workoutSnapshot: posts.workoutSnapshot,
       createdAt: posts.createdAt,
       likeCount: sql<number>`cast(count(distinct ${likes.userId}) as int)`.as("like_count"),
       isLiked: sql<boolean>`bool_or(${likes.userId} = ${userId}::uuid)`.as("is_liked"),
@@ -51,7 +55,7 @@ router.get("/feed", requireAuth, async (req, res) => {
     .innerJoin(users, eq(posts.userId, users.id))
     .leftJoin(likes, eq(likes.postId, posts.id))
     .where(whereClause)
-    .groupBy(posts.id, users.id, users.name, users.imageUrl)
+    .groupBy(posts.id, users.id, users.name, users.imageUrl, posts.mediaUrl, posts.mediaType, posts.thumbnailUrl, posts.workoutSnapshot)
     .orderBy(desc(posts.createdAt))
     .limit(limit);
 
@@ -64,6 +68,10 @@ const createPostSchema = z.object({
   type: z.enum(["workout", "achievement", "milestone", "challenge"]).default("workout"),
   content: z.string().min(1).max(500),
   stats: z.record(z.string(), z.string()).optional(),
+  mediaUrl: z.string().url().optional(),
+  mediaType: z.enum(["photo", "video", "text"]).optional(),
+  thumbnailUrl: z.string().url().optional(),
+  workoutSnapshot: z.record(z.string(), z.string()).optional(),
 });
 
 router.post("/posts", requireAuth, async (req, res) => {
@@ -74,18 +82,37 @@ router.post("/posts", requireAuth, async (req, res) => {
     return;
   }
 
+  const { type, content, stats, mediaUrl, mediaType, thumbnailUrl, workoutSnapshot } = parsed.data;
+
   const [row] = await db
     .insert(posts)
     .values({
       userId,
-      type: parsed.data.type,
-      content: parsed.data.content,
-      statsJson: parsed.data.stats ?? null,
+      type,
+      content,
+      statsJson: stats ?? null,
+      mediaUrl: mediaUrl ?? null,
+      mediaType: mediaType ?? null,
+      thumbnailUrl: thumbnailUrl ?? null,
+      workoutSnapshot: workoutSnapshot ?? null,
     })
     .returning();
 
   const [withUser] = await db
-    .select({ id: posts.id, userId: posts.userId, userName: users.name, userImageUrl: users.imageUrl, type: posts.type, content: posts.content, statsJson: posts.statsJson, createdAt: posts.createdAt })
+    .select({
+      id: posts.id,
+      userId: posts.userId,
+      userName: users.name,
+      userImageUrl: users.imageUrl,
+      type: posts.type,
+      content: posts.content,
+      statsJson: posts.statsJson,
+      mediaUrl: posts.mediaUrl,
+      mediaType: posts.mediaType,
+      thumbnailUrl: posts.thumbnailUrl,
+      workoutSnapshot: posts.workoutSnapshot,
+      createdAt: posts.createdAt,
+    })
     .from(posts)
     .innerJoin(users, eq(posts.userId, users.id))
     .where(eq(posts.id, row.id))

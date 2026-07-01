@@ -1,8 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -13,9 +16,15 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useAuth } from "@clerk/expo";
+
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import type { Post } from "@/context/AppContext";
+
+const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : "";
 
 function FollowButton({ userId, isFollowing, onFollow, onUnfollow }: {
   userId: string;
@@ -74,6 +83,10 @@ function PostCard({ post, onLike }: { post: Post; onLike: () => void }) {
     ? "#3b82f6"
     : "#22c55e";
 
+  const mediaServingUrl = post.mediaUrl
+    ? `${API_BASE}/api/storage${post.mediaUrl}`
+    : null;
+
   return (
     <View style={[styles.postCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={styles.postHeader}>
@@ -90,12 +103,41 @@ function PostCard({ post, onLike }: { post: Post; onLike: () => void }) {
         </View>
       </View>
 
+      {/* Media: photo or video thumbnail */}
+      {mediaServingUrl && post.mediaType === "photo" && (
+        <Image
+          source={{ uri: mediaServingUrl }}
+          style={styles.postMedia}
+          resizeMode="cover"
+        />
+      )}
+      {mediaServingUrl && post.mediaType === "video" && (
+        <View style={[styles.postMedia, { backgroundColor: colors.muted, alignItems: "center", justifyContent: "center" }]}>
+          {post.thumbnailUrl ? (
+            <Image source={{ uri: `${API_BASE}/api/storage${post.thumbnailUrl}` }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          ) : null}
+          <View style={[styles.playOverlay, { backgroundColor: "rgba(0,0,0,0.55)" }]}>
+            <Feather name="play" size={28} color="#fff" />
+          </View>
+        </View>
+      )}
+
       <Text style={[styles.postContent, { color: colors.foreground }]}>{post.content}</Text>
+
+      {/* Linked workout badge */}
+      {post.workoutSnapshot && Object.keys(post.workoutSnapshot).length > 0 && (
+        <View style={[styles.workoutBadge, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "40" }]}>
+          <Feather name="zap" size={12} color={colors.primary} />
+          <Text style={[styles.workoutBadgeText, { color: colors.primary }]}>
+            {Object.entries(post.workoutSnapshot).map(([k, v]) => `${k}: ${v}`).join(" · ")}
+          </Text>
+        </View>
+      )}
 
       {post.stats && Object.keys(post.stats).length > 0 && (
         <View style={[styles.statsGrid, { backgroundColor: colors.muted, borderColor: colors.border }]}>
           {Object.entries(post.stats).map(([key, val]) => (
-            <View key={key} style={styles.statItem}>
+            <View key={key} style={[styles.statItem, { borderRightColor: colors.border }]}>
               <Text style={[styles.statVal, { color: colors.foreground }]}>{val}</Text>
               <Text style={[styles.statKey, { color: colors.mutedForeground }]}>{key}</Text>
             </View>
@@ -132,19 +174,120 @@ function PostCard({ post, onLike }: { post: Post; onLike: () => void }) {
   );
 }
 
+type ComposerStep = "pick-type" | "pick-media" | "caption";
+
 export default function SocialScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { getToken } = useAuth();
   const { state, likePost, addPost, followUser, unfollowUser } = useApp();
-  const { posts, friends, followingIds, userProfile } = state;
+  const { posts, friends, followingIds, userProfile, workoutHistory } = state;
   const [tab, setTab] = useState<"feed" | "explore">("feed");
   const [composing, setComposing] = useState(false);
+  const [composerStep, setComposerStep] = useState<ComposerStep>("pick-type");
   const [draftText, setDraftText] = useState("");
+  const [selectedMediaType, setSelectedMediaType] = useState<"photo" | "video" | "text">("text");
+  const [pickedMedia, setPickedMedia] = useState<{ uri: string; contentType: string; name: string } | null>(null);
+  const [linkedWorkout, setLinkedWorkout] = useState<typeof workoutHistory[0] | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
-  function submitPost() {
+  function openComposer() {
+    setComposerStep("pick-type");
+    setDraftText("");
+    setSelectedMediaType("text");
+    setPickedMedia(null);
+    setLinkedWorkout(null);
+    setUploadError(null);
+    setComposing(true);
+  }
+
+  function closeComposer() {
+    setComposing(false);
+    setPickedMedia(null);
+    setDraftText("");
+    setUploadError(null);
+  }
+
+  async function pickImage(mediaType: "photo" | "video") {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      setUploadError("Permission to access photos is required.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: mediaType === "photo"
+        ? ImagePicker.MediaTypeOptions.Images
+        : ImagePicker.MediaTypeOptions.Videos,
+      quality: 0.8,
+      allowsEditing: false,
+    });
+    if (result.canceled || !result.assets?.length) return;
+
+    const asset = result.assets[0];
+    const ext = (asset.uri.split(".").pop() ?? "jpg").toLowerCase();
+    const contentType = mediaType === "video"
+      ? (ext === "mov" ? "video/quicktime" : "video/mp4")
+      : "image/jpeg";
+
+    setPickedMedia({ uri: asset.uri, contentType, name: `upload.${ext}` });
+    setComposerStep("caption");
+  }
+
+  async function requestUploadUrl(name: string, size: number, contentType: string): Promise<{ uploadURL: string; objectPath: string }> {
+    const token = await getToken();
+    const r = await fetch(`${API_BASE}/api/posts/upload-url`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ name, size, contentType }),
+    });
+    if (!r.ok) throw new Error("Failed to get upload URL");
+    return r.json();
+  }
+
+  async function uploadMedia(media: { uri: string; contentType: string; name: string }): Promise<string> {
+    const fileResponse = await fetch(media.uri);
+    const blob = await fileResponse.blob();
+    const { uploadURL, objectPath } = await requestUploadUrl(media.name, blob.size, media.contentType);
+    const put = await fetch(uploadURL, {
+      method: "PUT",
+      body: blob,
+      headers: { "Content-Type": media.contentType },
+    });
+    if (!put.ok) throw new Error("Upload failed");
+    return objectPath;
+  }
+
+  async function submitPost() {
     if (!draftText.trim()) return;
+    setUploadError(null);
+    setUploading(true);
+
+    let mediaUrl: string | undefined;
+    try {
+      if (pickedMedia) {
+        mediaUrl = await uploadMedia(pickedMedia);
+      }
+    } catch {
+      setUploadError("Upload failed. Post will be shared without media.");
+      mediaUrl = undefined;
+    } finally {
+      setUploading(false);
+    }
+
+    const workoutSnap: Record<string, string> | undefined = linkedWorkout
+      ? {
+          name: linkedWorkout.name,
+          volume: `${(linkedWorkout.volume / 1000).toFixed(1)}k lbs`,
+          sets: `${linkedWorkout.exercises} exercises`,
+        }
+      : undefined;
+
     addPost({
       id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
       userId: "me",
@@ -158,9 +301,15 @@ export default function SocialScreen() {
       liked: false,
       time: "Just now",
       stats: {},
+      mediaUrl,
+      mediaType: pickedMedia ? selectedMediaType : undefined,
+      workoutSnapshot: workoutSnap,
     });
+
     setDraftText("");
     setComposing(false);
+    setPickedMedia(null);
+    setLinkedWorkout(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
@@ -173,6 +322,8 @@ export default function SocialScreen() {
     { id: "e6", title: "Arm day superset", views: "14k", initials: "DS", color: "#ef4444" },
   ];
 
+  const recentWorkouts = workoutHistory.slice(0, 5);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
@@ -180,7 +331,7 @@ export default function SocialScreen() {
         <View style={styles.headerRow}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>Community</Text>
           <Pressable
-            onPress={() => setComposing(true)}
+            onPress={openComposer}
             style={[styles.composeBtn, { backgroundColor: colors.primary }]}
           >
             <Feather name="edit-3" size={16} color="#fff" />
@@ -237,6 +388,14 @@ export default function SocialScreen() {
           contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 14, paddingBottom: insets.bottom + 90 }}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+          ListEmptyComponent={() => (
+            <View style={{ alignItems: "center", paddingTop: 60, gap: 12 }}>
+              <Feather name="users" size={40} color={colors.mutedForeground} />
+              <Text style={{ color: colors.mutedForeground, fontSize: 15, fontFamily: "Inter_500Medium" }}>
+                Follow people to see their posts here
+              </Text>
+            </View>
+          )}
           renderItem={({ item }) => (
             <PostCard post={item} onLike={() => likePost(item.id)} />
           )}
@@ -276,40 +435,164 @@ export default function SocialScreen() {
         </ScrollView>
       )}
 
-      {/* Compose Modal */}
+      {/* Compose Flow */}
       {composing && (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "flex-end", zIndex: 100 }]}>
           <View style={[styles.composeSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
-            <View style={styles.composeHeaderRow}>
-              <Avatar
-                initials={userProfile.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                color="#E8151B"
-                size={40}
-              />
-              <Text style={[styles.composeName, { color: colors.foreground }]}>{userProfile.name}</Text>
-              <Pressable onPress={() => { setComposing(false); setDraftText(""); }}>
-                <Feather name="x" size={22} color={colors.mutedForeground} />
-              </Pressable>
-            </View>
-            <TextInput
-              style={[styles.composeInput, { color: colors.foreground }]}
-              value={draftText}
-              onChangeText={setDraftText}
-              placeholder="Share your training moment..."
-              placeholderTextColor={colors.mutedForeground}
-              multiline
-              autoFocus
-              maxLength={280}
-            />
-            <View style={styles.composeFooter}>
-              <Text style={[styles.charCount, { color: colors.mutedForeground }]}>{draftText.length}/280</Text>
-              <Pressable
-                onPress={submitPost}
-                style={[styles.postBtn, { backgroundColor: draftText.trim() ? colors.primary : colors.border }]}
-              >
-                <Text style={styles.postBtnText}>Post</Text>
-              </Pressable>
-            </View>
+
+            {/* Step 1: Pick media type */}
+            {composerStep === "pick-type" && (
+              <>
+                <View style={styles.composeHeaderRow}>
+                  <Text style={[styles.composeName, { color: colors.foreground, flex: 1 }]}>New Post</Text>
+                  <Pressable onPress={closeComposer}>
+                    <Feather name="x" size={22} color={colors.mutedForeground} />
+                  </Pressable>
+                </View>
+                <Text style={[styles.pickTypeLabel, { color: colors.mutedForeground }]}>Choose post type</Text>
+                <View style={styles.mediaTypeRow}>
+                  {([
+                    { key: "photo", icon: "image", label: "Photo" },
+                    { key: "video", icon: "film", label: "Video" },
+                    { key: "text", icon: "edit-2", label: "Text" },
+                  ] as const).map(({ key, icon, label }) => (
+                    <Pressable
+                      key={key}
+                      onPress={async () => {
+                        setSelectedMediaType(key);
+                        if (key === "photo" || key === "video") {
+                          setComposerStep("pick-media");
+                          await pickImage(key);
+                        } else {
+                          setComposerStep("caption");
+                        }
+                      }}
+                      style={[styles.mediaTypeBtn, { borderColor: colors.border, backgroundColor: colors.muted }]}
+                    >
+                      <Feather name={icon as any} size={24} color={colors.primary} />
+                      <Text style={[styles.mediaTypeBtnLabel, { color: colors.foreground }]}>{label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {/* Step 2: Picking media (loading state) */}
+            {composerStep === "pick-media" && (
+              <View style={{ alignItems: "center", padding: 40, gap: 16 }}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_500Medium" }}>Opening picker...</Text>
+                <Pressable onPress={() => setComposerStep("pick-type")}>
+                  <Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>Cancel</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* Step 3: Caption + optional workout link */}
+            {composerStep === "caption" && (
+              <>
+                <View style={styles.composeHeaderRow}>
+                  <Pressable onPress={() => setComposerStep("pick-type")} style={{ marginRight: 10 }}>
+                    <Feather name="chevron-left" size={22} color={colors.mutedForeground} />
+                  </Pressable>
+                  <Avatar
+                    initials={userProfile.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                    color="#E8151B"
+                    size={36}
+                  />
+                  <Text style={[styles.composeName, { color: colors.foreground }]}>{userProfile.name}</Text>
+                  <Pressable onPress={closeComposer}>
+                    <Feather name="x" size={22} color={colors.mutedForeground} />
+                  </Pressable>
+                </View>
+
+                {/* Media preview */}
+                {pickedMedia && selectedMediaType === "photo" && (
+                  <View style={{ position: "relative", marginBottom: 10 }}>
+                    <Image source={{ uri: pickedMedia.uri }} style={styles.previewImage} resizeMode="cover" />
+                    <Pressable
+                      onPress={() => { setPickedMedia(null); }}
+                      style={[styles.removeMedia, { backgroundColor: "rgba(0,0,0,0.6)" }]}
+                    >
+                      <Feather name="x" size={14} color="#fff" />
+                    </Pressable>
+                  </View>
+                )}
+                {pickedMedia && selectedMediaType === "video" && (
+                  <View style={[styles.previewImage, { backgroundColor: colors.muted, alignItems: "center", justifyContent: "center", marginBottom: 10 }]}>
+                    <Feather name="film" size={32} color={colors.mutedForeground} />
+                    <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6, fontFamily: "Inter_400Regular" }}>
+                      Video selected
+                    </Text>
+                    <Pressable onPress={() => setPickedMedia(null)} style={{ position: "absolute", top: 8, right: 8 }}>
+                      <Feather name="x" size={16} color={colors.mutedForeground} />
+                    </Pressable>
+                  </View>
+                )}
+
+                {uploadError && (
+                  <Text style={{ color: "#ef4444", fontSize: 12, fontFamily: "Inter_400Regular", marginBottom: 8 }}>{uploadError}</Text>
+                )}
+
+                <TextInput
+                  style={[styles.composeInput, { color: colors.foreground }]}
+                  value={draftText}
+                  onChangeText={setDraftText}
+                  placeholder="Share your training moment..."
+                  placeholderTextColor={colors.mutedForeground}
+                  multiline
+                  autoFocus
+                  maxLength={280}
+                />
+
+                {/* Link a Workout (optional) */}
+                {recentWorkouts.length > 0 && (
+                  <View style={{ marginTop: 10 }}>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 6 }}>
+                      Link a workout (optional)
+                    </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
+                      {recentWorkouts.map((w) => {
+                        const selected = linkedWorkout?.id === w.id;
+                        return (
+                          <Pressable
+                            key={w.id}
+                            onPress={() => setLinkedWorkout(selected ? null : w)}
+                            style={[styles.workoutChip, {
+                              borderColor: selected ? colors.primary : colors.border,
+                              backgroundColor: selected ? colors.primary + "18" : colors.muted,
+                              marginHorizontal: 4,
+                            }]}
+                          >
+                            <Feather name="zap" size={12} color={selected ? colors.primary : colors.mutedForeground} />
+                            <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: selected ? colors.primary : colors.foreground, marginLeft: 4 }}>
+                              {w.name}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+
+                <View style={styles.composeFooter}>
+                  <Text style={[styles.charCount, { color: colors.mutedForeground }]}>{draftText.length}/280</Text>
+                  {uploading ? (
+                    <View style={[styles.postBtn, { backgroundColor: colors.border, flexDirection: "row", alignItems: "center", gap: 8 }]}>
+                      <ActivityIndicator size="small" color="#fff" />
+                      <Text style={styles.postBtnText}>Uploading…</Text>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={submitPost}
+                      style={[styles.postBtn, { backgroundColor: draftText.trim() ? colors.primary : colors.border }]}
+                    >
+                      <Text style={styles.postBtnText}>Post</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </>
+            )}
           </View>
         </View>
       )}
@@ -339,7 +622,11 @@ const styles = StyleSheet.create({
   postTime: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
   typeBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
   typeBadgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  postMedia: { width: "100%", height: 200, borderRadius: 10, marginBottom: 12, overflow: "hidden" },
+  playOverlay: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
   postContent: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 22, marginBottom: 12 },
+  workoutBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, marginBottom: 10 },
+  workoutBadgeText: { fontSize: 12, fontFamily: "Inter_600SemiBold", flex: 1 },
   statsGrid: { flexDirection: "row", borderRadius: 10, borderWidth: 1, marginBottom: 12, overflow: "hidden" },
   statItem: { flex: 1, padding: 10, alignItems: "center", borderRightWidth: 1 },
   statVal: { fontSize: 13, fontFamily: "Inter_700Bold" },
@@ -359,7 +646,14 @@ const styles = StyleSheet.create({
   composeSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
   composeHeaderRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
   composeName: { flex: 1, fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  composeInput: { fontSize: 16, fontFamily: "Inter_400Regular", lineHeight: 24, minHeight: 100, textAlignVertical: "top" },
+  pickTypeLabel: { fontSize: 13, fontFamily: "Inter_500Medium", marginBottom: 14 },
+  mediaTypeRow: { flexDirection: "row", gap: 12, marginBottom: 8 },
+  mediaTypeBtn: { flex: 1, alignItems: "center", paddingVertical: 20, borderRadius: 14, borderWidth: 1, gap: 8 },
+  mediaTypeBtnLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  previewImage: { width: "100%", height: 180, borderRadius: 12, marginBottom: 4 },
+  removeMedia: { position: "absolute", top: 8, right: 8, width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  composeInput: { fontSize: 16, fontFamily: "Inter_400Regular", lineHeight: 24, minHeight: 80, textAlignVertical: "top" },
+  workoutChip: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
   composeFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12 },
   charCount: { fontSize: 13, fontFamily: "Inter_400Regular" },
   postBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 },
