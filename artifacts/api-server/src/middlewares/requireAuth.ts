@@ -11,11 +11,104 @@ declare global {
   }
 }
 
+// ---------------------------------------------------------------------------
+// In-process clerkId → localUserId cache
+//
+// Avoids a DB round-trip on every authenticated request.  A burst of requests
+// carrying the same Clerk userId — whether valid or invalid — will hit the DB
+// at most once per TTL window.
+//
+// Positive hits (found user): cached for 5 minutes.
+// Negative hits (no matching local user): cached for 60 seconds.
+//   A shorter TTL for negatives limits exposure if an account is created
+//   shortly after a failed lookup (e.g. race between signup and first request).
+// ---------------------------------------------------------------------------
+
+const POSITIVE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const NEGATIVE_TTL_MS = 60 * 1000; // 60 seconds
+
+interface CacheEntry {
+  /** localUserId on a positive hit, null on a negative hit. */
+  localUserId: string | null;
+  expiresAt: number;
+}
+
+const userIdCache = new Map<string, CacheEntry>();
+
+/**
+ * Returns:
+ *  - `{ hit: true, localUserId: string }` — cached positive result
+ *  - `{ hit: true, localUserId: null }`   — cached negative result
+ *  - `{ hit: false }`                     — not in cache (or expired)
+ */
+function getCached(
+  clerkUserId: string,
+): { hit: true; localUserId: string | null } | { hit: false } {
+  const entry = userIdCache.get(clerkUserId);
+  if (!entry) return { hit: false };
+  if (Date.now() > entry.expiresAt) {
+    userIdCache.delete(clerkUserId);
+    return { hit: false };
+  }
+  return { hit: true, localUserId: entry.localUserId };
+}
+
+function setCached(clerkUserId: string, localUserId: string | null): void {
+  userIdCache.set(clerkUserId, {
+    localUserId,
+    expiresAt: Date.now() + (localUserId ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS),
+  });
+}
+
+/**
+ * Remove a clerkId from the cache immediately.
+ * Call this when a user record is deleted so the next request re-checks the DB.
+ */
+export function invalidateUserCache(clerkUserId: string): void {
+  userIdCache.delete(clerkUserId);
+}
+
+// ---------------------------------------------------------------------------
+// Shared resolver — DB hit only on cache miss
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves a Clerk userId to the local user UUID.
+ * Returns `undefined` when no matching local user exists.
+ * Both positive and negative results are cached to protect the DB from floods
+ * of repeated lookups for the same (valid or invalid) Clerk userId.
+ */
+async function resolveLocalUserId(
+  clerkUserId: string,
+): Promise<string | undefined> {
+  const cached = getCached(clerkUserId);
+  if (cached.hit) return cached.localUserId ?? undefined;
+
+  const [localUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkUserId))
+    .limit(1);
+
+  const localUserId = localUser?.id ?? null;
+  setCached(clerkUserId, localUserId);
+  return localUserId ?? undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Middleware
+// ---------------------------------------------------------------------------
+
 /**
  * Verifies the request carries a valid Clerk JWT and resolves the caller's
  * local user UUID.  On success, `req.localUserId` is set and `next()` is
  * called.  Returns 401 when unauthenticated or when the Clerk ID has no
  * matching local user record.
+ *
+ * The clerkId → localUserId mapping is served from an in-process cache
+ * (5 min TTL) to eliminate per-request DB round-trips on the hot path.
+ * Unauthenticated requests (no Clerk userId) are rejected immediately
+ * without touching the database.
  */
 export async function requireAuth(
   req: Request,
@@ -29,18 +122,14 @@ export async function requireAuth(
     return;
   }
 
-  const [localUser] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.clerkId, clerkUserId))
-    .limit(1);
+  const localUserId = await resolveLocalUserId(clerkUserId);
 
-  if (!localUser) {
+  if (!localUserId) {
     res.status(401).json({ error: "User account not found" });
     return;
   }
 
-  req.localUserId = localUser.id;
+  req.localUserId = localUserId;
   next();
 }
 
@@ -74,18 +163,14 @@ export async function optionalAuth(
     return;
   }
 
-  const [localUser] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.clerkId, clerkUserId))
-    .limit(1);
+  const localUserId = await resolveLocalUserId(clerkUserId);
 
-  if (!localUser) {
+  if (!localUserId) {
     res.status(401).json({ error: "User account not found" });
     return;
   }
 
-  req.localUserId = localUser.id;
+  req.localUserId = localUserId;
   next();
 }
 
