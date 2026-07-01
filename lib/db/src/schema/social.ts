@@ -60,8 +60,17 @@ export const challengeParticipants = pgTable(
   (t) => [primaryKey({ columns: [t.challengeId, t.userId] })],
 );
 
+export const comments = pgTable("comments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  postId: uuid("post_id").notNull().references(() => posts.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const insertPostSchema = createInsertSchema(posts).omit({ createdAt: true });
 export const insertChallengeSchema = createInsertSchema(challenges).omit({ id: true, createdAt: true });
+export const insertCommentSchema = createInsertSchema(comments).omit({ id: true, createdAt: true });
 
 export type Post = typeof posts.$inferSelect;
 export type Follow = typeof follows.$inferSelect;

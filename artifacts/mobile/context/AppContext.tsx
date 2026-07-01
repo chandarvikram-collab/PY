@@ -1183,6 +1183,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           c.id === challengeId ? { ...c, status: "active" as const } : c,
         ),
       }));
+      socialFetch(`/challenges/${challengeId}/accept`, { method: "PATCH" }).catch(() => {});
     },
     [update],
   );
@@ -1203,6 +1204,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             : c,
         ),
       }));
+      socialFetch(`/challenges/${challengeId}/progress`, {
+        method: "PATCH",
+        body: JSON.stringify({ progress }),
+      }).catch(() => {});
     },
     [update],
   );
