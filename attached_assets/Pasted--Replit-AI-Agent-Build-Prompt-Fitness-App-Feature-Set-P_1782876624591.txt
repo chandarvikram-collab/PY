@@ -1,0 +1,165 @@
+# Replit AI Agent Build Prompt — Fitness App Feature Set
+
+> Paste everything below the line into Replit's AI Agent. It's written to minimize back-and-forth: full specs up front, code-only output requested.
+
+---
+
+You are a senior full-stack engineer. Implement the following features in this codebase. Do not explain concepts back to me, do not summarize what you're about to do — just write the code, then a short bullet list of files changed. Ask a clarifying question only if a requirement is genuinely ambiguous; otherwise pick the sensible default and proceed.
+
+## 1. Calorie & Macro Calculator
+
+Implement using **Mifflin-St Jeor** for BMR, then TDEE, then goal adjustment.
+
+```
+BMR (male)   = 10*weight_kg + 6.25*height_cm - 5*age + 5
+BMR (female) = 10*weight_kg + 6.25*height_cm - 5*age - 161
+TDEE = BMR * activity_multiplier
+  sedentary=1.2, light=1.375, moderate=1.55, active=1.725, very_active=1.9
+
+Goal adjustment (weekly pace in lbs, 1lb ≈ 3500 kcal):
+daily_calories = TDEE ± (weekly_pace_lbs * 3500 / 7)
+  (+ for gain, - for loss, 0 for maintenance)
+
+Macros:
+protein_g = weight_kg * 1.6 to 2.2   (use 2.0 as default multiplier)
+protein_cal = protein_g * 4
+fat_cal = daily_calories * 0.25      (25% default, allow 20-30% range)
+fat_g = fat_cal / 9
+carb_cal = daily_calories - protein_cal - fat_cal
+carb_g = carb_cal / 4
+```
+
+**Onboarding questions to collect (drives the calc above):**
+1. Age
+2. Biological sex (male/female — needed for BMR formula)
+3. Height (cm or ft/in toggle)
+4. Weight (kg or lb toggle)
+5. Activity level (sedentary / light / moderate / active / very active)
+6. Primary goal (fat loss / muscle gain / maintenance / endurance)
+7. Weekly pace (e.g., -0.5 to -2 lbs/week for loss, +0.25 to +0.5 for gain)
+8. Available equipment (multi-select array)
+
+**Equipment constraint rule:** exercise/routine generation must never reference equipment outside the user's selected list. If "Bodyweight only" is selected, restrict to calisthenics/tempo/HIIT — no barbells, racks, cables, machines.
+
+Build this as a pure function (`calculateNutrition(profile)`) that's unit-testable and callable both from onboarding and from a "recalculate" settings action later. Store the result on the user profile record.
+
+## 2. Fix Photo/Video Upload
+
+Check and fix all three of these:
+
+**a) Frontend — must use FormData, never JSON, for media:**
+```javascript
+const formData = new FormData();
+formData.append('userId', userId);
+formData.append('media', {
+  uri: localMediaUri,
+  type: 'image/jpeg', // or 'video/mp4' — detect from file
+  name: 'upload.jpg',
+});
+axios.post('/api/posts', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+});
+```
+
+**b) Backend — raise payload limits:**
+```javascript
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+```
+Also check whatever multipart handler is in use (multer, busboy, etc.) has matching `fileSize` limits set — the body-parser limit alone won't cover multipart uploads.
+
+**c) Native permissions:** verify `AndroidManifest.xml` has camera/storage read-write permissions and `Info.plist` has `NSPhotoLibraryUsageDescription` / `NSCameraUsageDescription`. Add if missing.
+
+After fixing, add basic error surfacing: if upload fails, show the actual error reason to the user (permission denied vs. size limit vs. network) instead of a silent failure.
+
+## 3. "Add to Routines" from AI-Generated Plans
+
+Whenever an AI plan is generated (nutrition + workout), attach a structured payload the frontend can save directly:
+
+```json
+{
+  "nutrition": { "daily_calories": 0, "protein_g": 0, "carbs_g": 0, "fats_g": 0 },
+  "equipment_strategy": "string",
+  "ai_routine_payload": {
+    "name": "string",
+    "exercises": [
+      { "name": "string", "sets": 0, "reps": "string", "restSeconds": 90 }
+    ]
+  },
+  "explanation": "string"
+}
+```
+
+Add a "Save to Routines" button on the AI plan result screen. On tap, POST `ai_routine_payload` to the routines table/collection as-is — no re-transformation needed, so keep the payload shape identical to the routine schema already used elsewhere in the app.
+
+## 4. Workout History — Split View by Type
+
+When a user taps a workout history item, branch on `workoutType`:
+
+**If `type === 'lift'`:**
+- List exercises in order
+- Under each exercise: sets, with weight × reps per set
+- Under each set row: rest timer used (see section 5)
+
+**If `type === 'run'`:**
+- Distance (mi/km)
+- Duration
+- Total calories burned (MET formula, section 6)
+- Map preview rendering the stored GPS coordinate array (static polyline component — e.g., `react-native-maps` `Polyline` or a static maps image API)
+
+Data model: ensure workout records store a `type` discriminator field so history queries/rendering can branch cleanly. Lift records need `exercises[]`; run records need `distance`, `durationSeconds`, `gpsPath[]`.
+
+## 5. Editable Rest Timer (per set)
+
+Under every set row in a lift workout:
+```
+⏱️ Rest: 90s (Tap to Edit)
+```
+- Tap opens an inline picker or small modal to change that specific set's rest duration
+- Change writes back into the workout's state array immediately (not just UI-local — persist on save)
+- Default to 90s if not otherwise specified, but make it fully editable per set, not just per exercise
+
+## 6. Running Calories Burned (MET formula)
+
+```
+weight_kg = weight_lbs / 2.205
+calories_per_minute = (MET * 3.5 * weight_kg) / 200
+total_calories = calories_per_minute * duration_minutes
+```
+
+MET lookup table:
+| Speed (mph) | Speed (km/h) | MET |
+|---|---|---|
+| 4.0 | 6.4 | 6.0 |
+| 5.0 | 8.0 | 8.3 |
+| 6.0 | 9.6 | 9.8 |
+| 7.0 | 11.3 | 11.0 |
+| 8.0 | 12.9 | 11.8 |
+| 10.0 | 16.1 | 14.5 |
+
+Interpolate MET linearly for speeds between table entries. Compute average pace from GPS distance/duration to select MET, or use per-segment pace if GPS splits are available for more accuracy.
+
+## 7. AI Photo Analysis Speed (Calorie Tracker) — Target <30s
+
+Implement all four:
+
+**a) Client-side image prep before upload:**
+- Resize to max 1024×1024
+- Compress to JPEG/WebP, target <1MB
+- Do this on-device before the network call, not server-side after upload
+
+**b) Model choice:**
+- Use a fast/compact vision-capable model (not a large general-purpose one) for the food-recognition call
+- Constrain output to strict JSON only (food items, quantities, macros) — no free-text explanation — to cut Time To First Token and total inference time
+
+**c) Async processing, not blocking UI:**
+- Upload image to storage (S3/GCS) immediately, return a `processing` status to the client right away
+- Background worker runs the AI call, writes result to DB
+- Client polls or listens on a websocket for the result instead of waiting on the request
+
+**d) Caching:**
+- Hash repeated meal photos (or let user confirm "same as last time") and cache the nutrition result (Redis or equivalent) so identical/frequent logs skip the AI call entirely
+
+---
+
+**Deliverable format:** implement all 7 sections above directly in code. End your response with a short changed-files list only — no lengthy explanation of each formula, I already have the specs.
