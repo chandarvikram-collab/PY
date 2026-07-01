@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -17,7 +18,14 @@ import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/lib/auth";
 
-function Avatar({ initials, color, size = 72 }: { initials: string; color: string; size?: number }) {
+function Avatar({ initials, color, size = 72, imageUrl }: { initials: string; color: string; size?: number; imageUrl?: string }) {
+  if (imageUrl) {
+    return (
+      <View style={{ width: size, height: size, borderRadius: size / 2, borderWidth: 2.5, borderColor: color, overflow: "hidden" }}>
+        <Image source={{ uri: imageUrl }} style={{ width: size, height: size }} resizeMode="cover" />
+      </View>
+    );
+  }
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color + "33", borderWidth: 2.5, borderColor: color, alignItems: "center", justifyContent: "center" }}>
       <Text style={{ color, fontSize: size * 0.35, fontFamily: "Inter_700Bold" }}>{initials}</Text>
@@ -130,7 +138,7 @@ export default function ProfileScreen() {
       {/* ── Hero ── */}
       <View style={[styles.hero, { borderBottomColor: colors.border }]}>
         <View style={styles.heroTop}>
-          <Avatar initials={userInitials} color={colors.primary} size={72} />
+          <Avatar initials={userInitials} color={colors.primary} size={72} imageUrl={userProfile.imageUrl} />
           <View style={{ flex: 1, marginLeft: 16 }}>
             <Text style={[styles.heroName, { color: colors.foreground }]}>
               {userProfile.name}

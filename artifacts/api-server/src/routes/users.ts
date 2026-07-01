@@ -54,11 +54,19 @@ router.patch("/users/:id", requireAuth, requireOwner((req) => req.params.id), as
 });
 
 router.post("/users/clerk-link", async (req, res) => {
-  const { clerkId, localUuid } = req.body as { clerkId?: string; localUuid?: string };
+  const { clerkId, localUuid, firstName, lastName, imageUrl } = req.body as {
+    clerkId?: string;
+    localUuid?: string;
+    firstName?: string;
+    lastName?: string;
+    imageUrl?: string;
+  };
   if (!clerkId) {
     res.status(400).json({ error: "clerkId is required" });
     return;
   }
+
+  const clerkName = [firstName, lastName].filter(Boolean).join(" ").trim() || null;
 
   const existing = await db.select().from(users).where(eq(users.clerkId, clerkId)).limit(1);
   if (existing.length > 0) {
@@ -82,9 +90,21 @@ router.post("/users/clerk-link", async (req, res) => {
   if (localUuid) {
     const localUser = await db.select().from(users).where(eq(users.id, localUuid)).limit(1);
     if (localUser.length > 0) {
+      // This branch only runs on first Clerk link for this local user (clerkId was null).
+      // Apply Clerk name whenever one is provided — the local name is either the DB default
+      // ("Athlete") or the mobile seed value ("Alex Jordan"), both of which are uninitialized.
+      // User-chosen names set during onboarding may be overwritten on first sign-in, which
+      // is the expected behaviour: Google/Apple identity takes precedence on first link.
+      const profileUpdates: Record<string, unknown> = { clerkId, updatedAt: new Date() };
+      if (clerkName) {
+        profileUpdates.name = clerkName;
+      }
+      if (imageUrl && !localUser[0].imageUrl) {
+        profileUpdates.imageUrl = imageUrl;
+      }
       const [updated] = await db
         .update(users)
-        .set({ clerkId, updatedAt: new Date() })
+        .set(profileUpdates)
         .where(eq(users.id, localUuid))
         .returning();
       req.log.info({ clerkId, userId: updated.id }, "linked clerk id to existing user");
@@ -95,7 +115,13 @@ router.post("/users/clerk-link", async (req, res) => {
 
   const [newUser] = await db
     .insert(users)
-    .values({ clerkId, name: "Athlete", username: "athlete", joinDate: new Date().toISOString().slice(0, 10) })
+    .values({
+      clerkId,
+      name: clerkName ?? "Athlete",
+      username: "athlete",
+      imageUrl: imageUrl ?? null,
+      joinDate: new Date().toISOString().slice(0, 10),
+    })
     .returning();
   req.log.info({ clerkId, userId: newUser.id }, "created new user for clerk id");
   res.status(201).json({ user: newUser, migrated: false });

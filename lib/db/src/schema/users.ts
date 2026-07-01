@@ -7,6 +7,7 @@ export const users = pgTable("users", {
   clerkId: text("clerk_id").unique(),
   name: text("name").notNull().default("Athlete"),
   username: text("username").notNull().default("athlete"),
+  imageUrl: text("image_url"),
   level: text("level").notNull().default("beginner"),
   streak: integer("streak").notNull().default(0),
   totalWorkouts: integer("total_workouts").notNull().default(0),

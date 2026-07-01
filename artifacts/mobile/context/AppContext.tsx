@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
-import { useAuth } from "@clerk/expo";
+import { useAuth, useUser } from "@clerk/expo";
 import React, {
   createContext,
   useCallback,
@@ -17,6 +17,7 @@ export type UserProfile = {
   id: string;
   name: string;
   username: string;
+  imageUrl?: string;
   level: ExperienceLevel;
   streak: number;
   totalWorkouts: number;
@@ -317,6 +318,7 @@ type ServerUser = {
   id: string;
   name: string;
   username: string;
+  imageUrl?: string | null;
   bio: string;
   level: string;
   joinDate: string;
@@ -632,9 +634,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const apiUserIdRef = useRef<string | null>(null);
   const { userId: clerkUserId, isSignedIn } = useAuth();
+  const { user: clerkUser, isLoaded: clerkUserLoaded } = useUser();
 
   useEffect(() => {
     if (!isSignedIn || !clerkUserId || !loaded) return;
+    if (!clerkUserLoaded || !clerkUser) return;
 
     (async () => {
       try {
@@ -645,12 +649,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const r = await fetch(`${API_BASE}/api/users/clerk-link`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clerkId: clerkUserId, localUuid }),
+          body: JSON.stringify({
+            clerkId: clerkUserId,
+            localUuid,
+            firstName: clerkUser?.firstName ?? undefined,
+            lastName: clerkUser?.lastName ?? undefined,
+            imageUrl: clerkUser?.imageUrl ?? undefined,
+          }),
         });
         if (!r.ok) return;
 
-        const { user } = (await r.json()) as { user: { id: string } };
+        const { user } = (await r.json()) as {
+          user: { id: string; name: string; imageUrl?: string | null };
+        };
         await AsyncStorage.setItem(CLERK_LINKED_KEY, clerkUserId);
+
+        setState((prev) => ({
+          ...prev,
+          userProfile: {
+            ...prev.userProfile,
+            name: user.name,
+            imageUrl: user.imageUrl ?? undefined,
+          },
+        }));
 
         if (user.id !== localUuid) {
           apiUserIdRef.current = user.id;
@@ -659,7 +680,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {}
     })();
-  }, [isSignedIn, clerkUserId, loaded]);
+  }, [isSignedIn, clerkUserId, loaded, clerkUser, clerkUserLoaded]);
 
   useEffect(() => {
     const run = async () => {
@@ -715,6 +736,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               ...prev.userProfile,
               name: user.name,
               username: user.username,
+              imageUrl: user.imageUrl ?? prev.userProfile.imageUrl,
               bio: user.bio,
               level: user.level as ExperienceLevel,
               joinDate: user.joinDate,
@@ -742,6 +764,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               ...prev.userProfile,
               name: user.name,
               username: user.username,
+              imageUrl: user.imageUrl ?? prev.userProfile.imageUrl,
               bio: user.bio,
               level: user.level as ExperienceLevel,
               joinDate: user.joinDate,
