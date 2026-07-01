@@ -38,7 +38,9 @@ type GeneratedPlan = {
   level: ExperienceLevel;
   equipment: string[];
   daysPerWeek: number;
-  summary: string;
+  explanation: string;
+  nutrition: string;
+  equipment_strategy: string;
   weeks: PlanWeek[];
   ai_routine_payload: AIRoutinePayload;
 };
@@ -152,13 +154,44 @@ function generatePlan(
   equipment: string[],
   daysPerWeek: number
 ): GeneratedPlan {
-  const summaries: Record<string, string> = {
-    "Build Muscle": `Hypertrophy-focused ${daysPerWeek}x/week split targeting progressive overload with moderate rep ranges (8-12). Each muscle group trained 2x per week.`,
-    "Lose Fat": `High-frequency ${daysPerWeek}x/week program combining strength training with minimal rest to maximize caloric burn and preserve muscle mass.`,
-    "Improve Strength": `Powerlifting-inspired ${daysPerWeek}x/week program centered on compound movements with heavy loads (3-6 reps) and sufficient recovery.`,
-    "Improve Endurance": `Circuit-style ${daysPerWeek}x/week program with supersets, higher rep ranges (15-20), and shorter rest periods to build cardiovascular fitness.`,
-    "General Fitness": `Well-rounded ${daysPerWeek}x/week full-body program covering strength, mobility, and conditioning for overall health.`,
+  const explanations: Record<string, string> = {
+    "Build Muscle": `Hypertrophy-focused ${daysPerWeek}x/week split targeting progressive overload with moderate rep ranges (8-12). Each muscle group is trained twice per week to maximize growth stimulus.`,
+    "Lose Fat": `High-frequency ${daysPerWeek}x/week program combining strength training with minimal rest to maximize caloric burn and preserve muscle mass during a deficit.`,
+    "Improve Strength": `Powerlifting-inspired ${daysPerWeek}x/week program centered on compound movements with heavy loads (3-6 reps) and sufficient recovery between sessions.`,
+    "Improve Endurance": `Circuit-style ${daysPerWeek}x/week program with supersets, higher rep ranges (15-20), and shorter rest periods to build cardiovascular fitness alongside strength.`,
+    "General Fitness": `Well-rounded ${daysPerWeek}x/week full-body program covering strength, mobility, and conditioning for overall health and longevity.`,
   };
+
+  const nutritionGuidance: Record<string, string> = {
+    "Build Muscle": "Target 0.8–1 g protein per lb bodyweight daily. Eat at a slight caloric surplus (200–400 kcal above maintenance). Prioritize whole foods, complex carbs around workouts, and consistent meal timing.",
+    "Lose Fat": "Maintain a moderate caloric deficit (300–500 kcal below maintenance). Keep protein high (0.8–1 g/lb) to preserve muscle. Reduce refined carbs and focus on fibrous vegetables and lean proteins.",
+    "Improve Strength": "Eat at or slightly above maintenance to support heavy lifting. Prioritize protein (0.8–1 g/lb) and carbohydrates as the primary fuel for high-intensity sessions. Avoid large deficits.",
+    "Improve Endurance": "Carbohydrate-rich diet to fuel high-rep, circuit-style training. Moderate protein (0.6–0.8 g/lb) is sufficient. Stay well-hydrated and consider electrolyte replenishment on long session days.",
+    "General Fitness": "Balanced macros: roughly 40% carbs, 30% protein, 30% fat. Focus on whole, minimally processed foods. Adequate hydration and consistent meal timing will support all-around performance.",
+  };
+
+  const equipmentStrategies: Record<string, Record<string, string>> = {
+    barbell: {
+      "Build Muscle": "Use barbell compounds (bench, squat, row) as primary movements. Progress weight weekly using linear periodization.",
+      "Lose Fat": "Barbell complexes and circuit work keep heart rate elevated while maintaining strength.",
+      "Improve Strength": "Barbell is your primary tool. Focus on squat, bench, and deadlift with systematic loading.",
+      "Improve Endurance": "Use lighter barbell loads with higher reps and shorter rest to build muscular endurance.",
+      "General Fitness": "Barbell compounds build a strong base; alternate with bodyweight work for balance.",
+    },
+    bodyweight: {
+      "Build Muscle": "Progress through harder progressions (e.g., push-up → archer push-up → one-arm push-up) to create sufficient overload.",
+      "Lose Fat": "High-rep bodyweight circuits with minimal rest maximize caloric burn without equipment.",
+      "Improve Strength": "Master bodyweight fundamentals — planche progressions, pull-up progressions — to build relative strength.",
+      "Improve Endurance": "Bodyweight circuits are ideal — combine push, pull, and lower body movements with little rest.",
+      "General Fitness": "Bodyweight training is accessible and effective for all-around fitness. Focus on movement quality.",
+    },
+  };
+
+  const hasBarbell = equipment.includes("Barbell");
+  const equipKey = hasBarbell ? "barbell" : "bodyweight";
+  const equipmentStrategy =
+    (equipmentStrategies[equipKey]?.[goal] ?? equipmentStrategies["bodyweight"]!["General Fitness"]!) +
+    (equipment.length > 1 ? ` Supplement with ${equipment.filter((e) => e !== (hasBarbell ? "Barbell" : "Bodyweight")).join(", ").toLowerCase()} for isolation work.` : "");
 
   const schedule = buildSchedule(goal, level, equipment, daysPerWeek);
 
@@ -190,7 +223,9 @@ function generatePlan(
     level,
     equipment,
     daysPerWeek,
-    summary: summaries[goal] ?? summaries["General Fitness"]!,
+    explanation: explanations[goal] ?? explanations["General Fitness"]!,
+    nutrition: nutritionGuidance[goal] ?? nutritionGuidance["General Fitness"]!,
+    equipment_strategy: equipmentStrategy,
     weeks,
     ai_routine_payload: payloadResult.data,
   };

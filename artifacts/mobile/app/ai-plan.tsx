@@ -344,7 +344,15 @@ export default function AIPlanScreen() {
         <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 16, paddingBottom: insets.bottom + 40 }} showsVerticalScrollIndicator={false}>
           <View style={[styles.summaryCard, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}>
             <Feather name="info" size={16} color={colors.primary} />
-            <Text style={[styles.summaryText, { color: colors.foreground }]}>{plan.summary}</Text>
+            <Text style={[styles.summaryText, { color: colors.foreground }]}>{plan.explanation}</Text>
+          </View>
+          <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 10 }]}>
+            <Feather name="zap" size={16} color={colors.primary} />
+            <Text style={[styles.summaryText, { color: colors.foreground }]}>{plan.nutrition}</Text>
+          </View>
+          <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 10 }]}>
+            <Feather name="tool" size={16} color={colors.primary} />
+            <Text style={[styles.summaryText, { color: colors.foreground }]}>{plan.equipment_strategy}</Text>
           </View>
 
           {saveState === "saved" && (

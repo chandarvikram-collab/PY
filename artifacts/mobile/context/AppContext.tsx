@@ -49,7 +49,9 @@ export type AIPlan = {
   level: ExperienceLevel;
   equipment: string[];
   daysPerWeek: number;
-  summary: string;
+  explanation: string;
+  nutrition: string;
+  equipment_strategy: string;
   weeks: AIPlanWeek[];
   ai_routine_payload: AIRoutinePayload | null;
 };
