@@ -1,8 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   Modal,
@@ -19,6 +20,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/lib/auth";
+
+const AVATAR_COLORS = ["#8b5cf6","#3b82f6","#22c55e","#f59e0b","#ef4444","#06b6d4","#ec4899","#f97316"];
+function colorFromId(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
 
 function Avatar({ initials, color, size = 72, imageUrl }: { initials: string; color: string; size?: number; imageUrl?: string }) {
   if (imageUrl) {
@@ -59,11 +67,20 @@ export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, updateProfile } = useApp();
-  const { userProfile, workoutHistory, challenges, friends, followingIds } = state;
-  const followingList = friends.filter((f) => followingIds.includes(f.id));
+  const { state, updateProfile, fetchFollowing } = useApp();
+  const { userProfile, workoutHistory, challenges } = state;
   const [showFriends, setShowFriends] = useState(false);
+  const [followingList, setFollowingList] = useState<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; rank: number }>>([]);
+  const [followingLoading, setFollowingLoading] = useState(false);
   const { isAuthenticated, signOut } = useAuth();
+
+  useEffect(() => {
+    if (!showFriends) return;
+    setFollowingLoading(true);
+    fetchFollowing()
+      .then(setFollowingList)
+      .finally(() => setFollowingLoading(false));
+  }, [showFriends]);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
@@ -303,7 +320,7 @@ export default function ProfileScreen() {
           <MenuRow icon="message-circle" label="Messages" onPress={() => router.push("/chat")} value={`${state.chatThreads.reduce((s, t) => s + t.unread, 0) || ""}`} />
           <MenuRow icon="zap" label="Calorie Tracker" onPress={() => router.push("/calories")} />
           <MenuRow icon="bar-chart-2" label="Progress & Analytics" onPress={() => {}} />
-          <MenuRow icon="users" label="Following" onPress={() => setShowFriends(true)} value={`${followingList.length}`} />
+          <MenuRow icon="users" label="Following" onPress={() => { setShowFriends(true); }} value={followingList.length > 0 ? `${followingList.length}` : ""} />
           <MenuRow icon="trophy" label="Achievements" onPress={() => {}} value={`${completedChallenges} completed`} />
         </View>
       </View>
@@ -335,7 +352,11 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
-          {followingList.length === 0 ? (
+          {followingLoading ? (
+            <View style={{ alignItems: "center", paddingVertical: 50 }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : followingList.length === 0 ? (
             <View style={{ alignItems: "center", paddingVertical: 50, gap: 12 }}>
               <Feather name="users" size={36} color={colors.mutedForeground} />
               <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 14 }}>
@@ -348,21 +369,28 @@ export default function ProfileScreen() {
               keyExtractor={(f) => f.id}
               contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 12 }}
               ItemSeparatorComponent={() => <View style={[styles.friendDivider, { backgroundColor: colors.border }]} />}
-              renderItem={({ item }) => (
-                <View style={styles.friendRow}>
-                  <View style={[styles.friendAvatar, { backgroundColor: item.color + "33", borderColor: item.color }]}>
-                    <Text style={{ color: item.color, fontSize: 14, fontFamily: "Inter_700Bold" }}>{item.initials}</Text>
+              renderItem={({ item }) => {
+                const initials = item.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+                const avatarColor = colorFromId(item.id);
+                return (
+                  <View style={styles.friendRow}>
+                    <View style={{ alignItems: "center", justifyContent: "center", width: 24 }}>
+                      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: colors.mutedForeground }}>#{item.rank}</Text>
+                    </View>
+                    <View style={[styles.friendAvatar, { backgroundColor: avatarColor + "33", borderColor: avatarColor }]}>
+                      <Text style={{ color: avatarColor, fontSize: 14, fontFamily: "Inter_700Bold" }}>{initials}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: colors.foreground }}>{item.name}</Text>
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground }}>@{item.username} · {item.level}</Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end", gap: 2 }}>
+                      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: colors.foreground }}>🔥 {item.streak}d</Text>
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground }}>{item.totalWorkouts} workouts</Text>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: colors.foreground }}>{item.name}</Text>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground }}>@{item.username}</Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end", gap: 2 }}>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: colors.foreground }}>🔥 {item.streak}d</Text>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground }}>{item.weeklyWorkouts} workouts</Text>
-                  </View>
-                </View>
-              )}
+                );
+              }}
             />
           )}
         </View>

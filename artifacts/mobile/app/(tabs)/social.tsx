@@ -6,6 +6,7 @@ import { useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -40,8 +41,19 @@ function FollowButton({ userId, isFollowing, onFollow, onUnfollow }: {
   return (
     <Pressable
       onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        isFollowing ? onUnfollow() : onFollow();
+        if (!isFollowing) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onFollow();
+        }
+      }}
+      onLongPress={() => {
+        if (isFollowing) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          Alert.alert("Unfollow", "Stop following this athlete?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Unfollow", style: "destructive", onPress: onUnfollow },
+          ]);
+        }
       }}
       style={[{
         paddingHorizontal: 10,
@@ -329,7 +341,7 @@ function DiscoverUserCard({ user, isFollowing, onFollow, onUnfollow }: {
         <View style={{ flexDirection: "row", gap: 8, marginTop: 5, alignItems: "center", flexWrap: "wrap" }}>
           <View style={[styles.levelBadge, { backgroundColor: levelColor + "22", borderColor: levelColor + "55" }]}>
             <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: levelColor }}>
-              {user.level.charAt(0).toUpperCase() + user.level.slice(1)}
+              {user.sharedLevel ? "✓ " : ""}{user.level.charAt(0).toUpperCase() + user.level.slice(1)}
             </Text>
           </View>
           <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>

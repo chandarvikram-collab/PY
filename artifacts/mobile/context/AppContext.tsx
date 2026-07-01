@@ -328,6 +328,7 @@ type AppContextType = {
   refreshNotifications: () => Promise<void>;
   markNotificationsRead: () => Promise<void>;
   fetchDiscover: (userLevel: string) => Promise<DiscoverUser[]>;
+  fetchFollowing: () => Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; rank: number }>>;
 };
 
 const ME_ID = "me";
@@ -1200,9 +1201,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const fetchDiscover = useCallback(async (userLevel: string): Promise<DiscoverUser[]> => {
     try {
-      const r = await socialFetch(`/users/discover?level=${encodeURIComponent(userLevel)}`);
+      const r = await socialFetch(`/discover?level=${encodeURIComponent(userLevel)}`);
       if (!r.ok) return [];
       return (await r.json()) as DiscoverUser[];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const fetchFollowing = useCallback(async (): Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; rank: number }>> => {
+    try {
+      const r = await socialFetch("/follows/following");
+      if (!r.ok) return [];
+      const rows = (await r.json()) as Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number }>;
+      return rows
+        .sort((a, b) => b.totalPoints - a.totalPoints)
+        .map((u, i) => ({ ...u, rank: i + 1 }));
     } catch {
       return [];
     }
@@ -1540,6 +1554,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         refreshNotifications,
         markNotificationsRead,
         fetchDiscover,
+        fetchFollowing,
       }}
     >
       {children}
@@ -1678,7 +1693,7 @@ function hydrateSocialFromApi(
   // Hydrate follows (gives followingIds) and discover (gives friends list)
   Promise.all([
     socialFetch("/follows").then((r) => (r.ok ? r.json() : [])),
-    socialFetch("/users/discover").then((r) => (r.ok ? r.json() : [])),
+    socialFetch("/discover").then((r) => (r.ok ? r.json() : [])),
   ])
     .then(([followRows, discoverRows]: [any[], any[]]) => {
       const followingIds: string[] = followRows.map((r: any) => r.id);

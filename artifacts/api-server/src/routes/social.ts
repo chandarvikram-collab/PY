@@ -381,7 +381,7 @@ router.get("/follows/followers", requireAuth, async (req, res) => {
   res.json(followers);
 });
 
-router.get("/users/discover", requireAuth, async (req, res) => {
+router.get("/discover", requireAuth, async (req, res) => {
   const userId = req.localUserId!;
   const userLevel = (req.query.level as string) || "";
 
