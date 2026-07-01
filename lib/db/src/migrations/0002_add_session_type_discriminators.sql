@@ -6,3 +6,6 @@ ALTER TABLE "workout_sessions"
 
 ALTER TABLE "run_sessions"
   ADD COLUMN IF NOT EXISTS "type" text NOT NULL DEFAULT 'run';
+
+ALTER TABLE "run_sessions"
+  ADD COLUMN IF NOT EXISTS "route_coords_json" jsonb NOT NULL DEFAULT '[]';

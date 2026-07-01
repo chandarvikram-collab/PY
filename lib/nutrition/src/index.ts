@@ -145,19 +145,22 @@ function lookupMET(paceMinPerKm: number): number {
 /**
  * Calculate calories burned during a run using the MET formula.
  *
- * calories = (MET × 3.5 × weight_kg / 200) × duration_minutes
+ * calories = (MET x 3.5 x weight_kg / 200) x duration_minutes
  *
- * MET is linearly interpolated from a pace lookup table.
+ * MET is derived from average pace, which is computed internally from
+ * distance and duration. Falls back to a moderate MET of 8.0 when
+ * pace cannot be determined (zero distance or duration).
  */
 export function calcRunCalories(
   distanceKm: number,
   durationSeconds: number,
   weightKg: number,
-  avgPace: string,
 ): number {
-  const paceMinPerKm = parsePace(avgPace);
-  const met = lookupMET(paceMinPerKm);
   const durationMinutes = durationSeconds / 60;
+  if (distanceKm <= 0 || durationMinutes <= 0) return 0;
+
+  const paceMinPerKm = durationMinutes / distanceKm;
+  const met = lookupMET(paceMinPerKm);
   const calories = (met * 3.5 * weightKg / 200) * durationMinutes;
   return Math.round(calories);
 }

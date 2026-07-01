@@ -15,6 +15,7 @@ export const runSessions = pgTable("run_sessions", {
   bestPace: text("best_pace").notNull().default(""),
   calories: integer("calories").notNull().default(0),
   splitsJson: jsonb("splits_json").notNull().default([]),
+  routeCoordsJson: jsonb("route_coords_json").notNull().default([]),
   pointsEarned: integer("points_earned").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

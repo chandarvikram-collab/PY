@@ -1137,12 +1137,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateWorkoutSession = useCallback(
     (id: string, updates: Partial<WorkoutSession>) => {
-      update((prev) => ({
-        ...prev,
-        workoutHistory: prev.workoutHistory.map((w) =>
-          w.id === id ? { ...w, ...updates } : w,
-        ),
-      }));
+      update((prev) => {
+        const exists = prev.workoutHistory.some((w) => w.id === id);
+        if (!exists) {
+          // Insert a minimal session if missing (upsert from detail fetch)
+          const session: WorkoutSession = {
+            id,
+            type: "lift",
+            name: updates.name ?? "Workout",
+            date: updates.date ?? todayStr(),
+            duration: updates.duration ?? 0,
+            volume: updates.volume ?? 0,
+            exercises: updates.exercises ?? 0,
+            exerciseLog: updates.exerciseLog ?? [],
+            ...updates,
+          };
+          return { ...prev, workoutHistory: [session, ...prev.workoutHistory] };
+        }
+        return {
+          ...prev,
+          workoutHistory: prev.workoutHistory.map((w) =>
+            w.id === id ? { ...w, ...updates } : w,
+          ),
+        };
+      });
     },
     [update],
   );
@@ -1528,6 +1546,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             bestPace: session.bestPace,
             calories: session.calories,
             splitsJson: session.splits,
+            routeCoordsJson: session.routeCoords ?? [],
             pointsEarned: points,
           },
           (user) => {
@@ -1549,12 +1568,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateRunSession = useCallback(
     (id: string, updates: Partial<RunSession>) => {
-      update((prev) => ({
-        ...prev,
-        runHistory: prev.runHistory.map((r) =>
-          r.id === id ? { ...r, ...updates } : r,
-        ),
-      }));
+      update((prev) => {
+        const exists = prev.runHistory.some((r) => r.id === id);
+        if (!exists) {
+          // Insert a minimal session if missing (upsert from detail fetch)
+          const session: RunSession = {
+            id,
+            type: "run",
+            date: updates.date ?? todayStr(),
+            distance: updates.distance ?? 0,
+            duration: updates.duration ?? 0,
+            avgPace: updates.avgPace ?? "",
+            bestPace: updates.bestPace ?? "",
+            calories: updates.calories ?? 0,
+            splits: updates.splits ?? [],
+            routeCoords: updates.routeCoords,
+            ...updates,
+          };
+          return { ...prev, runHistory: [session, ...prev.runHistory] };
+        }
+        return {
+          ...prev,
+          runHistory: prev.runHistory.map((r) =>
+            r.id === id ? { ...r, ...updates } : r,
+          ),
+        };
+      });
     },
     [update],
   );
@@ -1720,6 +1759,7 @@ function hydrateFromApi(
         bestPace: r.bestPace ?? "",
         calories: r.calories ?? 0,
         splits: (r.splitsJson as RunSplit[]) ?? [],
+        routeCoords: (r.routeCoordsJson as Array<{ lat: number; lng: number }>) ?? undefined,
       }));
 
       setState((prev) => {

@@ -98,7 +98,7 @@ export default function RunDetailScreen() {
           bestPace: row.bestPace ?? "",
           calories: row.calories ?? 0,
           splits: (row.splitsJson as RunSplit[]) ?? [],
-          routeCoords: row.routeCoords ?? undefined,
+          routeCoords: (row.routeCoordsJson as Array<{ lat: number; lng: number }>) ?? undefined,
         };
         updateRunSession(rs.id, rs);
         setLoading(false);
@@ -135,7 +135,7 @@ export default function RunDetailScreen() {
     );
   }
 
-  const metCalories = calcRunCalories(session.distance, session.duration, weightKg, session.avgPace);
+  const metCalories = calcRunCalories(session.distance, session.duration, weightKg);
 
   return (
     <ScrollView
