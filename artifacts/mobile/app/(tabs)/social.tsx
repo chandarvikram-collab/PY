@@ -815,8 +815,8 @@ export default function SocialScreen() {
 
       {/* Compose Flow */}
       {composing && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "flex-end", zIndex: 100 }]}>
-          <View style={[styles.composeSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "flex-start", paddingTop: insets.top + 20, zIndex: 100 }]}>
+          <View style={[styles.composeSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20, maxHeight: "67%" }]}>
 
             {/* Step 1: Pick media type */}
             {composerStep === "pick-type" && (
