@@ -1,7 +1,12 @@
 import { Router } from "express";
+import { eq } from "drizzle-orm";
+import { createHash } from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
+import { db, foodAnalyses } from "@workspace/db";
 
 const router = Router();
+
+/* ── Barcode lookup (unchanged) ─────────────────────────────────────────── */
 
 router.get("/barcode/:code", async (req, res) => {
   const { code } = req.params;
@@ -39,7 +44,6 @@ router.get("/barcode/:code", async (req, res) => {
     const hasServingData = nutriments["energy-kcal_serving"] !== undefined;
     const prefix = hasServingData ? "_serving" : "_100g";
 
-    // Per-serving (or per-100g fallback) — shown on the label
     const calories =
       getNutrient(`energy-kcal${prefix}`) ||
       getNutrient("energy-kcal_100g") ||
@@ -57,7 +61,6 @@ router.get("/barcode/:code", async (req, res) => {
       getNutrient("fat_100g") ||
       getNutrient("fat");
 
-    // Always include per-100g so the client can scale by grams
     const per100gCalories =
       getNutrient("energy-kcal_100g") || getNutrient("energy-kcal") || calories;
     const per100gProtein =
@@ -67,7 +70,6 @@ router.get("/barcode/:code", async (req, res) => {
     const per100gFat =
       getNutrient("fat_100g") || getNutrient("fat") || fat;
 
-    // Parse grams from serving_size string (e.g. "355 ml" → 355, "30g" → 30)
     const servingGramsMatch = servingSize.match(/(\d+(?:\.\d+)?)\s*(g|ml)/i);
     const servingGrams = servingGramsMatch ? Math.round(parseFloat(servingGramsMatch[1])) : 100;
 
@@ -93,6 +95,50 @@ router.get("/barcode/:code", async (req, res) => {
   }
 });
 
+/* ── Async food photo analysis ──────────────────────────────────────────── */
+
+const AI_PROMPT = `You are a nutrition expert. Analyze this food photo and identify all food items visible.
+For each food item, estimate the nutritional content for the visible portion.
+Return strict JSON only — no markdown, no explanation, no free text. Use this exact structure:
+{
+  "items": [
+    {
+      "name": "food name and portion",
+      "quantity": 1,
+      "unit": "serving",
+      "calories": 350,
+      "proteinG": 25,
+      "carbsG": 40,
+      "fatG": 8
+    }
+  ]
+}
+Be specific about portions. If you cannot identify food, return {"items":[]}.`;
+
+async function runAiAnalysis(imageBase64: string, mimeType: string) {
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { inlineData: { mimeType, data: imageBase64 } },
+          { text: AI_PROMPT },
+        ],
+      },
+    ],
+    config: { responseMimeType: "application/json" },
+  });
+
+  const text = response.text ?? '{"items":[]}';
+  try {
+    const parsed = JSON.parse(text) as { items?: unknown[] };
+    return Array.isArray(parsed.items) ? parsed.items : [];
+  } catch {
+    return [];
+  }
+}
+
 router.post("/analyze-food", async (req, res) => {
   const { imageBase64, mimeType = "image/jpeg" } = req.body as {
     imageBase64?: string;
@@ -104,50 +150,74 @@ router.post("/analyze-food", async (req, res) => {
     return;
   }
 
-  const prompt = `You are a nutrition expert. Analyze this food photo and identify all food items visible.
-For each food item, estimate the nutritional content for the visible portion.
-Return a JSON array with this exact structure (no markdown, just raw JSON):
-[
-  {
-    "name": "food name and portion",
-    "calories": 350,
-    "protein": 25,
-    "carbs": 40,
-    "fat": 8,
-    "serving": "1 cup (240g)"
+  // SHA-256 hash of the compressed image bytes for cache lookups
+  const imageHash = createHash("sha256").update(imageBase64).digest("hex");
+
+  // Check cache first
+  const cached = await db
+    .select()
+    .from(foodAnalyses)
+    .where(eq(foodAnalyses.imageHash, imageHash))
+    .limit(1);
+
+  if (cached.length > 0 && cached[0].status === "done" && cached[0].result) {
+    req.log.info({ analysisId: cached[0].id, cached: true }, "food analysis cache hit");
+    res.json({
+      analysisId: cached[0].id,
+      status: "done",
+      foods: cached[0].result.items ?? [],
+    });
+    return;
   }
-]
-Be specific about portions. If you cannot identify food, return an empty array [].`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            inlineData: {
-              mimeType,
-              data: imageBase64,
-            },
-          },
-          { text: prompt },
-        ],
-      },
-    ],
-  });
+  // Create a new processing row
+  const [row] = await db
+    .insert(foodAnalyses)
+    .values({ imageHash, status: "processing", result: null })
+    .returning();
 
-  const text = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "[]";
-  const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  req.log.info({ analysisId: row.id }, "food analysis started");
 
-  let foods: unknown[];
+  // Return immediately so the UI stays interactive
+  res.status(202).json({ analysisId: row.id, status: "processing" });
+
+  // Run AI in the background
   try {
-    foods = JSON.parse(cleaned);
-  } catch {
-    foods = [];
+    const items = (await runAiAnalysis(imageBase64, mimeType)) as any[];
+    await db
+      .update(foodAnalyses)
+      .set({ status: "done", result: { items }, completedAt: new Date() })
+      .where(eq(foodAnalyses.id, row.id));
+    req.log.info({ analysisId: row.id, itemCount: items.length }, "food analysis completed");
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await db
+      .update(foodAnalyses)
+      .set({ status: "error", result: { items: [] }, completedAt: new Date() })
+      .where(eq(foodAnalyses.id, row.id));
+    req.log.error({ analysisId: row.id, err: msg }, "food analysis failed");
+  }
+});
+
+router.get("/food-analyses/:id", async (req, res) => {
+  const id = req.params.id as string;
+  const [row] = await db
+    .select()
+    .from(foodAnalyses)
+    .where(eq(foodAnalyses.id, id))
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "Analysis not found" });
+    return;
   }
 
-  res.json({ foods });
+  res.json({
+    analysisId: row.id,
+    status: row.status,
+    foods: row.result?.items ?? [],
+    error: row.status === "error" ? "Analysis failed" : undefined,
+  });
 });
 
 export default router;

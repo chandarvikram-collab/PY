@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import React, {
@@ -50,12 +51,31 @@ type AiFoodResult = {
   serving: string;
 };
 
-async function compressToJpeg(base64: string, mimeType: string): Promise<{ base64: string; mimeType: string }> {
-  if (Platform.OS !== "web" || typeof document === "undefined") return { base64, mimeType };
+async function compressToJpeg(
+  uri: string,
+  base64?: string | null,
+  mimeType?: string | null
+): Promise<{ base64: string; mimeType: string }> {
+  // Native: use expo-image-manipulator to resize ≤ 1024×1024 and compress JPEG
+  if (Platform.OS !== "web") {
+    const manipulated = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: 1024, height: 1024 } }],
+      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+    );
+    return {
+      base64: manipulated.base64 ?? "",
+      mimeType: "image/jpeg",
+    };
+  }
+  // Web fallback: canvas-based resize
+  if (!base64 || typeof document === "undefined") {
+    return { base64: base64 ?? "", mimeType: mimeType ?? "image/jpeg" };
+  }
   return new Promise((resolve) => {
     const img = new (window as any).Image() as HTMLImageElement;
     img.onload = () => {
-      const MAX = 768;
+      const MAX = 1024;
       let { width, height } = img;
       if (width > MAX || height > MAX) {
         if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
@@ -64,12 +84,12 @@ async function compressToJpeg(base64: string, mimeType: string): Promise<{ base6
       const canvas = document.createElement("canvas");
       canvas.width = width; canvas.height = height;
       const ctx = canvas.getContext("2d");
-      if (!ctx) { resolve({ base64, mimeType }); return; }
+      if (!ctx) { resolve({ base64, mimeType: mimeType ?? "image/jpeg" }); return; }
       ctx.drawImage(img, 0, 0, width, height);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.55);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
       resolve({ base64: dataUrl.split(",")[1] ?? base64, mimeType: "image/jpeg" });
     };
-    img.onerror = () => resolve({ base64, mimeType });
+    img.onerror = () => resolve({ base64, mimeType: mimeType ?? "image/jpeg" });
     img.src = `data:${mimeType};base64,${base64}`;
   });
 }
@@ -328,6 +348,17 @@ export default function CaloriesScreen() {
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoGrams, setPhotoGrams] = useState<Record<string, string>>({});
   const [photoBaseGrams, setPhotoBaseGrams] = useState<Record<string, number>>({});
+  const [photoElapsed, setPhotoElapsed] = useState(0);
+
+  useEffect(() => {
+    if (photoPhase !== "analyzing") {
+      setPhotoElapsed(0);
+      return;
+    }
+    setPhotoElapsed(0);
+    const interval = setInterval(() => setPhotoElapsed((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [photoPhase]);
 
   async function pickAndAnalyze(launcher: () => Promise<ImagePicker.ImagePickerResult>) {
     setPhotoError(null);
@@ -336,9 +367,11 @@ export default function CaloriesScreen() {
     const asset = result.assets[0];
     const raw = asset.base64;
     const mime = asset.mimeType ?? "image/jpeg";
-    if (!raw) { setPhotoError("Could not read image data."); return; }
-    const { base64, mimeType } = await compressToJpeg(raw, mime);
-    await analyzePhoto(base64, mimeType);
+    const uri = asset.uri;
+    if (!uri && !raw) { setPhotoError("Could not read image data."); return; }
+    const { base64, mimeType } = await compressToJpeg(uri, raw, mime);
+    if (!base64) { setPhotoError("Failed to compress image."); return; }
+    await startAnalysis(base64, mimeType);
   }
 
   async function startPhotoScan() {
@@ -376,7 +409,7 @@ export default function CaloriesScreen() {
     );
   }
 
-  async function analyzePhoto(base64: string, mimeType: string) {
+  async function startAnalysis(base64: string, mimeType: string) {
     setPhotoPhase("analyzing");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -386,41 +419,92 @@ export default function CaloriesScreen() {
         body: JSON.stringify({ imageBase64: base64, mimeType }),
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const data = await res.json() as { foods?: unknown[] };
-      const foods = (data.foods ?? []) as Array<{
-        name: string; calories: number; protein: number; carbs: number; fat: number; serving: string;
-      }>;
-      if (foods.length === 0) {
-        setPhotoError("No food detected in the photo. Try a clearer image.");
-        setPhotoPhase("idle");
+      const data = (await res.json()) as {
+        analysisId?: string;
+        status?: string;
+        foods?: unknown[];
+        error?: string;
+      };
+
+      // Cache hit — server returned done immediately
+      if (data.status === "done" && Array.isArray(data.foods)) {
+        populateResults(data.foods);
         return;
       }
-      const results: AiFoodResult[] = foods.map((f, i) => ({
-        id: `ai-${i}-${Date.now()}`,
-        name: f.name,
-        calories: Math.round(f.calories ?? 0),
-        protein: Math.round(f.protein ?? 0),
-        carbs: Math.round(f.carbs ?? 0),
-        fat: Math.round(f.fat ?? 0),
-        serving: f.serving ?? "1 serving",
-      }));
-      const gramsMap: Record<string, string> = {};
-      const baseMap: Record<string, number> = {};
-      results.forEach((r) => {
-        const base = parseServingGrams(r.serving);
-        gramsMap[r.id] = String(base);
-        baseMap[r.id] = base;
-      });
-      setPhotoGrams(gramsMap);
-      setPhotoBaseGrams(baseMap);
-      setPhotoSuggestions(results);
-      setPhotoPhase("results");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      const analysisId = data.analysisId;
+      if (!analysisId) throw new Error("No analysisId returned from server.");
+
+      // Poll every 3 seconds until done or error
+      const poll = async (): Promise<void> => {
+        const pollRes = await fetch(`${API_BASE}/api/food-analyses/${encodeURIComponent(analysisId)}`);
+        if (!pollRes.ok) throw new Error(`Polling error ${pollRes.status}`);
+        const pollData = (await pollRes.json()) as {
+          status: string;
+          foods?: unknown[];
+          error?: string;
+        };
+        if (pollData.status === "done") {
+          populateResults(pollData.foods ?? []);
+          return;
+        }
+        if (pollData.status === "error") {
+          throw new Error(pollData.error || "Analysis failed.");
+        }
+        // Still processing — wait 3s and try again
+        await new Promise((r) => setTimeout(r, 3000));
+        return poll();
+      };
+
+      await poll();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to analyze photo.";
       setPhotoError(msg);
       setPhotoPhase("idle");
     }
+  }
+
+  function populateResults(foods: unknown[]) {
+    const items = (foods ?? []) as Array<{
+      name: string;
+      quantity?: number;
+      unit?: string;
+      calories?: number;
+      proteinG?: number;
+      carbsG?: number;
+      fatG?: number;
+      serving?: string;
+    }>;
+    if (items.length === 0) {
+      setPhotoError("No food detected in the photo. Try a clearer image.");
+      setPhotoPhase("idle");
+      return;
+    }
+    const results: AiFoodResult[] = items.map((f, i) => {
+      const servingText = f.serving ?? `${f.quantity ?? 1} ${f.unit ?? "serving"}`;
+      const baseGrams = parseServingGrams(servingText);
+      return {
+        id: `ai-${i}-${Date.now()}`,
+        name: f.name,
+        calories: Math.round(f.calories ?? 0),
+        protein: Math.round(f.proteinG ?? 0),
+        carbs: Math.round(f.carbsG ?? 0),
+        fat: Math.round(f.fatG ?? 0),
+        serving: servingText,
+      };
+    });
+    const gramsMap: Record<string, string> = {};
+    const baseMap: Record<string, number> = {};
+    results.forEach((r) => {
+      const base = parseServingGrams(r.serving);
+      gramsMap[r.id] = String(base);
+      baseMap[r.id] = base;
+    });
+    setPhotoGrams(gramsMap);
+    setPhotoBaseGrams(baseMap);
+    setPhotoSuggestions(results);
+    setPhotoPhase("results");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
   function addPhotoSuggestion(food: AiFoodResult) {
@@ -1032,7 +1116,12 @@ export default function CaloriesScreen() {
                       <ActivityIndicator color={colors.primary} size="large" />
                     </View>
                     <Text style={[s.analyzingText, { color: colors.foreground }]}>Analyzing meal…</Text>
-                    <Text style={[s.analyzingSubText, { color: colors.mutedForeground }]}>Identifying foods and estimating nutrition</Text>
+                    <Text style={[s.analyzingSubText, { color: colors.mutedForeground }]}>
+                      Identifying foods and estimating nutrition
+                    </Text>
+                    <Text style={[s.analyzingSubText, { color: colors.mutedForeground }]}>
+                      {photoElapsed}s elapsed
+                    </Text>
                   </View>
                 )}
 

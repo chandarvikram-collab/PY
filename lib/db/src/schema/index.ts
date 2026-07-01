@@ -4,6 +4,7 @@ export * from "./users";
 export * from "./workout_sessions";
 export * from "./run_sessions";
 export * from "./food_entries";
+export * from "./food_analyses";
 export * from "./auth";
 export * from "./social";
 export * from "./routines";
