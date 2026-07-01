@@ -14,7 +14,7 @@ import {
 import Svg, { Circle, Polyline } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useApp } from "@/context/AppContext";
+import { useApp, socialFetch } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import type { RunSession, RunSplit } from "@/context/AppContext";
 import { calcRunCalories } from "@workspace/nutrition";
@@ -83,9 +83,7 @@ export default function RunDetailScreen() {
   useEffect(() => {
     if (session || !id) return;
     setLoading(true);
-    const domain = process.env.EXPO_PUBLIC_DOMAIN;
-    const base = domain ? `https://${domain}` : "";
-    fetch(`${base}/api/sessions/run/id/${id}`, { credentials: "include" })
+    socialFetch(`/sessions/run/id/${id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("fetch failed"))))
       .then((row: any) => {
         const rs: RunSession = {

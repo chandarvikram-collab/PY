@@ -379,7 +379,7 @@ const AVATAR_COLORS = ["#3b82f6", "#8b5cf6", "#f59e0b", "#22c55e", "#ec4899", "#
 
 let _getToken: (() => Promise<string | null>) | null = null;
 
-async function socialFetch(path: string, opts: RequestInit = {}): Promise<Response> {
+export async function socialFetch(path: string, opts: RequestInit = {}): Promise<Response> {
   const token = _getToken ? await _getToken() : null;
   const headers: Record<string, string> = {
     ...(opts.body ? { "Content-Type": "application/json" } : {}),

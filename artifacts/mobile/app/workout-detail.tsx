@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
+import { socialFetch } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import type { ExerciseLog, SetLog, WorkoutSession } from "@/context/AppContext";
 
@@ -38,6 +39,7 @@ export default function WorkoutDetailScreen() {
   const [editExIndex, setEditExIndex] = useState(0);
   const [editSetIndex, setEditSetIndex] = useState(0);
   const [restDraft, setRestDraft] = useState("90");
+  const [patchError, setPatchError] = useState<string | null>(null);
 
   const session: WorkoutSession | undefined = useMemo(() => {
     return state.workoutHistory.find((w) => w.id === id);
@@ -46,9 +48,7 @@ export default function WorkoutDetailScreen() {
   useEffect(() => {
     if (session || !id) return;
     setLoading(true);
-    const domain = process.env.EXPO_PUBLIC_DOMAIN;
-    const base = domain ? `https://${domain}` : "";
-    fetch(`${base}/api/sessions/workout/id/${id}`, { credentials: "include" })
+    socialFetch(`/sessions/workout/id/${id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("fetch failed"))))
       .then((row: any) => {
         const ws: WorkoutSession = {
@@ -77,6 +77,7 @@ export default function WorkoutDetailScreen() {
       setEditSetIndex(setIdx);
       setRestDraft(String(currentRest));
       setEditRestOpen(true);
+      setPatchError(null);
     },
     [],
   );
@@ -97,17 +98,19 @@ export default function WorkoutDetailScreen() {
 
     updateWorkoutSession(session.id, { exerciseLog: updatedLog });
 
-    const domain = process.env.EXPO_PUBLIC_DOMAIN;
-    const base = domain ? `https://${domain}` : "";
-    fetch(`${base}/api/sessions/workout/id/${session.id}`, {
+    socialFetch(`/sessions/workout/id/${session.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ exerciseLogJson: updatedLog }),
-      credentials: "include",
-    }).catch(() => {});
-
-    setEditRestOpen(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("Save failed");
+        setEditRestOpen(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      })
+      .catch((e) => {
+        setPatchError(e.message);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      });
   }, [session, editExIndex, editSetIndex, restDraft, updateWorkoutSession]);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -206,6 +209,12 @@ export default function WorkoutDetailScreen() {
             <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
               Rest after Set {editSetIndex + 1}
             </Text>
+
+            {patchError && (
+              <Text style={{ color: colors.destructive, fontSize: 13, fontFamily: "Inter_500Medium", textAlign: "center", marginBottom: 10 }}>
+                {patchError}
+              </Text>
+            )}
 
             <View style={styles.restInputRow}>
               <TextInput
