@@ -440,24 +440,31 @@ function removeFromQueue(uid: string): void {
 }
 
 function queueAndFire(method: "POST" | "PATCH" | "DELETE", path: string, body?: unknown): void {
-  const item: PendingItem = {
-    uid: generateUUID(),
-    method,
-    path,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    retryCount: 0,
-    lastAttemptAt: Date.now(),
-  };
-  addToQueue(item);
+  void (async () => {
+    const token = _getToken ? await _getToken() : null;
 
-  const headers: Record<string, string> = item.body ? { "Content-Type": "application/json" } : {};
-  fetch(`${API_BASE}/api${path}`, { method, headers, body: item.body })
-    .then((r) => {
-      if (r.ok || (r.status >= 400 && r.status < 500)) {
-        removeFromQueue(item.uid);
-      }
-    })
-    .catch(() => {});
+    const item: PendingItem = {
+      uid: generateUUID(),
+      method,
+      path,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      retryCount: 0,
+      lastAttemptAt: Date.now(),
+    };
+    addToQueue(item);
+
+    const headers: Record<string, string> = {
+      ...(item.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    fetch(`${API_BASE}/api${path}`, { method, headers, body: item.body })
+      .then((r) => {
+        if (r.ok || (r.status >= 400 && r.status < 500)) {
+          removeFromQueue(item.uid);
+        }
+      })
+      .catch(() => {});
+  })();
 }
 
 function fireSession(
@@ -465,32 +472,41 @@ function fireSession(
   body: unknown,
   onUser: (user: ServerUserPartial) => void,
 ): void {
-  const uid = generateUUID();
-  const bodyStr = JSON.stringify(body);
-  addToQueue({ uid, method: "POST", path, body: bodyStr, retryCount: 0, lastAttemptAt: Date.now() });
+  void (async () => {
+    const token = _getToken ? await _getToken() : null;
 
-  fetch(`${API_BASE}/api${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: bodyStr,
-  })
-    .then(async (r) => {
-      if (r.status >= 400 && r.status < 500) {
-        removeFromQueue(uid);
-        return;
-      }
-      if (!r.ok) return;
-      removeFromQueue(uid);
-      const json = (await r.json()) as { session?: unknown; user?: ServerUserPartial; duplicate?: boolean };
-      if (json.user) onUser(json.user);
+    const uid = generateUUID();
+    const bodyStr = JSON.stringify(body);
+    addToQueue({ uid, method: "POST", path, body: bodyStr, retryCount: 0, lastAttemptAt: Date.now() });
+
+    fetch(`${API_BASE}/api${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: bodyStr,
     })
-    .catch(() => {});
+      .then(async (r) => {
+        if (r.status >= 400 && r.status < 500) {
+          removeFromQueue(uid);
+          return;
+        }
+        if (!r.ok) return;
+        removeFromQueue(uid);
+        const json = (await r.json()) as { session?: unknown; user?: ServerUserPartial; duplicate?: boolean };
+        if (json.user) onUser(json.user);
+      })
+      .catch(() => {});
+  })();
 }
 
 async function drainPendingQueue(): Promise<void> {
   if (_isDraining) return;
   _isDraining = true;
   try {
+    const token = _getToken ? await _getToken() : null;
+
     let raw: string | null = null;
     try {
       raw = await AsyncStorage.getItem(PENDING_KEY);
@@ -524,7 +540,10 @@ async function drainPendingQueue(): Promise<void> {
         if (!due) return;
 
         try {
-          const headers: Record<string, string> = item.body ? { "Content-Type": "application/json" } : {};
+          const headers: Record<string, string> = {
+            ...(item.body ? { "Content-Type": "application/json" } : {}),
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          };
           const r = await fetch(`${API_BASE}/api${item.path}`, {
             method: item.method,
             headers,
@@ -1579,7 +1598,7 @@ function hydrateFromApi(
   userId: string,
   setState: React.Dispatch<React.SetStateAction<AppState>>,
 ): void {
-  fetch(`${API_BASE}/api/sessions/${userId}`)
+  socialFetch(`/sessions/${userId}`)
     .then((r) => {
       if (!r.ok) throw new Error("sessions fetch failed");
       return r.json() as Promise<any[]>;
@@ -1626,7 +1645,7 @@ function hydrateFromApi(
     .catch(() => {});
 
   const today = todayStr();
-  fetch(`${API_BASE}/api/food-log/${userId}/${today}`)
+  socialFetch(`/food-log/${userId}/${today}`)
     .then((r) => {
       if (!r.ok) throw new Error("food-log fetch failed");
       return r.json() as Promise<any[]>;

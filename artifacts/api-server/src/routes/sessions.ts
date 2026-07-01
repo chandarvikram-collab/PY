@@ -8,7 +8,7 @@ import {
   insertWorkoutSessionSchema,
   insertRunSessionSchema,
 } from "@workspace/db";
-import { requireAuth, requireOwner } from "../middlewares/requireAuth";
+import { requireAuth, requireOwner, optionalAuth, requireOwnerIfAuthenticated } from "../middlewares/requireAuth";
 
 const router = Router();
 
@@ -46,7 +46,7 @@ async function calculateStreak(userId: string): Promise<number> {
   return streak;
 }
 
-router.post("/sessions/workout", requireAuth, requireOwner((req) => req.body?.userId), async (req, res) => {
+router.post("/sessions/workout", optionalAuth, requireOwnerIfAuthenticated((req) => req.body?.userId), async (req, res) => {
   const parsed = insertWorkoutSessionSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues });
@@ -93,7 +93,7 @@ router.get("/sessions/workout/:userId", requireAuth, requireOwner((req) => req.p
   res.json(rows);
 });
 
-router.post("/sessions/run", requireAuth, requireOwner((req) => req.body?.userId), async (req, res) => {
+router.post("/sessions/run", optionalAuth, requireOwnerIfAuthenticated((req) => req.body?.userId), async (req, res) => {
   const parsed = insertRunSessionSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues });

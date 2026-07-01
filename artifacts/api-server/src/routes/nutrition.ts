@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { and, eq, desc } from "drizzle-orm";
 import { db, foodEntries, insertFoodEntrySchema } from "@workspace/db";
-import { requireAuth, requireOwner } from "../middlewares/requireAuth";
+import { requireAuth, requireOwner, optionalAuth, requireOwnerIfAuthenticated } from "../middlewares/requireAuth";
 
 const router = Router();
 
-router.post("/food-log/:userId", requireAuth, requireOwner((req) => req.params.userId), async (req, res) => {
+router.post("/food-log/:userId", optionalAuth, requireOwnerIfAuthenticated((req) => req.params.userId), async (req, res) => {
   const userId = req.params.userId as string;
   const parsed = insertFoodEntrySchema.safeParse({
     ...req.body,
