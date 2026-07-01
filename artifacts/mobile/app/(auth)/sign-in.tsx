@@ -49,7 +49,7 @@ export default function SignInScreen() {
     setError("");
     setGoogleLoading(true);
     try {
-      const { createdSessionId, setActive } = await startSSOFlow({
+      const { createdSessionId, setActive, signIn } = await startSSOFlow({
         strategy: "oauth_google",
         redirectUrl: AuthSession.makeRedirectUri(),
       });
@@ -62,9 +62,46 @@ export default function SignInScreen() {
             router.replace("/");
           },
         });
+      } else if (signIn) {
+        const verification = signIn.firstFactorVerification;
+        const isTransferable = verification?.status === "transferable";
+        const isConflict =
+          signIn.status === "needs_identifier" ||
+          isTransferable ||
+          verification?.error?.code === "external_account_exists";
+
+        if (isConflict) {
+          const conflictEmail =
+            (signIn.identifier as string | undefined) ??
+            (signIn.supportedFirstFactors?.find(
+              (f: any) => f.emailAddressId
+            ) as any)?.emailAddress ??
+            "";
+          if (conflictEmail) setEmail(conflictEmail);
+          setError(
+            "This Google account's email is already registered with a password. " +
+              "Sign in with your password below — once you're in, you can link Google from your account settings."
+          );
+        } else {
+          setError("Google sign-in could not be completed. Please try again.");
+        }
       }
     } catch (err: any) {
-      setError(err?.message ?? "Google sign-in failed");
+      const clerkErrors: any[] = err?.errors ?? [];
+      const isConflict = clerkErrors.some(
+        (e) =>
+          e.code === "external_account_exists" ||
+          e.code === "identifier_already_signed_in" ||
+          e.code === "oauth_access_denied"
+      );
+      if (isConflict) {
+        setError(
+          "This Google account's email is already registered with a password. " +
+            "Sign in with your password below — once you're in, you can link Google from your account settings."
+        );
+      } else {
+        setError(err?.errors?.[0]?.longMessage ?? err?.message ?? "Google sign-in failed");
+      }
     } finally {
       setGoogleLoading(false);
     }
