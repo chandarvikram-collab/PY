@@ -651,10 +651,10 @@ const DEFAULT_STATE: AppState = {
       ],
     },
   ],
-  friends: SEED_FRIENDS,
+  friends: [],
   followingIds: [],
-  challenges: SEED_CHALLENGES,
-  posts: SEED_POSTS,
+  challenges: [],
+  posts: [],
   chatThreads: SEED_CHAT_THREADS,
   runHistory: SEED_RUN_HISTORY,
 };
@@ -1561,11 +1561,40 @@ function hydrateFromApi(
 function hydrateSocialFromApi(
   setState: React.Dispatch<React.SetStateAction<AppState>>,
 ): void {
-  socialFetch("/follows")
-    .then((r) => (r.ok ? r.json() : []))
-    .then((rows: any[]) => {
-      const followingIds: string[] = rows.map((r: any) => r.id);
-      setState((prev) => ({ ...prev, followingIds }));
+  // Hydrate follows (gives followingIds) and discover (gives friends list)
+  Promise.all([
+    socialFetch("/follows").then((r) => (r.ok ? r.json() : [])),
+    socialFetch("/users/discover").then((r) => (r.ok ? r.json() : [])),
+  ])
+    .then(([followRows, discoverRows]: [any[], any[]]) => {
+      const followingIds: string[] = followRows.map((r: any) => r.id);
+      const followedSet = new Set(followingIds);
+
+      // Merge: followed users first, then undiscovered users
+      const allRows: any[] = [
+        ...followRows,
+        ...discoverRows.filter((r: any) => !followedSet.has(r.id)),
+      ];
+
+      const friends = allRows.map((r: any, i: number) => ({
+        id: r.id as string,
+        name: r.name as string,
+        username: (r.username ?? "") as string,
+        initials: ((r.name as string) ?? "?")
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase(),
+        color: colorFromId(r.id as string),
+        streak: (r.streak as number) ?? 0,
+        weeklyWorkouts: (r.totalWorkouts as number) ?? 0,
+        rank: i + 1,
+        totalPoints: (r.totalPoints as number) ?? 0,
+        isOnline: false,
+      }));
+
+      setState((prev) => ({ ...prev, followingIds, friends }));
     })
     .catch(() => {});
 

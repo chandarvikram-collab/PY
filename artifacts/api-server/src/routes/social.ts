@@ -157,12 +157,41 @@ router.get("/follows", requireAuth, async (req, res) => {
   const userId = req.localUserId!;
 
   const following = await db
-    .select({ id: users.id, name: users.name, username: users.username, imageUrl: users.imageUrl })
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      imageUrl: users.imageUrl,
+      streak: users.streak,
+      totalWorkouts: users.totalWorkouts,
+      totalPoints: users.totalPoints,
+    })
     .from(follows)
     .innerJoin(users, eq(follows.followingId, users.id))
     .where(eq(follows.followerId, userId));
 
   res.json(following);
+});
+
+router.get("/users/discover", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+
+  const discovered = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      imageUrl: users.imageUrl,
+      streak: users.streak,
+      totalWorkouts: users.totalWorkouts,
+      totalPoints: users.totalPoints,
+    })
+    .from(users)
+    .where(sql`${users.id} != ${userId}::uuid`)
+    .orderBy(desc(users.totalPoints))
+    .limit(50);
+
+  res.json(discovered);
 });
 
 // ─── Challenges ─────────────────────────────────────────────────────────────
