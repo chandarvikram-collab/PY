@@ -180,16 +180,16 @@ router.post("/posts/:id/like", requireAuth, async (req, res) => {
     return;
   }
 
-  await db
+  const inserted = await db
     .insert(likes)
     .values({ userId, postId })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning();
 
-  if (post.userId !== userId) {
+  if (inserted.length > 0 && post.userId !== userId) {
     await db
       .insert(notifications)
-      .values({ recipientId: post.userId, actorId: userId, type: "like", postId })
-      .onConflictDoNothing();
+      .values({ recipientId: post.userId, actorId: userId, type: "like", postId });
   }
 
   res.status(204).send();
@@ -293,15 +293,17 @@ router.post("/follows", requireAuth, async (req, res) => {
     return;
   }
 
-  await db
+  const followInserted = await db
     .insert(follows)
     .values({ followerId: userId, followingId: targetId })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning();
 
-  await db
-    .insert(notifications)
-    .values({ recipientId: targetId, actorId: userId, type: "follow" })
-    .onConflictDoNothing();
+  if (followInserted.length > 0) {
+    await db
+      .insert(notifications)
+      .values({ recipientId: targetId, actorId: userId, type: "follow" });
+  }
 
   res.status(204).send();
 });

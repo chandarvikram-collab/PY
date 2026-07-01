@@ -111,12 +111,29 @@ function CommentSheet({ post, onClose }: { post: Post; onClose: () => void }) {
 
   async function submit() {
     if (!text.trim() || submitting) return;
+    const optimisticContent = text.trim();
+    const tempId = `temp-${Date.now()}`;
+    const tempComment: Comment = {
+      id: tempId,
+      postId: post.id,
+      userId: state.userProfile.id,
+      userName: state.userProfile.name,
+      userImageUrl: state.userProfile.imageUrl,
+      content: optimisticContent,
+      createdAt: new Date().toISOString(),
+    };
+
+    setComments((prev) => [...prev, tempComment]);
+    setText("");
     setSubmitting(true);
-    const result = await addComment(post.id, text.trim());
+    setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 50);
+
+    const result = await addComment(post.id, optimisticContent);
     if (result) {
-      setComments((prev) => [...prev, result]);
-      setText("");
-      setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
+      setComments((prev) => prev.map((c) => (c.id === tempId ? result : c)));
+    } else {
+      setComments((prev) => prev.filter((c) => c.id !== tempId));
+      setText(optimisticContent);
     }
     setSubmitting(false);
   }
