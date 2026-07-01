@@ -139,33 +139,56 @@ router.get("/sessions/run/:userId", requireAuth, requireOwner((req) => req.param
   res.json(rows);
 });
 
-router.get("/sessions/workout/:id", async (req, res) => {
+// Detail routes under /sessions/workout/id/:id and /sessions/run/id/:id
+// to avoid collision with /:userId list routes above.
+
+router.get("/sessions/workout/id/:id", requireAuth, async (req, res) => {
   const id = req.params.id as string;
   const [row] = await db.select().from(workoutSessions).where(eq(workoutSessions.id, id)).limit(1);
   if (!row) {
     res.status(404).json({ error: "Workout session not found" });
     return;
   }
+  if (row.userId !== req.localUserId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
   res.json(row);
 });
 
-router.get("/sessions/run/:id", async (req, res) => {
+router.get("/sessions/run/id/:id", requireAuth, async (req, res) => {
   const id = req.params.id as string;
   const [row] = await db.select().from(runSessions).where(eq(runSessions.id, id)).limit(1);
   if (!row) {
     res.status(404).json({ error: "Run session not found" });
     return;
   }
+  if (row.userId !== req.localUserId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
   res.json(row);
 });
 
-router.patch("/sessions/workout/:id", requireAuth, async (req, res) => {
+router.patch("/sessions/workout/id/:id", requireAuth, async (req, res) => {
   const id = req.params.id as string;
   const { exerciseLogJson } = req.body as { exerciseLogJson?: unknown };
   if (!exerciseLogJson) {
     res.status(400).json({ error: "exerciseLogJson is required" });
     return;
   }
+
+  // Verify ownership before updating
+  const [existing] = await db.select({ userId: workoutSessions.userId }).from(workoutSessions).where(eq(workoutSessions.id, id)).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Workout session not found" });
+    return;
+  }
+  if (existing.userId !== req.localUserId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
   const [row] = await db
     .update(workoutSessions)
     .set({ exerciseLogJson })

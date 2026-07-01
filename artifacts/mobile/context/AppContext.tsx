@@ -353,6 +353,7 @@ type AppContextType = {
   getWeeklyNutrition: () => WeeklyNutrition[];
   addRoutine: (routine: Routine) => void;
   addRunSession: (session: RunSession) => void;
+  updateRunSession: (id: string, updates: Partial<RunSession>) => void;
   saveMealTemplate: (name: string, entries: FoodEntry[]) => void;
   deleteMealTemplate: (templateId: string) => void;
   loadMealTemplate: (date: string, templateId: string, targetMeal: FoodEntry["meal"]) => void;
@@ -1546,6 +1547,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [update],
   );
 
+  const updateRunSession = useCallback(
+    (id: string, updates: Partial<RunSession>) => {
+      update((prev) => ({
+        ...prev,
+        runHistory: prev.runHistory.map((r) =>
+          r.id === id ? { ...r, ...updates } : r,
+        ),
+      }));
+    },
+    [update],
+  );
+
   const saveMealTemplate = useCallback(
     (name: string, entries: FoodEntry[]) => {
       const template: MealTemplate = {
@@ -1648,6 +1661,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getWeeklyNutrition,
         addRoutine,
         addRunSession,
+        updateRunSession,
         saveMealTemplate,
         deleteMealTemplate,
         loadMealTemplate,
@@ -1682,7 +1696,7 @@ function hydrateFromApi(
       return r.json() as Promise<any[]>;
     })
     .then((rows) => {
-      const workoutRows = rows.filter((r) => r.type === "workout");
+      const workoutRows = rows.filter((r) => r.type === "lift");
       const runRows = rows.filter((r) => r.type === "run");
 
       const apiSessions: WorkoutSession[] = workoutRows.map((r) => ({

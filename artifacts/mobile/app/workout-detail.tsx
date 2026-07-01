@@ -48,7 +48,7 @@ export default function WorkoutDetailScreen() {
     setLoading(true);
     const domain = process.env.EXPO_PUBLIC_DOMAIN;
     const base = domain ? `https://${domain}` : "";
-    fetch(`${base}/api/sessions/workout/${id}`, { credentials: "include" })
+    fetch(`${base}/api/sessions/workout/id/${id}`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("fetch failed"))))
       .then((row: any) => {
         const ws: WorkoutSession = {
@@ -99,7 +99,7 @@ export default function WorkoutDetailScreen() {
 
     const domain = process.env.EXPO_PUBLIC_DOMAIN;
     const base = domain ? `https://${domain}` : "";
-    fetch(`${base}/api/sessions/workout/${session.id}`, {
+    fetch(`${base}/api/sessions/workout/id/${session.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ exerciseLogJson: updatedLog }),

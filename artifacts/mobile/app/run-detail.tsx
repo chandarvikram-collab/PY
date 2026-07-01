@@ -71,7 +71,7 @@ export default function RunDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { state } = useApp();
+  const { state, updateRunSession } = useApp();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,20 +85,31 @@ export default function RunDetailScreen() {
     setLoading(true);
     const domain = process.env.EXPO_PUBLIC_DOMAIN;
     const base = domain ? `https://${domain}` : "";
-    fetch(`${base}/api/sessions/run/${id}`, { credentials: "include" })
+    fetch(`${base}/api/sessions/run/id/${id}`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("fetch failed"))))
-      .then(() => {
-        // Seed data is already in state; server fetch for future offline-first caching
+      .then((row: any) => {
+        const rs: RunSession = {
+          id: row.id,
+          type: "run",
+          date: row.date,
+          distance: row.distanceKm ?? 0,
+          duration: row.durationSeconds ?? 0,
+          avgPace: row.avgPace ?? "",
+          bestPace: row.bestPace ?? "",
+          calories: row.calories ?? 0,
+          splits: (row.splitsJson as RunSplit[]) ?? [],
+          routeCoords: row.routeCoords ?? undefined,
+        };
+        updateRunSession(rs.id, rs);
         setLoading(false);
       })
       .catch((e) => {
         setError(e.message);
         setLoading(false);
       });
-  }, [id, session]);
+  }, [id, session, updateRunSession]);
 
   const weightKg = state.userProfile.weightKg ?? 75;
-  const metCalories = session ? calcRunCalories(session.distance, session.duration, weightKg, session.avgPace) : 0;
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
@@ -123,6 +134,8 @@ export default function RunDetailScreen() {
       </View>
     );
   }
+
+  const metCalories = calcRunCalories(session.distance, session.duration, weightKg, session.avgPace);
 
   return (
     <ScrollView
