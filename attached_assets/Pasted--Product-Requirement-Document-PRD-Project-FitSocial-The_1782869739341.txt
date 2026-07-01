@@ -1,0 +1,221 @@
+# Product Requirement Document (PRD)
+
+## Project: FitSocial — The Social Layer for Your Fitness App
+
+**Purpose of this document:** This PRD is written to be pasted directly into Replit Agent to build a social media extension for an existing fitness tracking app (strength training + running logs). It defines the exact database schema, feature specs, UI/UX direction, and a prompt sequence so the Agent can build in stages without hallucinating structure.
+
+---
+
+## 1. Executive Summary & Vibe Statement
+
+FitSocial is "Instagram meets Strava" — a social feed where users post photos and short-form video reels of their fitness journey, link those posts to real workout/run data from the core tracker, follow and discover other athletes, and build a friend network around shared training interests.
+
+**Tech Stack:**
+- **Frontend:** React (Vite) SPA — mobile-first responsive layout
+- **Backend/Database/Auth/Storage:** Supabase (PostgreSQL + Supabase Auth + Supabase Storage)
+- **Realtime (optional, later phase):** Supabase Realtime for live like/comment counts and notifications
+
+Every user gets a row in `profiles` tied to their `auth.users` record, so this can plug into your existing fitness app's auth if it also runs on Supabase — otherwise it stands alone with its own signup flow.
+
+---
+
+## 2. Core User Flows
+
+1. **Onboarding:** User signs up (Supabase Auth, email/password) → creates a profile (username, avatar, bio, fitness interests, visibility settings).
+2. **The Fit Feed:** User scrolls a chronological/algorithmic feed of photo and reel posts from people they follow.
+3. **The Creator Flow:** User taps "+ Post" → uploads photo or video → writes a caption → optionally attaches a completed workout or run from the tracker → publishes.
+4. **Engagement:** User likes, comments, and shares posts; receives notifications when others engage with their posts.
+5. **Social Discovery:** User opens "Discover" → sees suggested athletes filtered by shared interests/goals → sends a connect/follow request.
+6. **Profile & Journey:** User visits their own profile → sees a grid of posts, a stats summary (total workouts logged, streak, PRs), and a "Journey" timeline view of milestones.
+
+---
+
+## 3. Database Schema (Supabase / PostgreSQL)
+
+Paste this SQL into the Supabase SQL editor (or have Replit Agent run it via migration) to initialize the schema.
+
+```sql
+-- ============================================
+-- 1. PROFILES (extends Supabase auth.users)
+-- ============================================
+create table public.profiles (
+  id uuid references auth.users on delete cascade primary key,
+  username text unique not null,
+  full_name text,
+  avatar_url text,
+  bio text,
+  fitness_interests text[] default '{}', -- e.g. ['running','weightlifting','yoga']
+  home_gym text,
+  is_private boolean default false,
+  created_at timestamptz default now() not null
+);
+
+-- ============================================
+-- 2. POSTS (photos and reels)
+-- ============================================
+create table public.posts (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  media_type text check (media_type in ('photo', 'reel')) not null,
+  media_url text not null,       -- Supabase Storage public URL
+  thumbnail_url text,            -- for reels
+  caption text,
+  workout_id uuid,               -- optional FK to your existing workouts table
+  workout_data jsonb,            -- snapshot of stats at post time (miles, lbs, duration, PRs)
+  location text,
+  created_at timestamptz default now() not null
+);
+
+-- ============================================
+-- 3. FOLLOWS (asymmetric, Instagram-style)
+-- ============================================
+create table public.follows (
+  id uuid default gen_random_uuid() primary key,
+  follower_id uuid references public.profiles(id) on delete cascade not null,
+  following_id uuid references public.profiles(id) on delete cascade not null,
+  status text check (status in ('pending', 'accepted')) default 'accepted' not null, -- 'pending' used only if target is_private
+  created_at timestamptz default now() not null,
+  unique (follower_id, following_id),
+  check (follower_id <> following_id)
+);
+
+-- ============================================
+-- 4. LIKES
+-- ============================================
+create table public.likes (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  post_id uuid references public.posts(id) on delete cascade not null,
+  created_at timestamptz default now() not null,
+  unique (user_id, post_id)
+);
+
+-- ============================================
+-- 5. COMMENTS
+-- ============================================
+create table public.comments (
+  id uuid default gen_random_uuid() primary key,
+  post_id uuid references public.posts(id) on delete cascade not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  body text not null,
+  created_at timestamptz default now() not null
+);
+
+-- ============================================
+-- 6. NOTIFICATIONS
+-- ============================================
+create table public.notifications (
+  id uuid default gen_random_uuid() primary key,
+  recipient_id uuid references public.profiles(id) on delete cascade not null,
+  actor_id uuid references public.profiles(id) on delete cascade not null,
+  type text check (type in ('like', 'comment', 'follow', 'follow_request')) not null,
+  post_id uuid references public.posts(id) on delete cascade,
+  is_read boolean default false,
+  created_at timestamptz default now() not null
+);
+
+-- ============================================
+-- ROW LEVEL SECURITY (enable on every table)
+-- ============================================
+alter table public.profiles enable row level security;
+alter table public.posts enable row level security;
+alter table public.follows enable row level security;
+alter table public.likes enable row level security;
+alter table public.comments enable row level security;
+alter table public.notifications enable row level security;
+
+-- Baseline policies (Replit Agent should refine per-table as features are built)
+create policy "Profiles are viewable by everyone" on public.profiles for select using (true);
+create policy "Users can update own profile" on public.profiles for update using (auth.uid() = id);
+
+create policy "Posts are viewable by everyone" on public.posts for select using (true);
+create policy "Users can insert own posts" on public.posts for insert with check (auth.uid() = user_id);
+create policy "Users can delete own posts" on public.posts for delete using (auth.uid() = user_id);
+
+create policy "Users manage own likes" on public.likes for all using (auth.uid() = user_id);
+create policy "Users manage own comments" on public.comments for all using (auth.uid() = user_id);
+create policy "Users manage own follow actions" on public.follows for all using (auth.uid() = follower_id);
+create policy "Users see their own notifications" on public.notifications for select using (auth.uid() = recipient_id);
+```
+
+**Storage buckets to create in Supabase:**
+- `avatars` (public) — profile pictures
+- `fitness-media` (public) — post photos and reels
+
+---
+
+## 4. Feature Specifications
+
+### Feature 1 — Auth & Profile Onboarding
+- Clean, minimal login/signup screen using Supabase Auth (email/password to start; social OAuth optional later).
+- On first login, route to a required onboarding flow: username (unique, validated live), avatar upload, short bio, multi-select fitness interest tags (Running, Weightlifting, Yoga, Cycling, CrossFit, Swimming, etc.), and a private/public account toggle.
+
+### Feature 2 — The Fit Feed
+- Responsive scrollable feed of posts from followed users, newest first.
+- **Photo posts:** standard square/portrait card, double-tap to like.
+- **Reel posts:** vertical auto-looping video container with mute/unmute and a progress bar.
+- Every post card shows: avatar, username, timestamp, caption, like/comment counts, and — if `workout_data` is present — a **"Linked Workout" badge** (e.g., "5.2 mi Run · 42:10" or "Leg Day · 14,200 lbs volume").
+- Infinite scroll with lazy-loaded media.
+
+### Feature 3 — Post Journey (Creator Studio)
+- Floating action button (`+`) opens a creation modal.
+- Upload flow: choose photo or video → optional in-app crop/trim → caption field → toggle "Link a Workout" which pulls the user's recent logged workouts/runs from the core tracker (mock this with sample data if the tracker isn't wired in yet) → publish.
+- Uploads write to the `fitness-media` bucket; the returned public URL and any workout snapshot are saved to `posts`.
+
+### Feature 4 — Engagement (Likes, Comments, Notifications)
+- Like button with optimistic UI update and heart animation.
+- Comment thread per post (flat, not nested, for v1).
+- Notification bell showing a feed of likes, comments, and follow activity, generated via a Postgres trigger or client-side insert on each action.
+
+### Feature 5 — Discover & Connect
+- "Discover" tab surfaces suggested users by overlapping `fitness_interests` tags, excluding people already followed.
+- Card layout: avatar, username, shared interest tags, "Follow" button.
+- If the target account `is_private`, following creates a `pending` request instead of an immediate follow; the target sees it in a "Requests" panel with Accept/Decline.
+
+### Feature 6 — Profile & Journey Timeline
+- Grid view of the user's own posts (3-column, Instagram-style).
+- Stats header: follower/following counts, total posts, and pulled-in summary stats from the core tracker (total workouts, current streak, recent PRs) if available.
+- Optional "Journey" tab: chronological timeline of milestone posts (PRs, race days, transformation photos).
+
+---
+
+## 5. UI/UX Style Guide
+
+- **Theme:** Dark mode by default — deep slate background (`#121212`), off-white text (`#F5F5F5`), and one energetic accent color (Electric Lime `#CCFF00` or Hot Coral `#FF4D4D`) used sparingly for CTAs, badges, and active states.
+- **Typography:** Bold, condensed sans-serif for headers (e.g., Inter or Sora); clean body text.
+- **Navigation:** Bottom tab bar on mobile (`Feed`, `Discover`, `Post`, `Notifications`, `Profile`); collapsible sidebar on desktop.
+- **Motion:** Subtle like-button pop animation, skeleton loaders for feed cards while media loads.
+
+---
+
+## 6. Suggested Build Order / Prompt Sequence for Replit Agent
+
+Paste these one at a time, waiting for each to complete before sending the next.
+
+> **Prompt 1 — Foundation:**
+> "Initialize a React + Supabase web app. Use the SQL schema below to create the `profiles`, `posts`, `follows`, `likes`, `comments`, and `notifications` tables, enable Row Level Security, and apply the listed policies. Create two Supabase Storage buckets: `avatars` and `fitness-media`, both public. Build a polished dark-mode login/signup page using Supabase email/password auth."
+> *(paste the SQL block from Section 3)*
+
+> **Prompt 2 — Onboarding & Shell:**
+> "Now build the app shell with bottom navigation (Feed, Discover, Post, Notifications, Profile) and a required onboarding flow after first signup: username, avatar upload to the `avatars` bucket, bio, multi-select fitness interest tags, and a private/public toggle. Use the dark theme with a lime accent color."
+
+> **Prompt 3 — Feed & Post Creator:**
+> "Implement the main feed and the post creator modal. Support photo and video (reel) uploads to the `fitness-media` bucket, captions, and a 'Link a Workout' toggle that attaches mock workout stats as JSON. Render photo and reel posts differently in the feed, show the Linked Workout badge when present, and add lazy loading and infinite scroll."
+
+> **Prompt 4 — Engagement:**
+> "Add like and comment functionality to feed posts, with optimistic UI updates. Generate a notification row whenever a user likes, comments on, or follows another user, and build a Notifications tab that lists and marks them read."
+
+> **Prompt 5 — Discover & Connections:**
+> "Build the Discover tab: surface users with overlapping fitness_interests tags, exclude users already followed, and add a Follow button. If the target profile is private, create a pending follow request instead, and build a Requests panel with Accept/Decline actions."
+
+> **Prompt 6 — Profile & Journey:**
+> "Build the user's own profile page with a 3-column post grid, follower/following counts, and a stats summary. Add a Journey tab showing a chronological timeline of the user's posts."
+
+---
+
+## 7. Future / Phase 2 Ideas (not required for MVP)
+- Direct messaging between connected users
+- Stories/highlights (24-hour ephemeral posts)
+- Leaderboards for shared challenges (e.g., monthly mileage)
+- Push notifications via a service worker
+- Deeper integration: auto-pull the most recent workout instead of manual selection
