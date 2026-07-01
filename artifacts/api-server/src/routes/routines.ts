@@ -2,30 +2,25 @@ import { Router } from "express";
 import { eq, desc } from "drizzle-orm";
 import { db, routines, aiRoutinePayloadSchema } from "@workspace/db";
 import { requireAuth, requireOwner } from "../middlewares/requireAuth";
-import { z } from "zod/v4";
 
 const router = Router();
-
-const createRoutineBodySchema = z.object({
-  userId: z.string().uuid(),
-  routine: aiRoutinePayloadSchema,
-});
 
 router.post(
   "/routines",
   requireAuth,
-  requireOwner((req) => req.body?.userId),
   async (req, res) => {
-    const parsed = createRoutineBodySchema.safeParse(req.body);
+    const parsed = aiRoutinePayloadSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues });
       return;
     }
-    const { userId, routine } = parsed.data;
+
+    const userId = req.localUserId!;
+    const { name, exercises } = parsed.data;
 
     const [row] = await db
       .insert(routines)
-      .values({ userId, name: routine.name, exercises: routine.exercises })
+      .values({ userId, name, exercises })
       .returning();
 
     req.log.info({ routineId: row.id, userId }, "routine saved");

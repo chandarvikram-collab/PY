@@ -169,7 +169,7 @@ export default function AIPlanScreen() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ userId: userProfile.id, routine: validPayload }),
+        body: JSON.stringify(validPayload),
       });
 
       if (!resp.ok) {
@@ -346,9 +346,29 @@ export default function AIPlanScreen() {
             <Feather name="info" size={16} color={colors.primary} />
             <Text style={[styles.summaryText, { color: colors.foreground }]}>{plan.explanation}</Text>
           </View>
-          <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 10 }]}>
-            <Feather name="zap" size={16} color={colors.primary} />
-            <Text style={[styles.summaryText, { color: colors.foreground }]}>{plan.nutrition}</Text>
+          <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 10, flexDirection: "column", gap: 8 }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Feather name="zap" size={16} color={colors.primary} />
+              <Text style={[styles.summaryText, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>Daily Nutrition Targets</Text>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              <View style={[styles.macroChip, { backgroundColor: colors.primary + "18" }]}>
+                <Text style={[styles.macroValue, { color: colors.primary }]}>{plan.nutrition.dailyCalories}</Text>
+                <Text style={[styles.macroLabel, { color: colors.mutedForeground }]}>kcal</Text>
+              </View>
+              <View style={[styles.macroChip, { backgroundColor: "#ef444418" }]}>
+                <Text style={[styles.macroValue, { color: "#ef4444" }]}>{plan.nutrition.proteinG}g</Text>
+                <Text style={[styles.macroLabel, { color: colors.mutedForeground }]}>protein</Text>
+              </View>
+              <View style={[styles.macroChip, { backgroundColor: "#f59e0b18" }]}>
+                <Text style={[styles.macroValue, { color: "#f59e0b" }]}>{plan.nutrition.carbsG}g</Text>
+                <Text style={[styles.macroLabel, { color: colors.mutedForeground }]}>carbs</Text>
+              </View>
+              <View style={[styles.macroChip, { backgroundColor: "#22c55e18" }]}>
+                <Text style={[styles.macroValue, { color: "#22c55e" }]}>{plan.nutrition.fatG}g</Text>
+                <Text style={[styles.macroLabel, { color: colors.mutedForeground }]}>fat</Text>
+              </View>
+            </View>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 10 }]}>
             <Feather name="tool" size={16} color={colors.primary} />
@@ -493,6 +513,9 @@ const styles = StyleSheet.create({
   regenText: { fontSize: 12, fontFamily: "Inter_500Medium" },
   summaryCard: { borderRadius: 14, borderWidth: 1, padding: 14, flexDirection: "row", gap: 10, alignItems: "flex-start" },
   summaryText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 22 },
+  macroChip: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, alignItems: "center", minWidth: 64 },
+  macroValue: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  macroLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
   weekTab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   weekTabText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   weekFocusBadge: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 14 },

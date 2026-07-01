@@ -44,13 +44,20 @@ export type AIRoutinePayload = {
   }[];
 };
 
+export type AIPlanNutrition = {
+  dailyCalories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+};
+
 export type AIPlan = {
   goal: string;
   level: ExperienceLevel;
   equipment: string[];
   daysPerWeek: number;
   explanation: string;
-  nutrition: string;
+  nutrition: AIPlanNutrition;
   equipment_strategy: string;
   weeks: AIPlanWeek[];
   ai_routine_payload: AIRoutinePayload | null;

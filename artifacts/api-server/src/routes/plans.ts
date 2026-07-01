@@ -33,13 +33,20 @@ type PlanWeek = {
   workouts: PlanWorkout[];
 };
 
+type NutritionTargets = {
+  dailyCalories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+};
+
 type GeneratedPlan = {
   goal: string;
   level: ExperienceLevel;
   equipment: string[];
   daysPerWeek: number;
   explanation: string;
-  nutrition: string;
+  nutrition: NutritionTargets;
   equipment_strategy: string;
   weeks: PlanWeek[];
   ai_routine_payload: AIRoutinePayload;
@@ -162,12 +169,27 @@ function generatePlan(
     "General Fitness": `Well-rounded ${daysPerWeek}x/week full-body program covering strength, mobility, and conditioning for overall health and longevity.`,
   };
 
-  const nutritionGuidance: Record<string, string> = {
-    "Build Muscle": "Target 0.8–1 g protein per lb bodyweight daily. Eat at a slight caloric surplus (200–400 kcal above maintenance). Prioritize whole foods, complex carbs around workouts, and consistent meal timing.",
-    "Lose Fat": "Maintain a moderate caloric deficit (300–500 kcal below maintenance). Keep protein high (0.8–1 g/lb) to preserve muscle. Reduce refined carbs and focus on fibrous vegetables and lean proteins.",
-    "Improve Strength": "Eat at or slightly above maintenance to support heavy lifting. Prioritize protein (0.8–1 g/lb) and carbohydrates as the primary fuel for high-intensity sessions. Avoid large deficits.",
-    "Improve Endurance": "Carbohydrate-rich diet to fuel high-rep, circuit-style training. Moderate protein (0.6–0.8 g/lb) is sufficient. Stay well-hydrated and consider electrolyte replenishment on long session days.",
-    "General Fitness": "Balanced macros: roughly 40% carbs, 30% protein, 30% fat. Focus on whole, minimally processed foods. Adequate hydration and consistent meal timing will support all-around performance.",
+  const baseNutrition: Record<string, NutritionTargets> = {
+    "Build Muscle":      { dailyCalories: 2800, proteinG: 175, carbsG: 350, fatG: 80 },
+    "Lose Fat":          { dailyCalories: 2000, proteinG: 160, carbsG: 200, fatG: 65 },
+    "Improve Strength":  { dailyCalories: 2700, proteinG: 170, carbsG: 315, fatG: 78 },
+    "Improve Endurance": { dailyCalories: 2500, proteinG: 140, carbsG: 325, fatG: 70 },
+    "General Fitness":   { dailyCalories: 2300, proteinG: 150, carbsG: 270, fatG: 73 },
+  };
+
+  const levelCalorieAdj: Record<ExperienceLevel, number> = {
+    beginner: -100,
+    intermediate: 0,
+    advanced: 200,
+  };
+
+  const baseNut = baseNutrition[goal] ?? baseNutrition["General Fitness"]!;
+  const adj = levelCalorieAdj[level];
+  const nutrition: NutritionTargets = {
+    dailyCalories: baseNut.dailyCalories + adj,
+    proteinG: baseNut.proteinG,
+    carbsG: baseNut.carbsG,
+    fatG: baseNut.fatG,
   };
 
   const equipmentStrategies: Record<string, Record<string, string>> = {
@@ -224,7 +246,7 @@ function generatePlan(
     equipment,
     daysPerWeek,
     explanation: explanations[goal] ?? explanations["General Fitness"]!,
-    nutrition: nutritionGuidance[goal] ?? nutritionGuidance["General Fitness"]!,
+    nutrition,
     equipment_strategy: equipmentStrategy,
     weeks,
     ai_routine_payload: payloadResult.data,
