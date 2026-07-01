@@ -188,6 +188,29 @@ function FirstLoginHandler() {
   return <NamePickerModal visible={showNamePicker} onDone={handleNameDone} />;
 }
 
+function OnboardingGate() {
+  const router = useRouter();
+  const { state } = useApp();
+  const { userProfile } = state;
+  const hasNavigatedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasNavigatedRef.current) return;
+    // Wait for profile to load (non-anon user with missing nutrition data)
+    if (!userProfile.id || userProfile.id.startsWith("anon-")) return;
+    if (userProfile.biologicalSex) return;
+
+    hasNavigatedRef.current = true;
+    // Small delay to let the navigation stack settle
+    const t = setTimeout(() => {
+      router.push("/onboarding");
+    }, 600);
+    return () => clearTimeout(t);
+  }, [userProfile.id, userProfile.biologicalSex, router]);
+
+  return null;
+}
+
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -254,6 +277,7 @@ export default function RootLayout() {
             <QueryClientProvider client={queryClient}>
               <AppProvider>
                 <FirstLoginHandler />
+                <OnboardingGate />
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <KeyboardProvider>
                     <RootLayoutNav />

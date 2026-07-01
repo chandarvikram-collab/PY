@@ -52,106 +52,193 @@ type GeneratedPlan = {
   ai_routine_payload: AIRoutinePayload;
 };
 
+const EXERCISE_EQUIPMENT: Record<string, string[]> = {
+  "Barbell Bench Press": ["Barbell", "Bench"],
+  "Dumbbell Incline Press": ["Dumbbell", "Bench"],
+  "Overhead Press": ["Barbell", "Dumbbell"],
+  "Lateral Raises": ["Dumbbell"],
+  "Triceps Pushdown": ["Cable Machine"],
+  "Push-Up": [],
+  "Pike Push-Up": [],
+  "Diamond Push-Up": [],
+  "Archer Push-Up": [],
+
+  "Barbell Deadlift": ["Barbell"],
+  "Barbell Row": ["Barbell"],
+  "Lat Pulldown": ["Cable Machine"],
+  "Face Pull": ["Cable Machine", "Resistance Bands"],
+  "Dumbbell Biceps Curl": ["Dumbbell"],
+  "Pull-Up": ["Pull-Up Bar"],
+  "Inverted Row": ["Pull-Up Bar"],
+  "Chin-Up": ["Pull-Up Bar"],
+
+  "Barbell Back Squat": ["Barbell", "Squat Rack"],
+  "Romanian Deadlift": ["Barbell", "Dumbbell"],
+  "Leg Press": ["Smith Machine"],
+  "Leg Curl": ["Cable Machine"],
+  "Calf Raises": [],
+  "Squat": [],
+  "Split Squat": [],
+  "Bulgarian Split Squat": ["Bench"],
+  "Glute Bridge": [],
+  "Lunges": [],
+
+  "Dumbbell Bench Press": ["Dumbbell", "Bench"],
+  "Dumbbell Row": ["Dumbbell"],
+  "Shoulder Press": ["Barbell", "Dumbbell"],
+  "Biceps Curl": ["Dumbbell", "Resistance Bands"],
+  "Triceps Extension": ["Cable Machine", "Dumbbell"],
+
+  "Plank": [],
+  "Dead Bug": [],
+  "Hanging Leg Raise": ["Pull-Up Bar"],
+  "Leg Raise": [],
+};
+
+function userCanDoExercise(name: string, equipment: string[]): boolean {
+  const needs = EXERCISE_EQUIPMENT[name] ?? [];
+  if (needs.length === 0) return true;
+  const bodyweightOnly = equipment.length === 1 && equipment[0] === "None / Bodyweight";
+  if (bodyweightOnly) return false;
+  return needs.some((n) => equipment.includes(n));
+}
+
+function filterExercises(exercises: PlanExercise[], equipment: string[]): PlanExercise[] {
+  const result: PlanExercise[] = [];
+  for (const e of exercises) {
+    if (userCanDoExercise(e.name, equipment)) {
+      result.push(e);
+    } else {
+      // Try to find a bodyweight substitute
+      const sub = findBodyweightSubstitute(e.name);
+      if (sub) result.push({ ...e, name: sub, note: (e.note ? e.note + " — " : "") + "Bodyweight variation" });
+    }
+  }
+  return result;
+}
+
+function findBodyweightSubstitute(name: string): string | null {
+  const map: Record<string, string> = {
+    "Barbell Bench Press": "Push-Up",
+    "Dumbbell Incline Press": "Push-Up",
+    "Dumbbell Bench Press": "Push-Up",
+    "Overhead Press": "Pike Push-Up",
+    "Shoulder Press": "Pike Push-Up",
+    "Lateral Raises": "Pike Push-Up",
+    "Triceps Pushdown": "Diamond Push-Up",
+    "Triceps Extension": "Diamond Push-Up",
+    "Barbell Deadlift": "Glute Bridge",
+    "Barbell Row": "Inverted Row",
+    "Dumbbell Row": "Inverted Row",
+    "Lat Pulldown": "Pull-Up",
+    "Face Pull": "Inverted Row",
+    "Dumbbell Biceps Curl": "Chin-Up",
+    "Biceps Curl": "Chin-Up",
+    "Barbell Back Squat": "Squat",
+    "Romanian Deadlift": "Glute Bridge",
+    "Leg Press": "Lunges",
+    "Leg Curl": "Glute Bridge",
+    "Bulgarian Split Squat": "Split Squat",
+    "Hanging Leg Raise": "Leg Raise",
+  };
+  return map[name] ?? null;
+}
+
 function buildSchedule(
   goal: string,
   level: ExperienceLevel,
   equipment: string[],
   daysPerWeek: number
 ): PlanWorkout[] {
-  const hasFreeWeights = equipment.includes("Barbell") || equipment.includes("Dumbbell");
-  const hasMachines = equipment.includes("Machine") || equipment.includes("Cable");
-  const isBodyweight = !hasFreeWeights && !hasMachines;
-  void isBodyweight;
+  const pushPool: PlanExercise[] = [
+    { name: "Barbell Bench Press", sets: 4, reps: goal === "Improve Strength" ? "4-6" : "8-10", rest: 120 },
+    { name: "Dumbbell Bench Press", sets: 3, reps: "10-12", rest: 90 },
+    { name: "Dumbbell Incline Press", sets: 3, reps: "10-12", rest: 90 },
+    { name: "Overhead Press", sets: 3, reps: "8-10", rest: 90, note: "Focus on controlled eccentric" },
+    { name: "Shoulder Press", sets: 3, reps: "10-12", rest: 90 },
+    { name: "Lateral Raises", sets: 3, reps: "12-15", rest: 60 },
+    { name: "Triceps Pushdown", sets: 3, reps: "12-15", rest: 60 },
+    { name: "Triceps Extension", sets: 2, reps: "12-15", rest: 60 },
+    { name: "Push-Up", sets: 4, reps: "Max", rest: 90 },
+    { name: "Pike Push-Up", sets: 3, reps: "12-15", rest: 60 },
+    { name: "Diamond Push-Up", sets: 3, reps: "10-12", rest: 60 },
+    { name: "Archer Push-Up", sets: 3, reps: "8-10", rest: 60 },
+  ];
 
-  const pushExercises: PlanExercise[] = hasFreeWeights
-    ? [
-        { name: "Barbell Bench Press", sets: 4, reps: goal === "Improve Strength" ? "4-6" : "8-10", rest: 120 },
-        { name: "Dumbbell Incline Press", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Overhead Press", sets: 3, reps: "8-10", rest: 90, note: "Focus on controlled eccentric" },
-        { name: "Lateral Raises", sets: 3, reps: "12-15", rest: 60 },
-        { name: "Triceps Pushdown", sets: 3, reps: "12-15", rest: 60 },
-      ]
-    : [
-        { name: "Push-Up", sets: 4, reps: "Max", rest: 90 },
-        { name: "Pike Push-Up", sets: 3, reps: "12-15", rest: 60 },
-        { name: "Diamond Push-Up", sets: 3, reps: "10-12", rest: 60 },
-      ];
+  const pullPool: PlanExercise[] = [
+    { name: "Barbell Deadlift", sets: 3, reps: goal === "Improve Strength" ? "3-5" : "6-8", rest: 180, note: "Warm up thoroughly" },
+    { name: "Barbell Row", sets: 4, reps: "8-10", rest: 90 },
+    { name: "Dumbbell Row", sets: 3, reps: "10-12", rest: 90 },
+    { name: "Lat Pulldown", sets: 3, reps: "10-12", rest: 90 },
+    { name: "Face Pull", sets: 3, reps: "15-20", rest: 60 },
+    { name: "Dumbbell Biceps Curl", sets: 3, reps: "10-12", rest: 60 },
+    { name: "Biceps Curl", sets: 2, reps: "12-15", rest: 60 },
+    { name: "Pull-Up", sets: 4, reps: "Max", rest: 120 },
+    { name: "Inverted Row", sets: 3, reps: "12-15", rest: 90 },
+    { name: "Chin-Up", sets: 3, reps: "8-10", rest: 90 },
+  ];
 
-  const pullExercises: PlanExercise[] = hasFreeWeights
-    ? [
-        { name: "Barbell Deadlift", sets: 3, reps: goal === "Improve Strength" ? "3-5" : "6-8", rest: 180, note: "Warm up thoroughly" },
-        { name: "Barbell Row", sets: 4, reps: "8-10", rest: 90 },
-        { name: "Lat Pulldown", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Face Pull", sets: 3, reps: "15-20", rest: 60 },
-        { name: "Dumbbell Biceps Curl", sets: 3, reps: "10-12", rest: 60 },
-      ]
-    : [
-        { name: "Pull-Up", sets: 4, reps: "Max", rest: 120 },
-        { name: "Inverted Row", sets: 3, reps: "12-15", rest: 90 },
-        { name: "Chin-Up", sets: 3, reps: "8-10", rest: 90 },
-      ];
+  const legPool: PlanExercise[] = [
+    { name: "Barbell Back Squat", sets: 4, reps: goal === "Improve Strength" ? "3-5" : "6-8", rest: 180, note: "Prioritize depth and bracing" },
+    { name: "Romanian Deadlift", sets: 3, reps: "10-12", rest: 90 },
+    { name: "Leg Press", sets: 3, reps: "10-15", rest: 90 },
+    { name: "Leg Curl", sets: 3, reps: "12-15", rest: 60 },
+    { name: "Calf Raises", sets: 4, reps: "15-20", rest: 45 },
+    { name: "Squat", sets: 4, reps: "15-20", rest: 90 },
+    { name: "Bulgarian Split Squat", sets: 3, reps: "12 each", rest: 90 },
+    { name: "Split Squat", sets: 3, reps: "12 each", rest: 90 },
+    { name: "Glute Bridge", sets: 3, reps: "20", rest: 60 },
+    { name: "Lunges", sets: 3, reps: "12 each", rest: 60 },
+  ];
 
-  const legExercises: PlanExercise[] = hasFreeWeights
-    ? [
-        { name: "Barbell Back Squat", sets: 4, reps: goal === "Improve Strength" ? "3-5" : "6-8", rest: 180, note: "Prioritize depth and bracing" },
-        { name: "Romanian Deadlift", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Leg Press", sets: 3, reps: "10-15", rest: 90 },
-        { name: "Leg Curl", sets: 3, reps: "12-15", rest: 60 },
-        { name: "Calf Raises", sets: 4, reps: "15-20", rest: 45 },
-      ]
-    : [
-        { name: "Squat", sets: 4, reps: "15-20", rest: 90 },
-        { name: "Bulgarian Split Squat", sets: 3, reps: "12 each", rest: 90 },
-        { name: "Glute Bridge", sets: 3, reps: "20", rest: 60 },
-        { name: "Calf Raises", sets: 3, reps: "20-25", rest: 45 },
-      ];
-
-  const upperExercises: PlanExercise[] = hasFreeWeights
-    ? [
-        { name: "Dumbbell Bench Press", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Dumbbell Row", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Shoulder Press", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Lat Pulldown", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Biceps Curl", sets: 2, reps: "12-15", rest: 60 },
-        { name: "Triceps Extension", sets: 2, reps: "12-15", rest: 60 },
-      ]
-    : pushExercises.slice(0, 3);
-
-  const coreExercises: PlanExercise[] = [
+  const corePool: PlanExercise[] = [
     { name: "Plank", sets: 3, reps: "45-60s", rest: 60 },
     { name: "Dead Bug", sets: 3, reps: "10 each side", rest: 60 },
     { name: "Hanging Leg Raise", sets: 3, reps: "12-15", rest: 60 },
+    { name: "Leg Raise", sets: 3, reps: "12-15", rest: 60 },
   ];
+
+  const push = filterExercises(pushPool, equipment);
+  const pull = filterExercises(pullPool, equipment);
+  const legs = filterExercises(legPool, equipment);
+  const core = filterExercises(corePool, equipment);
+
+  // Fallback: if any group is empty, add at least one bodyweight exercise
+  if (push.length === 0) push.push({ name: "Push-Up", sets: 4, reps: "Max", rest: 90 });
+  if (pull.length === 0) pull.push({ name: "Inverted Row", sets: 3, reps: "12-15", rest: 90 });
+  if (legs.length === 0) legs.push({ name: "Squat", sets: 4, reps: "15-20", rest: 90 });
+  if (core.length === 0) core.push({ name: "Plank", sets: 3, reps: "45-60s", rest: 60 });
 
   if (daysPerWeek === 3) {
     return [
-      { day: "Day 1", name: "Full Body A", exercises: [...pushExercises.slice(0, 2), ...pullExercises.slice(0, 2), ...legExercises.slice(0, 2)] },
-      { day: "Day 2", name: "Full Body B", exercises: [...pushExercises.slice(2), ...pullExercises.slice(2, 4), ...legExercises.slice(2, 4)] },
-      { day: "Day 3", name: "Full Body C + Core", exercises: [...upperExercises.slice(0, 3), ...legExercises.slice(0, 2), ...coreExercises] },
+      { day: "Day 1", name: "Full Body A", exercises: [...push.slice(0, 2), ...pull.slice(0, 2), ...legs.slice(0, 2)] },
+      { day: "Day 2", name: "Full Body B", exercises: [...push.slice(2, 4), ...pull.slice(2, 4), ...legs.slice(2, 4)] },
+      { day: "Day 3", name: "Full Body C + Core", exercises: [...push.slice(0, 2), ...legs.slice(0, 2), ...core.slice(0, 2)] },
     ];
   } else if (daysPerWeek === 4) {
+    const upper = [...push.slice(0, 3), ...pull.slice(0, 3)];
     return [
-      { day: "Day 1", name: "Upper A", exercises: upperExercises },
-      { day: "Day 2", name: "Lower A", exercises: legExercises },
-      { day: "Day 3", name: "Upper B", exercises: [...pushExercises.slice(0, 3), ...pullExercises.slice(2, 5)] },
-      { day: "Day 4", name: "Lower B + Core", exercises: [...legExercises.slice(2), ...coreExercises] },
+      { day: "Day 1", name: "Upper A", exercises: upper },
+      { day: "Day 2", name: "Lower A", exercises: legs },
+      { day: "Day 3", name: "Upper B", exercises: [...push.slice(0, 3), ...pull.slice(2, 5)] },
+      { day: "Day 4", name: "Lower B + Core", exercises: [...legs.slice(2), ...core.slice(0, 2)] },
     ];
   } else if (daysPerWeek === 5) {
     return [
-      { day: "Day 1", name: "Push", exercises: pushExercises },
-      { day: "Day 2", name: "Pull", exercises: pullExercises },
-      { day: "Day 3", name: "Legs", exercises: legExercises },
-      { day: "Day 4", name: "Upper + Arms", exercises: [...upperExercises.slice(0, 4), ...pullExercises.slice(4)] },
-      { day: "Day 5", name: "Core + Conditioning", exercises: [...coreExercises, ...legExercises.slice(2, 4)] },
+      { day: "Day 1", name: "Push", exercises: push },
+      { day: "Day 2", name: "Pull", exercises: pull },
+      { day: "Day 3", name: "Legs", exercises: legs },
+      { day: "Day 4", name: "Upper + Arms", exercises: [...push.slice(0, 3), ...pull.slice(0, 3)] },
+      { day: "Day 5", name: "Core + Conditioning", exercises: [...core, ...legs.slice(0, 2)] },
     ];
   }
   return [
-    { day: "Day 1", name: "Push A", exercises: pushExercises },
-    { day: "Day 2", name: "Pull A", exercises: pullExercises },
-    { day: "Day 3", name: "Legs A", exercises: legExercises },
-    { day: "Day 4", name: "Push B", exercises: [...pushExercises.slice(1), ...pushExercises.slice(0, 1)] },
-    { day: "Day 5", name: "Pull B + Core", exercises: [...pullExercises.slice(1), ...coreExercises.slice(0, 2)] },
-    { day: "Day 6", name: "Legs B", exercises: [...legExercises.slice(2), ...legExercises.slice(0, 2)] },
+    { day: "Day 1", name: "Push A", exercises: push },
+    { day: "Day 2", name: "Pull A", exercises: pull },
+    { day: "Day 3", name: "Legs A", exercises: legs },
+    { day: "Day 4", name: "Push B", exercises: [...push.slice(1), ...push.slice(0, 1)] },
+    { day: "Day 5", name: "Pull B + Core", exercises: [...pull.slice(1), ...core.slice(0, 2)] },
+    { day: "Day 6", name: "Legs B", exercises: [...legs.slice(2), ...legs.slice(0, 2)] },
   ];
 }
 
