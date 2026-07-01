@@ -34,6 +34,16 @@ export type UserProfile = {
   fatGoal?: number;
 };
 
+export type AIRoutinePayload = {
+  name: string;
+  exercises: {
+    name: string;
+    sets: number;
+    reps: string;
+    restSeconds: number;
+  }[];
+};
+
 export type AIPlan = {
   goal: string;
   level: ExperienceLevel;
@@ -41,6 +51,7 @@ export type AIPlan = {
   daysPerWeek: number;
   summary: string;
   weeks: AIPlanWeek[];
+  ai_routine_payload: AIRoutinePayload | null;
 };
 
 export type AIPlanWeek = {

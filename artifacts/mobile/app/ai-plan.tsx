@@ -16,41 +16,31 @@ import { z } from "zod/v4";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import type { AIPlan, AIPlanExercise, AIPlanWeek, ExperienceLevel, Exercise, Routine } from "@/context/AppContext";
+import type { AIPlan, AIRoutinePayload, AIPlanWeek, ExperienceLevel, Exercise, Routine } from "@/context/AppContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
   : "";
 
-const routineExercisePayloadSchema = z.object({
+const clientRoutineExerciseSchema = z.object({
   name: z.string(),
   sets: z.number().int().positive(),
   reps: z.string(),
   restSeconds: z.number().int().nonnegative(),
 });
 
-const aiRoutinePayloadSchema = z.object({
+const clientAiRoutinePayloadSchema = z.object({
   name: z.string().min(1),
-  exercises: z.array(routineExercisePayloadSchema).min(1),
+  exercises: z.array(clientRoutineExerciseSchema).min(1),
 });
 
-type AIRoutinePayload = z.infer<typeof aiRoutinePayloadSchema>;
-
-function workoutToPayload(workoutName: string, exercises: AIPlanExercise[]): AIRoutinePayload | null {
-  const result = aiRoutinePayloadSchema.safeParse({
-    name: workoutName,
-    exercises: exercises.map((ex) => ({
-      name: ex.name,
-      sets: ex.sets,
-      reps: ex.reps,
-      restSeconds: ex.rest,
-    })),
-  });
+function validateAiRoutinePayload(payload: unknown): AIRoutinePayload | null {
+  const result = clientAiRoutinePayloadSchema.safeParse(payload);
   if (!result.success) {
-    console.warn("[ai-plan] payload validation failed:", result.error.issues);
+    console.warn("[ai-plan] ai_routine_payload failed client validation:", result.error.issues);
     return null;
   }
-  return result.data;
+  return result.data as AIRoutinePayload;
 }
 
 function parseReps(reps: string): number {
@@ -102,135 +92,6 @@ const LEVELS: { id: ExperienceLevel; label: string; desc: string }[] = [
 const EQUIPMENT_OPTIONS = ["Barbell", "Dumbbell", "Cable", "Machine", "Bodyweight", "Resistance Bands", "Kettlebell"];
 const DAYS_OPTIONS = [3, 4, 5, 6];
 
-function generatePlan(
-  goal: string,
-  level: ExperienceLevel,
-  equipment: string[],
-  daysPerWeek: number
-): AIPlan {
-  const hasFreeWeights = equipment.includes("Barbell") || equipment.includes("Dumbbell");
-  const hasMachines = equipment.includes("Machine") || equipment.includes("Cable");
-  const isBodyweight = !hasFreeWeights && !hasMachines;
-
-  const summaries: Record<string, string> = {
-    "Build Muscle": `Hypertrophy-focused ${daysPerWeek}x/week split targeting progressive overload with moderate rep ranges (8-12). Each muscle group trained 2x per week.`,
-    "Lose Fat": `High-frequency ${daysPerWeek}x/week program combining strength training with minimal rest to maximize caloric burn and preserve muscle mass.`,
-    "Improve Strength": `Powerlifting-inspired ${daysPerWeek}x/week program centered on compound movements with heavy loads (3-6 reps) and sufficient recovery.`,
-    "Improve Endurance": `Circuit-style ${daysPerWeek}x/week program with supersets, higher rep ranges (15-20), and shorter rest periods to build cardiovascular fitness.`,
-    "General Fitness": `Well-rounded ${daysPerWeek}x/week full-body program covering strength, mobility, and conditioning for overall health.`,
-  };
-
-  const pushExercises = hasFreeWeights
-    ? [
-        { name: "Barbell Bench Press", sets: 4, reps: goal === "Improve Strength" ? "4-6" : "8-10", rest: 120 },
-        { name: "Dumbbell Incline Press", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Overhead Press", sets: 3, reps: "8-10", rest: 90, note: "Focus on controlled eccentric" },
-        { name: "Lateral Raises", sets: 3, reps: "12-15", rest: 60 },
-        { name: "Triceps Pushdown", sets: 3, reps: "12-15", rest: 60 },
-      ]
-    : [
-        { name: "Push-Up", sets: 4, reps: "Max", rest: 90 },
-        { name: "Pike Push-Up", sets: 3, reps: "12-15", rest: 60 },
-        { name: "Diamond Push-Up", sets: 3, reps: "10-12", rest: 60 },
-      ];
-
-  const pullExercises = hasFreeWeights
-    ? [
-        { name: "Barbell Deadlift", sets: 3, reps: goal === "Improve Strength" ? "3-5" : "6-8", rest: 180, note: "Warm up thoroughly" },
-        { name: "Barbell Row", sets: 4, reps: "8-10", rest: 90 },
-        { name: "Lat Pulldown", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Face Pull", sets: 3, reps: "15-20", rest: 60 },
-        { name: "Dumbbell Biceps Curl", sets: 3, reps: "10-12", rest: 60 },
-      ]
-    : [
-        { name: "Pull-Up", sets: 4, reps: "Max", rest: 120 },
-        { name: "Inverted Row", sets: 3, reps: "12-15", rest: 90 },
-        { name: "Chin-Up", sets: 3, reps: "8-10", rest: 90 },
-      ];
-
-  const legExercises = hasFreeWeights
-    ? [
-        { name: "Barbell Back Squat", sets: 4, reps: goal === "Improve Strength" ? "3-5" : "6-8", rest: 180, note: "Prioritize depth and bracing" },
-        { name: "Romanian Deadlift", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Leg Press", sets: 3, reps: "10-15", rest: 90 },
-        { name: "Leg Curl", sets: 3, reps: "12-15", rest: 60 },
-        { name: "Calf Raises", sets: 4, reps: "15-20", rest: 45 },
-      ]
-    : [
-        { name: "Squat", sets: 4, reps: "15-20", rest: 90 },
-        { name: "Bulgarian Split Squat", sets: 3, reps: "12 each", rest: 90 },
-        { name: "Glute Bridge", sets: 3, reps: "20", rest: 60 },
-        { name: "Calf Raises", sets: 3, reps: "20-25", rest: 45 },
-      ];
-
-  const upperExercises = hasFreeWeights
-    ? [
-        { name: "Dumbbell Bench Press", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Dumbbell Row", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Shoulder Press", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Lat Pulldown", sets: 3, reps: "10-12", rest: 90 },
-        { name: "Biceps Curl", sets: 2, reps: "12-15", rest: 60 },
-        { name: "Triceps Extension", sets: 2, reps: "12-15", rest: 60 },
-      ]
-    : pushExercises.slice(0, 3);
-
-  const coreExercises = [
-    { name: "Plank", sets: 3, reps: "45-60s", rest: 60 },
-    { name: "Dead Bug", sets: 3, reps: "10 each side", rest: 60 },
-    { name: "Hanging Leg Raise", sets: 3, reps: "12-15", rest: 60 },
-  ];
-
-  let schedule: { day: string; name: string; exercises: typeof pushExercises }[] = [];
-
-  if (daysPerWeek === 3) {
-    schedule = [
-      { day: "Day 1", name: "Full Body A", exercises: [...pushExercises.slice(0, 2), ...pullExercises.slice(0, 2), ...legExercises.slice(0, 2)] },
-      { day: "Day 2", name: "Full Body B", exercises: [...pushExercises.slice(2), ...pullExercises.slice(2, 4), ...legExercises.slice(2, 4)] },
-      { day: "Day 3", name: "Full Body C + Core", exercises: [...upperExercises.slice(0, 3), ...legExercises.slice(0, 2), ...coreExercises] },
-    ];
-  } else if (daysPerWeek === 4) {
-    schedule = [
-      { day: "Day 1", name: "Upper A", exercises: upperExercises },
-      { day: "Day 2", name: "Lower A", exercises: legExercises },
-      { day: "Day 3", name: "Upper B", exercises: [...pushExercises.slice(0, 3), ...pullExercises.slice(2, 5)] },
-      { day: "Day 4", name: "Lower B + Core", exercises: [...legExercises.slice(2), ...coreExercises] },
-    ];
-  } else if (daysPerWeek === 5) {
-    schedule = [
-      { day: "Day 1", name: "Push", exercises: pushExercises },
-      { day: "Day 2", name: "Pull", exercises: pullExercises },
-      { day: "Day 3", name: "Legs", exercises: legExercises },
-      { day: "Day 4", name: "Upper + Arms", exercises: [...upperExercises.slice(0, 4), ...pullExercises.slice(4)] },
-      { day: "Day 5", name: "Core + Conditioning", exercises: [...coreExercises, ...legExercises.slice(2, 4)] },
-    ];
-  } else {
-    schedule = [
-      { day: "Day 1", name: "Push A", exercises: pushExercises },
-      { day: "Day 2", name: "Pull A", exercises: pullExercises },
-      { day: "Day 3", name: "Legs A", exercises: legExercises },
-      { day: "Day 4", name: "Push B", exercises: [...pushExercises.slice(1), ...pushExercises.slice(0, 1)] },
-      { day: "Day 5", name: "Pull B + Core", exercises: [...pullExercises.slice(1), ...coreExercises.slice(0, 2)] },
-      { day: "Day 6", name: "Legs B", exercises: [...legExercises.slice(2), ...legExercises.slice(0, 2)] },
-    ];
-  }
-
-  const weeks: AIPlanWeek[] = [
-    { weekNumber: 1, focus: "Foundation — Learn the movements, focus on form", workouts: schedule.map((s) => ({ ...s, exercises: s.exercises.map((e) => ({ ...e, sets: Math.max(2, e.sets - 1) })) })) },
-    { weekNumber: 2, focus: "Build — Add volume, track every set", workouts: schedule },
-    { weekNumber: 3, focus: "Overload — Push slightly heavier each exercise", workouts: schedule.map((s) => ({ ...s, exercises: s.exercises.map((e) => ({ ...e, note: e.note ?? "Add 5-10 lbs from last week" })) })) },
-    { weekNumber: 4, focus: "Deload — 60% intensity, active recovery", workouts: schedule.slice(0, Math.floor(schedule.length / 2)).map((s) => ({ ...s, exercises: s.exercises.map((e) => ({ ...e, sets: 2, reps: "10 (light)", rest: e.rest })) })) },
-  ];
-
-  return {
-    goal,
-    level,
-    equipment,
-    daysPerWeek,
-    summary: summaries[goal] ?? summaries["General Fitness"],
-    weeks,
-  };
-}
-
 export default function AIPlanScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -259,34 +120,40 @@ export default function AIPlanScreen() {
     );
   }
 
-  function handleGenerate() {
+  async function handleGenerate() {
     setGenerating(true);
     setSaveState("idle");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setTimeout(() => {
-      const p = generatePlan(selectedGoal, selectedLevel, selectedEquipment.length > 0 ? selectedEquipment : ["Bodyweight"], selectedDays);
-      setPlan(p);
-      saveAIPlan(p);
-      setGenerating(false);
+    try {
+      const equipment = selectedEquipment.length > 0 ? selectedEquipment : ["Bodyweight"];
+      const resp = await fetch(`${API_BASE}/api/plans`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal: selectedGoal, level: selectedLevel, equipment, daysPerWeek: selectedDays }),
+      });
+      if (!resp.ok) {
+        console.warn("[ai-plan] plan generation failed:", resp.status);
+        setGenerating(false);
+        return;
+      }
+      const data = (await resp.json()) as AIPlan;
+      setPlan(data);
+      saveAIPlan(data);
       setStep(4);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 1800);
+    } catch (err) {
+      console.warn("[ai-plan] plan generation error:", err);
+    } finally {
+      setGenerating(false);
+    }
   }
 
   async function handleSaveToRoutines() {
     if (!plan || saveState === "saving" || saveState === "saved") return;
-    const week = plan.weeks[viewingWeek];
-    if (!week || week.workouts.length === 0) {
-      setSaveState("error");
-      return;
-    }
 
-    const payloads = week.workouts
-      .filter((w) => w.exercises && w.exercises.length > 0)
-      .map((w) => workoutToPayload(w.name, w.exercises));
-
-    if (payloads.some((p) => p === null)) {
-      console.warn("[ai-plan] one or more workout payloads failed Zod validation — aborting save");
+    const validPayload = validateAiRoutinePayload(plan.ai_routine_payload);
+    if (!validPayload) {
+      console.warn("[ai-plan] ai_routine_payload absent or invalid — cannot save");
       setSaveState("error");
       return;
     }
@@ -296,33 +163,22 @@ export default function AIPlanScreen() {
 
     try {
       const token = await getToken();
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
+      const resp = await fetch(`${API_BASE}/api/routines`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ userId: userProfile.id, routine: validPayload }),
+      });
 
-      const results = await Promise.all(
-        (payloads as AIRoutinePayload[]).map((payload) =>
-          fetch(`${API_BASE}/api/routines`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ userId: userProfile.id, routine: payload }),
-          })
-        )
-      );
-
-      const allOk = results.every((r) => r.ok || r.status === 201);
-      if (!allOk) {
-        const statuses = results.map((r) => r.status).join(", ");
-        console.warn(`[ai-plan] some routine saves failed (statuses: ${statuses})`);
+      if (!resp.ok) {
+        console.warn("[ai-plan] routine save failed:", resp.status);
         setSaveState("error");
         return;
       }
 
-      for (const payload of payloads as AIRoutinePayload[]) {
-        addRoutine(payloadToLocalRoutine(payload, plan.equipment));
-      }
-
+      addRoutine(payloadToLocalRoutine(validPayload, plan.equipment));
       setSaveState("saved");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
