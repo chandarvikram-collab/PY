@@ -15,6 +15,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useAuth } from "@clerk/expo";
+
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -82,6 +84,7 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const { state, updateProfile } = useApp();
   const { userProfile } = state;
+  const { getToken } = useAuth();
 
   const [stepIndex, setStepIndex] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -91,7 +94,7 @@ export default function OnboardingScreen() {
       ? userProfile.biologicalSex
       : undefined
   );
-  const [age, setAge] = useState(userProfile.heightCm ? "" : "25");
+  const [age, setAge] = useState(userProfile.biologicalSex ? "" : "25");
   const [heightCm, setHeightCm] = useState(userProfile.heightCm ? String(userProfile.heightCm) : "");
   const [weightKg, setWeightKg] = useState(userProfile.weightKg ? String(userProfile.weightKg) : "");
   const [activity, setActivity] = useState<string | undefined>(userProfile.activityLevel ?? undefined);
@@ -148,9 +151,13 @@ export default function OnboardingScreen() {
         equipment: Array.from(equipment),
       };
 
+      const token = await getToken();
       const res = await fetch(`${API_BASE}/api/users/${userProfile.id}/nutrition-goals`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(payload),
       });
 
@@ -180,7 +187,7 @@ export default function OnboardingScreen() {
     } finally {
       setSaving(false);
     }
-  }, [sex, heightCm, weightKg, age, activity, goal, pace, equipment, userProfile.id, updateProfile, router]);
+  }, [sex, heightCm, weightKg, age, activity, goal, pace, equipment, userProfile.id, updateProfile, router, getToken]);
 
   function toggleEquipment(item: string) {
     setEquipment((prev) => {
