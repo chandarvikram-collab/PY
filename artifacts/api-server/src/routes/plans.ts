@@ -52,55 +52,60 @@ type GeneratedPlan = {
   ai_routine_payload: AIRoutinePayload;
 };
 
-const EXERCISE_EQUIPMENT: Record<string, string[]> = {
-  "Barbell Bench Press": ["Barbell", "Bench"],
-  "Dumbbell Incline Press": ["Dumbbell", "Bench"],
-  "Overhead Press": ["Barbell", "Dumbbell"],
-  "Lateral Raises": ["Dumbbell"],
-  "Triceps Pushdown": ["Cable Machine"],
+// Each exercise maps to an array of OR-groups. All groups must be satisfied (AND).
+// Example: [["Barbell"],["Bench"]] means (Barbell OR ...) AND (Bench OR ...) → both required.
+// Example: [["Barbell","Dumbbell"]] means (Barbell OR Dumbbell) → either is enough.
+type EquipmentRequirement = string[][];
+
+const EXERCISE_EQUIPMENT: Record<string, EquipmentRequirement> = {
+  "Barbell Bench Press": [["Barbell"], ["Bench"]],
+  "Dumbbell Incline Press": [["Dumbbell"], ["Bench"]],
+  "Overhead Press": [["Barbell", "Dumbbell"]],
+  "Lateral Raises": [["Dumbbell"]],
+  "Triceps Pushdown": [["Cable Machine"]],
   "Push-Up": [],
   "Pike Push-Up": [],
   "Diamond Push-Up": [],
   "Archer Push-Up": [],
 
-  "Barbell Deadlift": ["Barbell"],
-  "Barbell Row": ["Barbell"],
-  "Lat Pulldown": ["Cable Machine"],
-  "Face Pull": ["Cable Machine", "Resistance Bands"],
-  "Dumbbell Biceps Curl": ["Dumbbell"],
-  "Pull-Up": ["Pull-Up Bar"],
-  "Inverted Row": ["Pull-Up Bar"],
-  "Chin-Up": ["Pull-Up Bar"],
+  "Barbell Deadlift": [["Barbell"]],
+  "Barbell Row": [["Barbell"]],
+  "Lat Pulldown": [["Cable Machine"]],
+  "Face Pull": [["Cable Machine", "Resistance Bands"]],
+  "Dumbbell Biceps Curl": [["Dumbbell"]],
+  "Pull-Up": [["Pull-Up Bar"]],
+  "Inverted Row": [["Pull-Up Bar"]],
+  "Chin-Up": [["Pull-Up Bar"]],
 
-  "Barbell Back Squat": ["Barbell", "Squat Rack"],
-  "Romanian Deadlift": ["Barbell", "Dumbbell"],
-  "Leg Press": ["Smith Machine"],
-  "Leg Curl": ["Cable Machine"],
+  "Barbell Back Squat": [["Barbell"], ["Squat Rack"]],
+  "Romanian Deadlift": [["Barbell", "Dumbbell"]],
+  "Leg Press": [["Smith Machine"]],
+  "Leg Curl": [["Cable Machine"]],
   "Calf Raises": [],
   "Squat": [],
   "Split Squat": [],
-  "Bulgarian Split Squat": ["Bench"],
+  "Bulgarian Split Squat": [["Bench"]],
   "Glute Bridge": [],
   "Lunges": [],
 
-  "Dumbbell Bench Press": ["Dumbbell", "Bench"],
-  "Dumbbell Row": ["Dumbbell"],
-  "Shoulder Press": ["Barbell", "Dumbbell"],
-  "Biceps Curl": ["Dumbbell", "Resistance Bands"],
-  "Triceps Extension": ["Cable Machine", "Dumbbell"],
+  "Dumbbell Bench Press": [["Dumbbell"], ["Bench"]],
+  "Dumbbell Row": [["Dumbbell"]],
+  "Shoulder Press": [["Barbell", "Dumbbell"]],
+  "Biceps Curl": [["Dumbbell", "Resistance Bands"]],
+  "Triceps Extension": [["Cable Machine", "Dumbbell"]],
 
   "Plank": [],
   "Dead Bug": [],
-  "Hanging Leg Raise": ["Pull-Up Bar"],
+  "Hanging Leg Raise": [["Pull-Up Bar"]],
   "Leg Raise": [],
 };
 
 function userCanDoExercise(name: string, equipment: string[]): boolean {
-  const needs = EXERCISE_EQUIPMENT[name] ?? [];
-  if (needs.length === 0) return true;
+  const groups = EXERCISE_EQUIPMENT[name] ?? [];
+  if (groups.length === 0) return true;
   const bodyweightOnly = equipment.length === 1 && equipment[0] === "None / Bodyweight";
   if (bodyweightOnly) return false;
-  return needs.some((n) => equipment.includes(n));
+  return groups.every((group) => group.some((item) => equipment.includes(item)));
 }
 
 function filterExercises(exercises: PlanExercise[], equipment: string[]): PlanExercise[] {
