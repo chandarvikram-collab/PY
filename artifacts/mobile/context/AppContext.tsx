@@ -250,6 +250,7 @@ type AppState = {
   workoutHistory: WorkoutSession[];
   calorieLog: DayCalories[];
   friends: Friend[];
+  followingIds: string[];
   challenges: Challenge[];
   posts: Post[];
   chatThreads: ChatThread[];
@@ -269,6 +270,8 @@ type AppContextType = {
   updateWater: (date: string, cups: number) => void;
   likePost: (postId: string) => void;
   addPost: (post: Post) => void;
+  followUser: (userId: string) => void;
+  unfollowUser: (userId: string) => void;
   sendChallenge: (challenge: Challenge) => void;
   acceptChallenge: (challengeId: string) => void;
   updateChallengeProgress: (challengeId: string, progress: number) => void;
@@ -294,6 +297,36 @@ const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   : "";
 
 const AVATAR_COLORS = ["#3b82f6", "#8b5cf6", "#f59e0b", "#22c55e", "#ec4899", "#14b8a6"];
+
+let _getToken: (() => Promise<string | null>) | null = null;
+
+async function socialFetch(path: string, opts: RequestInit = {}): Promise<Response> {
+  const token = _getToken ? await _getToken() : null;
+  const headers: Record<string, string> = {
+    ...(opts.body ? { "Content-Type": "application/json" } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  return fetch(`${API_BASE}/api${path}`, { ...opts, headers });
+}
+
+function relativeTime(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function colorFromId(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash * 31) + id.charCodeAt(i)) | 0;
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
 
 function generateUUID(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
@@ -619,6 +652,7 @@ const DEFAULT_STATE: AppState = {
     },
   ],
   friends: SEED_FRIENDS,
+  followingIds: [],
   challenges: SEED_CHALLENGES,
   posts: SEED_POSTS,
   chatThreads: SEED_CHAT_THREADS,
@@ -633,8 +667,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
   const [loaded, setLoaded] = useState(false);
   const apiUserIdRef = useRef<string | null>(null);
-  const { userId: clerkUserId, isSignedIn } = useAuth();
+  const { userId: clerkUserId, isSignedIn, getToken } = useAuth();
   const { user: clerkUser, isLoaded: clerkUserLoaded } = useUser();
+
+  useEffect(() => {
+    _getToken = getToken;
+    return () => { _getToken = null; };
+  }, [getToken]);
+
+  useEffect(() => {
+    if (!isSignedIn || !loaded) return;
+    hydrateSocialFromApi(setState);
+  }, [isSignedIn, loaded]);
 
   useEffect(() => {
     if (!isSignedIn || !clerkUserId || !loaded) return;
@@ -860,6 +904,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       mealTemplates: [],
       calorieLog: [{ date: today, goal: state.userProfile.calorieGoal ?? 2000, water: 0, entries: [] }],
       friends: [],
+      followingIds: [],
       challenges: [],
       posts: [],
       chatThreads: [],
@@ -1043,6 +1088,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const likePost = useCallback(
     (postId: string) => {
+      const wasLiked = stateRef.current.posts.find((p) => p.id === postId)?.liked ?? false;
       update((prev) => ({
         ...prev,
         posts: prev.posts.map((p) =>
@@ -1051,6 +1097,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             : p,
         ),
       }));
+      const method = wasLiked ? "DELETE" : "POST";
+      socialFetch(`/posts/${postId}/like`, { method }).catch(() => {});
     },
     [update],
   );
@@ -1058,6 +1106,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addPost = useCallback(
     (post: Post) => {
       update((prev) => ({ ...prev, posts: [post, ...prev.posts] }));
+      socialFetch("/posts", {
+        method: "POST",
+        body: JSON.stringify({
+          type: post.type,
+          content: post.content,
+          stats: post.stats && Object.keys(post.stats).length > 0 ? post.stats : undefined,
+        }),
+      })
+        .then(async (r) => {
+          if (!r.ok) return;
+          const serverPost = (await r.json()) as { id: string };
+          update((prev) => ({
+            ...prev,
+            posts: prev.posts.map((p) =>
+              p.id === post.id ? { ...p, id: serverPost.id } : p,
+            ),
+          }));
+        })
+        .catch(() => {});
+    },
+    [update],
+  );
+
+  const followUser = useCallback(
+    (userId: string) => {
+      update((prev) => ({
+        ...prev,
+        followingIds: prev.followingIds.includes(userId) ? prev.followingIds : [...prev.followingIds, userId],
+      }));
+      socialFetch("/follows", { method: "POST", body: JSON.stringify({ targetId: userId }) })
+        .then((r) => { if (r.ok) hydrateSocialFromApi(setState); })
+        .catch(() => {});
+    },
+    [update],
+  );
+
+  const unfollowUser = useCallback(
+    (userId: string) => {
+      update((prev) => ({
+        ...prev,
+        followingIds: prev.followingIds.filter((id) => id !== userId),
+      }));
+      socialFetch(`/follows/${userId}`, { method: "DELETE" })
+        .then((r) => { if (r.ok) hydrateSocialFromApi(setState); })
+        .catch(() => {});
     },
     [update],
   );
@@ -1065,6 +1158,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const sendChallenge = useCallback(
     (challenge: Challenge) => {
       update((prev) => ({ ...prev, challenges: [challenge, ...prev.challenges] }));
+      const targetParticipant = challenge.participants.find((p) => p.id !== "me");
+      socialFetch("/challenges", {
+        method: "POST",
+        body: JSON.stringify({
+          type: challenge.type,
+          title: challenge.title,
+          description: challenge.description,
+          target: challenge.target,
+          unit: challenge.unit,
+          deadline: challenge.deadline,
+          targetUserId: targetParticipant?.id ?? undefined,
+        }),
+      }).catch(() => {});
     },
     [update],
   );
@@ -1301,6 +1407,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateWater,
         likePost,
         addPost,
+        followUser,
+        unfollowUser,
         sendChallenge,
         acceptChallenge,
         updateChallengeProgress,
@@ -1441,6 +1549,78 @@ function hydrateFromApi(
         isOnline: false,
       }));
       setState((prev) => ({ ...prev, friends }));
+    })
+    .catch(() => {});
+}
+
+function hydrateSocialFromApi(
+  setState: React.Dispatch<React.SetStateAction<AppState>>,
+): void {
+  socialFetch("/follows")
+    .then((r) => (r.ok ? r.json() : []))
+    .then((rows: any[]) => {
+      const followingIds: string[] = rows.map((r: any) => r.id);
+      setState((prev) => ({ ...prev, followingIds }));
+    })
+    .catch(() => {});
+
+  socialFetch("/feed")
+    .then((r) => (r.ok ? r.json() : []))
+    .then((rows: any[]) => {
+      const feedPosts: Post[] = rows.map((r: any) => ({
+        id: r.id,
+        userId: r.userId,
+        userName: r.userName,
+        userInitials: r.userName
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase(),
+        userColor: colorFromId(r.userId),
+        type: r.type as Post["type"],
+        content: r.content,
+        likes: r.likeCount ?? 0,
+        comments: 0,
+        liked: Boolean(r.isLiked),
+        time: relativeTime(new Date(r.createdAt)),
+        stats: (r.statsJson as Record<string, string>) ?? {},
+      }));
+      setState((prev) => ({ ...prev, posts: feedPosts }));
+    })
+    .catch(() => {});
+
+  socialFetch("/challenges")
+    .then((r) => (r.ok ? r.json() : []))
+    .then((rows: any[]) => {
+      const apiChallenges: Challenge[] = rows.map((row: any) => ({
+        id: row.id,
+        type: row.type as Challenge["type"],
+        title: row.title,
+        description: row.description,
+        fromId: row.fromId ?? null,
+        fromName: row.fromName ?? null,
+        participants: (row.participants ?? []).map((p: any, i: number) => ({
+          id: p.id,
+          name: p.name,
+          initials: p.name
+            .split(" ")
+            .map((n: string) => n[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase(),
+          color: i === 0 ? "#E8151B" : colorFromId(p.id),
+          progress: p.progress,
+          target: p.target,
+        })),
+        myProgress: row.myProgress ?? 0,
+        target: row.target,
+        unit: row.unit,
+        deadline: row.deadline,
+        status: row.status as Challenge["status"],
+        createdAt: row.createdAt,
+      }));
+      setState((prev) => ({ ...prev, challenges: apiChallenges }));
     })
     .catch(() => {});
 }

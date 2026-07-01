@@ -17,6 +17,36 @@ import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import type { Post } from "@/context/AppContext";
 
+function FollowButton({ userId, isFollowing, onFollow, onUnfollow }: {
+  userId: string;
+  isFollowing: boolean;
+  onFollow: () => void;
+  onUnfollow: () => void;
+}) {
+  const colors = useColors();
+  return (
+    <Pressable
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        isFollowing ? onUnfollow() : onFollow();
+      }}
+      style={[{
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginTop: 4,
+        borderColor: isFollowing ? colors.border : colors.primary,
+        backgroundColor: isFollowing ? "transparent" : colors.primary + "15",
+      }]}
+    >
+      <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: isFollowing ? colors.mutedForeground : colors.primary }}>
+        {isFollowing ? "Following" : "Follow"}
+      </Text>
+    </Pressable>
+  );
+}
+
 function Avatar({ initials, color, size = 38 }: { initials: string; color: string; size?: number }) {
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color + "33", borderWidth: 1.5, borderColor: color + "66", alignItems: "center", justifyContent: "center" }}>
@@ -105,8 +135,8 @@ function PostCard({ post, onLike }: { post: Post; onLike: () => void }) {
 export default function SocialScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { state, likePost, addPost } = useApp();
-  const { posts, friends, userProfile } = state;
+  const { state, likePost, addPost, followUser, unfollowUser } = useApp();
+  const { posts, friends, followingIds, userProfile } = state;
   const [tab, setTab] = useState<"feed" | "explore">("feed");
   const [composing, setComposing] = useState(false);
   const [draftText, setDraftText] = useState("");
@@ -170,13 +200,19 @@ export default function SocialScreen() {
             <Text style={[styles.storyName, { color: colors.mutedForeground }]}>You</Text>
           </View>
           {friends.map((f) => (
-            <View key={f.id} style={styles.storyItem}>
-              <View style={[styles.storyRing, { borderColor: f.color }]}>
+            <View key={f.id} style={[styles.storyItem, { alignItems: "center" }]}>
+              <View style={[styles.storyRing, { borderColor: followingIds.includes(f.id) ? f.color : colors.border }]}>
                 <View style={[styles.storyAvatar, { backgroundColor: f.color + "33" }]}>
                   <Text style={[styles.storyInitials, { color: f.color }]}>{f.initials}</Text>
                 </View>
               </View>
               <Text style={[styles.storyName, { color: colors.mutedForeground }]}>{f.name.split(" ")[0]}</Text>
+              <FollowButton
+                userId={f.id}
+                isFollowing={followingIds.includes(f.id)}
+                onFollow={() => followUser(f.id)}
+                onUnfollow={() => unfollowUser(f.id)}
+              />
             </View>
           ))}
         </ScrollView>
