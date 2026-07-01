@@ -14,7 +14,47 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import type { AIPlan, AIPlanWeek, ExperienceLevel } from "@/context/AppContext";
+import type { AIPlan, AIPlanExercise, AIPlanWeek, ExperienceLevel, Exercise, Routine } from "@/context/AppContext";
+
+function parseReps(reps: string): number {
+  const cleaned = reps.trim().toLowerCase();
+  if (cleaned === "max") return 12;
+  const rangeMatch = cleaned.match(/(\d+)\s*[-–]\s*(\d+)/);
+  if (rangeMatch) return parseInt(rangeMatch[2], 10);
+  const singleMatch = cleaned.match(/^(\d+)/);
+  if (singleMatch) return parseInt(singleMatch[1], 10);
+  return 10;
+}
+
+function inferCategory(name: string): string {
+  const n = name.toLowerCase();
+  if (/bench|chest|fly|pec|dip|push.?up|incline press/.test(n)) return "Chest";
+  if (/deadlift|row|lat|pull.?down|pull.?up|chin|back|rhomboid|face pull/.test(n)) return "Back";
+  if (/squat|leg|lunge|hamstring|glute|calf|hip thrust|rdl|romanian/.test(n)) return "Legs";
+  if (/overhead|shoulder|military|lateral raise|front raise|delt/.test(n)) return "Shoulders";
+  if (/curl|tricep|bicep|extension|pushdown|skull|hammer/.test(n)) return "Arms";
+  if (/plank|crunch|ab|core|dead bug|hanging|oblique/.test(n)) return "Core";
+  return "General";
+}
+
+function aiExercisesToRoutine(workoutName: string, exercises: AIPlanExercise[], planEquipment: string[]): Routine {
+  const primaryEquipment = planEquipment[0] ?? "Bodyweight";
+  const converted: Exercise[] = exercises.map((ex, i) => ({
+    id: `ai-${Date.now()}-${i}`,
+    name: ex.name,
+    category: inferCategory(ex.name),
+    equipment: primaryEquipment,
+    sets: ex.sets,
+    reps: parseReps(ex.reps),
+    weight: 0,
+    rest: ex.rest,
+  }));
+  return {
+    id: `ai-routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: workoutName,
+    exercises: converted,
+  };
+}
 
 const GOALS = ["Build Muscle", "Lose Fat", "Improve Strength", "Improve Endurance", "General Fitness"];
 const LEVELS: { id: ExperienceLevel; label: string; desc: string }[] = [
@@ -158,7 +198,7 @@ export default function AIPlanScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, saveAIPlan } = useApp();
+  const { state, saveAIPlan, addRoutine } = useApp();
   const { userProfile } = state;
 
   const [step, setStep] = useState(0);
@@ -169,6 +209,7 @@ export default function AIPlanScreen() {
   const [plan, setPlan] = useState<AIPlan | null>(userProfile.aiPlan);
   const [generating, setGenerating] = useState(false);
   const [viewingWeek, setViewingWeek] = useState(0);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
@@ -182,6 +223,7 @@ export default function AIPlanScreen() {
 
   function handleGenerate() {
     setGenerating(true);
+    setSaveState("idle");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setTimeout(() => {
       const p = generatePlan(selectedGoal, selectedLevel, selectedEquipment.length > 0 ? selectedEquipment : ["Bodyweight"], selectedDays);
@@ -191,6 +233,28 @@ export default function AIPlanScreen() {
       setStep(4);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }, 1800);
+  }
+
+  function handleSaveToRoutines() {
+    if (!plan || saveState === "saving" || saveState === "saved") return;
+    try {
+      setSaveState("saving");
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const week = plan.weeks[viewingWeek];
+      if (!week || week.workouts.length === 0) {
+        setSaveState("error");
+        return;
+      }
+      for (const workout of week.workouts) {
+        if (!workout.exercises || workout.exercises.length === 0) continue;
+        const routine = aiExercisesToRoutine(workout.name, workout.exercises, plan.equipment);
+        addRoutine(routine);
+      }
+      setSaveState("saved");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      setSaveState("error");
+    }
   }
 
   const STEPS = [
@@ -319,9 +383,29 @@ export default function AIPlanScreen() {
               {plan.level} · {plan.daysPerWeek}x/week · {plan.weeks.length} weeks
             </Text>
           </View>
-          <Pressable onPress={() => setStep(0)} style={[styles.regenBtn, { borderColor: colors.border }]}>
+          <Pressable onPress={() => setStep(0)} style={[styles.regenBtn, { borderColor: colors.border, marginRight: 8 }]}>
             <Feather name="refresh-cw" size={14} color={colors.mutedForeground} />
             <Text style={[styles.regenText, { color: colors.mutedForeground }]}>Redo</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleSaveToRoutines}
+            disabled={saveState === "saved" || saveState === "saving"}
+            style={[
+              styles.regenBtn,
+              {
+                borderColor: saveState === "saved" ? "#22c55e" : saveState === "error" ? "#ef4444" : colors.primary,
+                backgroundColor: saveState === "saved" ? "#22c55e22" : saveState === "error" ? "#ef444422" : colors.primary + "18",
+              },
+            ]}
+          >
+            <Feather
+              name={saveState === "saved" ? "check" : saveState === "error" ? "alert-circle" : "bookmark"}
+              size={14}
+              color={saveState === "saved" ? "#22c55e" : saveState === "error" ? "#ef4444" : colors.primary}
+            />
+            <Text style={[styles.regenText, { color: saveState === "saved" ? "#22c55e" : saveState === "error" ? "#ef4444" : colors.primary }]}>
+              {saveState === "saved" ? "Saved!" : saveState === "error" ? "Error" : "Save"}
+            </Text>
           </Pressable>
         </View>
 
@@ -331,12 +415,29 @@ export default function AIPlanScreen() {
             <Text style={[styles.summaryText, { color: colors.foreground }]}>{plan.summary}</Text>
           </View>
 
+          {saveState === "saved" && (
+            <View style={[styles.saveBanner, { backgroundColor: "#22c55e18", borderColor: "#22c55e44" }]}>
+              <Feather name="check-circle" size={15} color="#22c55e" />
+              <Text style={[styles.saveBannerText, { color: "#22c55e" }]}>
+                {plan.weeks[viewingWeek].workouts.length} routines saved to your Training tab
+              </Text>
+            </View>
+          )}
+          {saveState === "error" && (
+            <View style={[styles.saveBanner, { backgroundColor: "#ef444418", borderColor: "#ef444444" }]}>
+              <Feather name="alert-circle" size={15} color="#ef4444" />
+              <Text style={[styles.saveBannerText, { color: "#ef4444" }]}>
+                Could not save routines — plan may be incomplete
+              </Text>
+            </View>
+          )}
+
           {/* Week tabs */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 16 }} contentContainerStyle={{ gap: 8 }}>
             {plan.weeks.map((w, i) => (
               <Pressable
                 key={w.weekNumber}
-                onPress={() => setViewingWeek(i)}
+                onPress={() => { setViewingWeek(i); setSaveState("idle"); }}
                 style={[
                   styles.weekTab,
                   { backgroundColor: viewingWeek === i ? colors.primary : colors.card, borderColor: viewingWeek === i ? colors.primary : colors.border },
@@ -466,4 +567,6 @@ const styles = StyleSheet.create({
   exNote: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
   exSets: { fontSize: 13, fontFamily: "Inter_700Bold" },
   exRest: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  saveBanner: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, padding: 12, marginTop: 10 },
+  saveBannerText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
 });
