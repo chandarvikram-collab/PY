@@ -3,6 +3,7 @@ import { Readable } from "stream";
 import { z } from "zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { canAccessObject, ObjectPermission } from "../lib/objectAcl";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -37,6 +38,17 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+
+    const canAccess = await canAccessObject({
+      userId: req.localUserId ?? undefined,
+      objectFile,
+      requestedPermission: ObjectPermission.READ,
+    });
+    if (!canAccess) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+
     const response = await objectStorageService.downloadObject(objectFile);
 
     res.status(response.status);

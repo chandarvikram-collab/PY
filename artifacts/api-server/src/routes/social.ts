@@ -11,6 +11,30 @@ import {
   challengeParticipants,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
+import { ObjectStorageService } from "../lib/objectStorage";
+import { setObjectAclPolicy } from "../lib/objectAcl";
+
+const objectStorageService = new ObjectStorageService();
+
+function extractObjectPath(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const match = parsed.pathname.match(/\/api\/storage(\/objects\/.+)/);
+    return match ? match[1] : null;
+  } catch {
+    return url.startsWith("/objects/") ? url : null;
+  }
+}
+
+async function setPublicAcl(url: string, ownerId: string): Promise<void> {
+  const objectPath = extractObjectPath(url);
+  if (!objectPath) return;
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+    await setObjectAclPolicy(objectFile, { owner: ownerId, visibility: "public" });
+  } catch {
+  }
+}
 
 const router = Router();
 
@@ -68,9 +92,9 @@ const createPostSchema = z.object({
   type: z.enum(["workout", "achievement", "milestone", "challenge"]).default("workout"),
   content: z.string().min(1).max(500),
   stats: z.record(z.string(), z.string()).optional(),
-  mediaUrl: z.string().url().optional(),
+  mediaUrl: z.string().min(1).optional(),
   mediaType: z.enum(["photo", "video", "text"]).optional(),
-  thumbnailUrl: z.string().url().optional(),
+  thumbnailUrl: z.string().min(1).optional(),
   workoutSnapshot: z.record(z.string(), z.string()).optional(),
 });
 
@@ -117,6 +141,9 @@ router.post("/posts", requireAuth, async (req, res) => {
     .innerJoin(users, eq(posts.userId, users.id))
     .where(eq(posts.id, row.id))
     .limit(1);
+
+  if (mediaUrl) await setPublicAcl(mediaUrl, userId);
+  if (thumbnailUrl) await setPublicAcl(thumbnailUrl, userId);
 
   req.log.info({ postId: row.id, userId }, "post created");
   res.status(201).json({ ...withUser, likeCount: 0, isLiked: false });

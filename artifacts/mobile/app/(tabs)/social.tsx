@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import * as VideoThumbnails from "expo-video-thumbnails";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -83,9 +84,7 @@ function PostCard({ post, onLike }: { post: Post; onLike: () => void }) {
     ? "#3b82f6"
     : "#22c55e";
 
-  const mediaServingUrl = post.mediaUrl
-    ? `${API_BASE}/api/storage${post.mediaUrl}`
-    : null;
+  const mediaServingUrl = post.mediaUrl ?? null;
 
   return (
     <View style={[styles.postCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -114,7 +113,7 @@ function PostCard({ post, onLike }: { post: Post; onLike: () => void }) {
       {mediaServingUrl && post.mediaType === "video" && (
         <View style={[styles.postMedia, { backgroundColor: colors.muted, alignItems: "center", justifyContent: "center" }]}>
           {post.thumbnailUrl ? (
-            <Image source={{ uri: `${API_BASE}/api/storage${post.thumbnailUrl}` }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <Image source={{ uri: post.thumbnailUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : null}
           <View style={[styles.playOverlay, { backgroundColor: "rgba(0,0,0,0.55)" }]}>
             <Feather name="play" size={28} color="#fff" />
@@ -187,7 +186,7 @@ export default function SocialScreen() {
   const [composerStep, setComposerStep] = useState<ComposerStep>("pick-type");
   const [draftText, setDraftText] = useState("");
   const [selectedMediaType, setSelectedMediaType] = useState<"photo" | "video" | "text">("text");
-  const [pickedMedia, setPickedMedia] = useState<{ uri: string; contentType: string; name: string } | null>(null);
+  const [pickedMedia, setPickedMedia] = useState<{ uri: string; contentType: string; name: string; thumbnailUri?: string } | null>(null);
   const [linkedWorkout, setLinkedWorkout] = useState<typeof workoutHistory[0] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -232,7 +231,14 @@ export default function SocialScreen() {
       ? (ext === "mov" ? "video/quicktime" : "video/mp4")
       : "image/jpeg";
 
-    setPickedMedia({ uri: asset.uri, contentType, name: `upload.${ext}` });
+    let thumbnailUri: string | undefined;
+    if (mediaType === "video") {
+      try {
+        const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 0 });
+        thumbnailUri = thumb.uri;
+      } catch {}
+    }
+    setPickedMedia({ uri: asset.uri, contentType, name: `upload.${ext}`, thumbnailUri });
     setComposerStep("caption");
   }
 
@@ -260,7 +266,7 @@ export default function SocialScreen() {
       headers: { "Content-Type": media.contentType },
     });
     if (!put.ok) throw new Error("Upload failed");
-    return objectPath;
+    return `${API_BASE}/api/storage${objectPath}`;
   }
 
   async function submitPost() {
@@ -269,13 +275,22 @@ export default function SocialScreen() {
     setUploading(true);
 
     let mediaUrl: string | undefined;
+    let thumbnailUrl: string | undefined;
     try {
       if (pickedMedia) {
         mediaUrl = await uploadMedia(pickedMedia);
+        if (pickedMedia.thumbnailUri) {
+          thumbnailUrl = await uploadMedia({
+            uri: pickedMedia.thumbnailUri,
+            contentType: "image/jpeg",
+            name: "thumbnail.jpg",
+          });
+        }
       }
     } catch {
       setUploadError("Upload failed. Post will be shared without media.");
       mediaUrl = undefined;
+      thumbnailUrl = undefined;
     } finally {
       setUploading(false);
     }
@@ -303,6 +318,7 @@ export default function SocialScreen() {
       stats: {},
       mediaUrl,
       mediaType: pickedMedia ? selectedMediaType : undefined,
+      thumbnailUrl,
       workoutSnapshot: workoutSnap,
     });
 
