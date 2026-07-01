@@ -42,6 +42,7 @@ export default function SignUpScreen() {
   const [error, setError] = useState("");
   const [awaitingVerification, setAwaitingVerification] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
 
   const isLoading = fetchStatus === "fetching";
 
@@ -67,6 +68,31 @@ export default function SignUpScreen() {
       setError(err?.message ?? "Google sign-in failed");
     } finally {
       setGoogleLoading(false);
+    }
+  }, [startSSOFlow, router]);
+
+  const handleAppleSignUp = useCallback(async () => {
+    setError("");
+    setAppleLoading(true);
+    try {
+      const { createdSessionId, setActive } = await startSSOFlow({
+        strategy: "oauth_apple",
+        redirectUrl: AuthSession.makeRedirectUri(),
+      });
+      if (createdSessionId) {
+        setActive!({
+          session: createdSessionId,
+          navigate: async ({ decorateUrl }) => {
+            const url = decorateUrl("/");
+            if (url.startsWith("http")) return;
+            router.replace("/");
+          },
+        });
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "Apple sign-in failed");
+    } finally {
+      setAppleLoading(false);
     }
   }, [startSSOFlow, router]);
 
@@ -188,6 +214,23 @@ export default function SignUpScreen() {
           )}
         </Pressable>
 
+        {Platform.OS === "ios" && (
+          <Pressable
+            style={[styles.appleBtn, appleLoading && styles.btnDisabled, { marginTop: 12 }]}
+            onPress={handleAppleSignUp}
+            disabled={appleLoading}
+          >
+            {appleLoading ? (
+              <ActivityIndicator color="#09090b" />
+            ) : (
+              <>
+                <Text style={styles.appleIcon}></Text>
+                <Text style={styles.appleBtnText}>Continue with Apple</Text>
+              </>
+            )}
+          </Pressable>
+        )}
+
         <View style={styles.dividerRow}>
           <View style={styles.dividerLine} />
           <Text style={styles.dividerText}>or</Text>
@@ -298,6 +341,25 @@ const styles = StyleSheet.create({
   },
   googleBtnText: {
     color: "#f9fafb",
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+  },
+  appleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  appleIcon: {
+    color: "#09090b",
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+  },
+  appleBtnText: {
+    color: "#09090b",
     fontSize: 15,
     fontFamily: "Inter_600SemiBold",
   },
