@@ -6,7 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
@@ -215,6 +215,10 @@ function RootLayoutNav() {
       />
       <Stack.Screen
         name="food-detail"
+        options={{ headerShown: false, presentation: "modal" }}
+      />
+      <Stack.Screen
+        name="onboarding"
         options={{ headerShown: false, presentation: "modal" }}
       />
     </Stack>

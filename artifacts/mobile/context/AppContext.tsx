@@ -32,6 +32,12 @@ export type UserProfile = {
   proteinGoal: number;
   carbGoal?: number;
   fatGoal?: number;
+  biologicalSex?: string;
+  heightCm?: number;
+  weightKg?: number;
+  activityLevel?: string;
+  primaryGoal?: string;
+  weeklyPaceLbs?: number;
 };
 
 export type AIRoutinePayload = {
@@ -424,6 +430,15 @@ type ServerUser = {
   joinDate: string;
   calorieGoal: number;
   proteinGoal: number;
+  carbGoal?: number | null;
+  fatGoal?: number | null;
+  biologicalSex?: string | null;
+  heightCm?: number | null;
+  weightKg?: number | null;
+  activityLevel?: string | null;
+  primaryGoal?: string | null;
+  weeklyPaceLbs?: number | null;
+  equipment?: string[];
   totalPoints: number;
   totalWorkouts: number;
   streak: number;
@@ -873,6 +888,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               joinDate: user.joinDate,
               calorieGoal: user.calorieGoal,
               proteinGoal: user.proteinGoal,
+              carbGoal: user.carbGoal ?? undefined,
+              fatGoal: user.fatGoal ?? undefined,
+              biologicalSex: user.biologicalSex ?? undefined,
+              heightCm: user.heightCm ?? undefined,
+              weightKg: user.weightKg ?? undefined,
+              activityLevel: user.activityLevel ?? undefined,
+              primaryGoal: user.primaryGoal ?? undefined,
+              weeklyPaceLbs: user.weeklyPaceLbs ?? undefined,
+              equipment: user.equipment ?? prev.userProfile.equipment,
               totalPoints: user.totalPoints,
               totalWorkouts: user.totalWorkouts,
               streak: user.streak,
@@ -901,6 +925,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               joinDate: user.joinDate,
               calorieGoal: user.calorieGoal,
               proteinGoal: user.proteinGoal,
+              carbGoal: user.carbGoal ?? undefined,
+              fatGoal: user.fatGoal ?? undefined,
+              biologicalSex: user.biologicalSex ?? undefined,
+              heightCm: user.heightCm ?? undefined,
+              weightKg: user.weightKg ?? undefined,
+              activityLevel: user.activityLevel ?? undefined,
+              primaryGoal: user.primaryGoal ?? undefined,
+              weeklyPaceLbs: user.weeklyPaceLbs ?? undefined,
+              equipment: user.equipment ?? prev.userProfile.equipment,
               totalPoints: user.totalPoints,
               totalWorkouts: user.totalWorkouts,
               streak: user.streak,
@@ -1026,6 +1059,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (updates.level !== undefined) patch.level = updates.level;
         if (updates.calorieGoal !== undefined) patch.calorieGoal = updates.calorieGoal;
         if (updates.proteinGoal !== undefined) patch.proteinGoal = updates.proteinGoal;
+        if (updates.carbGoal !== undefined) patch.carbGoal = updates.carbGoal;
+        if (updates.fatGoal !== undefined) patch.fatGoal = updates.fatGoal;
         if (updates.bio !== undefined) patch.bio = updates.bio;
         if (Object.keys(patch).length > 0) {
           queueAndFire("PATCH", `/users/${apiUserIdRef.current}`, patch);

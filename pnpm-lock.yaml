@@ -184,6 +184,9 @@ importers:
       '@workspace/integrations-gemini-ai':
         specifier: workspace:*
         version: link:../../lib/integrations-gemini-ai
+      '@workspace/nutrition':
+        specifier: workspace:*
+        version: link:../../lib/nutrition
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -653,6 +656,8 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.2
+
+  lib/nutrition: {}
 
   scripts:
     devDependencies:

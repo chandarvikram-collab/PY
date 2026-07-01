@@ -328,6 +328,7 @@ export default function ProfileScreen() {
       <View style={[styles.menuSection, { marginHorizontal: 18 }]}>
         <View style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <MenuRow icon="settings" label="Settings" onPress={() => {}} />
+          <MenuRow icon="refresh-cw" label="Recalculate Targets" onPress={() => router.push("/onboarding")} />
           <MenuRow icon="help-circle" label="Help & Support" onPress={() => {}} />
           {isAuthenticated ? (
             <MenuRow icon="log-out" label="Sign Out" onPress={() => signOut()} danger />

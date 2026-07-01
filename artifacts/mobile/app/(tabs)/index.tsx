@@ -60,6 +60,8 @@ export default function HomeScreen() {
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
+  const needsOnboarding = !userProfile.id?.startsWith("anon-") && !userProfile.biologicalSex;
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -100,6 +102,32 @@ export default function HomeScreen() {
           <Text style={[styles.bannerLbl, { color: colors.mutedForeground }]}>Points</Text>
         </View>
       </View>
+
+      {/* Onboarding prompt */}
+      {needsOnboarding && (
+        <Pressable
+          onPress={() => router.push("/onboarding")}
+          style={({ pressed }) => [
+            styles.onboardingBanner,
+            {
+              backgroundColor: colors.primary + "18",
+              borderColor: colors.primary + "44",
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <Feather name="sliders" size={20} color={colors.primary} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={[styles.onboardingTitle, { color: colors.foreground }]}>
+              Set Up Your Nutrition Targets
+            </Text>
+            <Text style={[styles.onboardingSub, { color: colors.mutedForeground }]}>
+              Answer 8 quick questions for a personalized calorie & macro plan.
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={18} color={colors.primary} />
+        </Pressable>
+      )}
 
       {/* Today Stats Row */}
       <View style={styles.statsRow}>
@@ -273,4 +301,14 @@ const styles = StyleSheet.create({
   pointsLabel: { fontSize: 10, fontFamily: "Inter_500Medium" },
   avatarBase: { alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
   avatarText: { fontFamily: "Inter_700Bold" },
+  onboardingBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 14,
+  },
+  onboardingTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  onboardingSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
 });

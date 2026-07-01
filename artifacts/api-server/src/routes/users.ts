@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { eq, desc, sql } from "drizzle-orm";
+import { z } from "zod/v4";
 import { db, users, workoutSessions, foodEntries, runSessions, insertUserSchema, profilePatchSchema } from "@workspace/db";
 import { requireAuth, requireOwner } from "../middlewares/requireAuth";
+import { calculateNutrition } from "@workspace/nutrition";
 
 const router = Router();
 
@@ -125,6 +127,71 @@ router.post("/users/clerk-link", async (req, res) => {
     .returning();
   req.log.info({ clerkId, userId: newUser.id }, "created new user for clerk id");
   res.status(201).json({ user: newUser, migrated: false });
+});
+
+const nutritionGoalsSchema = z.object({
+  biologicalSex: z.enum(["male", "female"]),
+  heightCm: z.number().int().min(50).max(300),
+  weightKg: z.number().int().min(20).max(300),
+  age: z.number().int().min(10).max(120),
+  activityLevel: z.enum(["sedentary", "light", "moderate", "active", "very_active"]),
+  primaryGoal: z.enum(["lose_fat", "maintain", "build_muscle", "improve_endurance"]),
+  weeklyPaceLbs: z.number().int().min(0).max(5).optional(),
+  equipment: z.array(z.string()).optional(),
+});
+
+router.post("/users/:id/nutrition-goals", requireAuth, requireOwner((req) => req.params.id), async (req, res) => {
+  const id = req.params.id as string;
+  const parsed = nutritionGoalsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues });
+    return;
+  }
+  const data = parsed.data;
+
+  const { dailyCalories, proteinG, carbsG, fatG } = calculateNutrition({
+    biologicalSex: data.biologicalSex,
+    heightCm: data.heightCm,
+    weightKg: data.weightKg,
+    age: data.age,
+    activityLevel: data.activityLevel,
+    primaryGoal: data.primaryGoal,
+    weeklyPaceLbs: data.weeklyPaceLbs,
+  });
+
+  const updateData: Record<string, unknown> = {
+    calorieGoal: dailyCalories,
+    proteinGoal: proteinG,
+    carbGoal: carbsG,
+    fatGoal: fatG,
+    biologicalSex: data.biologicalSex,
+    heightCm: data.heightCm,
+    weightKg: data.weightKg,
+    activityLevel: data.activityLevel,
+    primaryGoal: data.primaryGoal,
+    weeklyPaceLbs: data.weeklyPaceLbs ?? null,
+    updatedAt: new Date(),
+  };
+  if (data.equipment !== undefined && data.equipment.length > 0) {
+    updateData.equipment = data.equipment;
+  }
+
+  const [row] = await db
+    .update(users)
+    .set(updateData)
+    .where(eq(users.id, id))
+    .returning();
+  if (!row) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json({
+    dailyCalories,
+    proteinG,
+    carbsG,
+    fatG,
+    user: row,
+  });
 });
 
 router.get("/leaderboard", async (req, res) => {
