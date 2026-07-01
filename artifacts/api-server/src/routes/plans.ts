@@ -98,6 +98,7 @@ const EXERCISE_EQUIPMENT: Record<string, EquipmentRequirement> = {
   "Dead Bug": [],
   "Hanging Leg Raise": [["Pull-Up Bar"]],
   "Leg Raise": [],
+  "Superman": [],
 };
 
 function userCanDoExercise(name: string, equipment: string[]): boolean {
@@ -114,9 +115,11 @@ function filterExercises(exercises: PlanExercise[], equipment: string[]): PlanEx
     if (userCanDoExercise(e.name, equipment)) {
       result.push(e);
     } else {
-      // Try to find a bodyweight substitute
+      // Try a substitute and validate it against the user's equipment
       const sub = findBodyweightSubstitute(e.name);
-      if (sub) result.push({ ...e, name: sub, note: (e.note ? e.note + " — " : "") + "Bodyweight variation" });
+      if (sub && userCanDoExercise(sub, equipment)) {
+        result.push({ ...e, name: sub, note: (e.note ? e.note + " — " : "") + "Bodyweight variation" });
+      }
     }
   }
   return result;
@@ -208,9 +211,9 @@ function buildSchedule(
   const legs = filterExercises(legPool, equipment);
   const core = filterExercises(corePool, equipment);
 
-  // Fallback: if any group is empty, add at least one bodyweight exercise
+  // Fallback: if any group is empty, add at least one truly bodyweight exercise
   if (push.length === 0) push.push({ name: "Push-Up", sets: 4, reps: "Max", rest: 90 });
-  if (pull.length === 0) pull.push({ name: "Inverted Row", sets: 3, reps: "12-15", rest: 90 });
+  if (pull.length === 0) pull.push({ name: "Superman", sets: 3, reps: "15-20", rest: 60, note: "Bodyweight back extension" });
   if (legs.length === 0) legs.push({ name: "Squat", sets: 4, reps: "15-20", rest: 90 });
   if (core.length === 0) core.push({ name: "Plank", sets: 3, reps: "45-60s", rest: 60 });
 
