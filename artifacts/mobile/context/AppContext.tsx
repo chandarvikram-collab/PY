@@ -228,6 +228,28 @@ export type Post = {
   workoutSnapshot?: Record<string, string>;
 };
 
+export type Comment = {
+  id: string;
+  postId: string;
+  userId: string;
+  userName: string;
+  userImageUrl?: string | null;
+  content: string;
+  createdAt: string;
+};
+
+export type AppNotification = {
+  id: string;
+  type: "like" | "comment" | "follow";
+  read: boolean;
+  postId: string | null;
+  commentText: string | null;
+  createdAt: string;
+  actorId: string;
+  actorName: string;
+  actorImageUrl?: string | null;
+};
+
 export type ChatMessage = {
   id: string;
   senderId: string;
@@ -260,6 +282,7 @@ type AppState = {
   chatThreads: ChatThread[];
   runHistory: RunSession[];
   mealTemplates: MealTemplate[];
+  notifications: AppNotification[];
 };
 
 type AppContextType = {
@@ -288,6 +311,10 @@ type AppContextType = {
   saveMealTemplate: (name: string, entries: FoodEntry[]) => void;
   deleteMealTemplate: (templateId: string) => void;
   loadMealTemplate: (date: string, templateId: string, targetMeal: FoodEntry["meal"]) => void;
+  fetchComments: (postId: string) => Promise<Comment[]>;
+  addComment: (postId: string, content: string) => Promise<Comment | null>;
+  refreshNotifications: () => Promise<void>;
+  markNotificationsRead: () => Promise<void>;
 };
 
 const ME_ID = "me";
@@ -661,6 +688,7 @@ const DEFAULT_STATE: AppState = {
   posts: [],
   chatThreads: SEED_CHAT_THREADS,
   runHistory: SEED_RUN_HISTORY,
+  notifications: [],
 };
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -913,6 +941,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       posts: [],
       chatThreads: [],
       runHistory: [],
+      notifications: [],
     };
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
     setState(clean);
@@ -1106,6 +1135,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     [update],
   );
+
+  const fetchComments = useCallback(async (postId: string): Promise<Comment[]> => {
+    try {
+      const r = await socialFetch(`/posts/${postId}/comments`);
+      if (!r.ok) return [];
+      return (await r.json()) as Comment[];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const addComment = useCallback(async (postId: string, content: string): Promise<Comment | null> => {
+    try {
+      const r = await socialFetch(`/posts/${postId}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      });
+      if (!r.ok) return null;
+      const comment = (await r.json()) as Comment;
+      update((prev) => ({
+        ...prev,
+        posts: prev.posts.map((p) =>
+          p.id === postId ? { ...p, comments: p.comments + 1 } : p,
+        ),
+      }));
+      return comment;
+    } catch {
+      return null;
+    }
+  }, [update]);
+
+  const refreshNotifications = useCallback(async (): Promise<void> => {
+    try {
+      const r = await socialFetch("/notifications");
+      if (!r.ok) return;
+      const rows = (await r.json()) as AppNotification[];
+      setState((prev) => ({ ...prev, notifications: rows }));
+    } catch {}
+  }, []);
+
+  const markNotificationsRead = useCallback(async (): Promise<void> => {
+    setState((prev) => ({
+      ...prev,
+      notifications: prev.notifications.map((n) => ({ ...n, read: true })),
+    }));
+    try {
+      await socialFetch("/notifications/read", { method: "PATCH" });
+    } catch {}
+  }, []);
 
   const addPost = useCallback(
     (post: Post) => {
@@ -1434,6 +1512,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         saveMealTemplate,
         deleteMealTemplate,
         loadMealTemplate,
+        fetchComments,
+        addComment,
+        refreshNotifications,
+        markNotificationsRead,
       }}
     >
       {children}
@@ -1623,7 +1705,7 @@ function hydrateSocialFromApi(
         type: r.type as Post["type"],
         content: r.content,
         likes: r.likeCount ?? 0,
-        comments: 0,
+        comments: r.commentCount ?? 0,
         liked: Boolean(r.isLiked),
         time: relativeTime(new Date(r.createdAt)),
         stats: (r.statsJson as Record<string, string>) ?? {},
@@ -1633,6 +1715,24 @@ function hydrateSocialFromApi(
         workoutSnapshot: (r.workoutSnapshot as Record<string, string>) ?? undefined,
       }));
       setState((prev) => ({ ...prev, posts: feedPosts }));
+    })
+    .catch(() => {});
+
+  socialFetch("/notifications")
+    .then((r) => (r.ok ? r.json() : []))
+    .then((rows: any[]) => {
+      const notifications: AppNotification[] = rows.map((r: any) => ({
+        id: r.id,
+        type: r.type as AppNotification["type"],
+        read: Boolean(r.read),
+        postId: r.postId ?? null,
+        commentText: r.commentText ?? null,
+        createdAt: r.createdAt,
+        actorId: r.actorId,
+        actorName: r.actorName,
+        actorImageUrl: r.actorImageUrl ?? null,
+      }));
+      setState((prev) => ({ ...prev, notifications }));
     })
     .catch(() => {});
 

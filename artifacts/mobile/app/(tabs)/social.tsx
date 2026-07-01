@@ -2,11 +2,14 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as VideoThumbnails from "expo-video-thumbnails";
-import React, { useState } from "react";
+import { useFocusEffect } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -21,7 +24,7 @@ import { useAuth } from "@clerk/expo";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import type { Post } from "@/context/AppContext";
+import type { AppNotification, Comment, Post } from "@/context/AppContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -65,7 +68,231 @@ function Avatar({ initials, color, size = 38 }: { initials: string; color: strin
   );
 }
 
-function PostCard({ post, onLike }: { post: Post; onLike: () => void }) {
+function relativeTime(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function initials(name: string): string {
+  return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function colorFromId(id: string): string {
+  const COLORS = ["#3b82f6", "#8b5cf6", "#f59e0b", "#22c55e", "#ec4899", "#14b8a6"];
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = ((hash * 31) + id.charCodeAt(i)) | 0;
+  return COLORS[Math.abs(hash) % COLORS.length];
+}
+
+// ─── Comment Sheet ────────────────────────────────────────────────────────────
+
+function CommentSheet({ post, onClose }: { post: Post; onClose: () => void }) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { fetchComments, addComment, state } = useApp();
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const flatRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchComments(post.id)
+      .then((c) => setComments(c))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [post.id]);
+
+  async function submit() {
+    if (!text.trim() || submitting) return;
+    setSubmitting(true);
+    const result = await addComment(post.id, text.trim());
+    if (result) {
+      setComments((prev) => [...prev, result]);
+      setText("");
+      setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+    setSubmitting(false);
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 8 }]}>
+            {/* Handle bar */}
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+
+            <View style={styles.sheetHeader}>
+              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Comments</Text>
+              <Pressable onPress={onClose} hitSlop={10}>
+                <Feather name="x" size={20} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+
+            {loading ? (
+              <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                <ActivityIndicator color={colors.primary} />
+              </View>
+            ) : (
+              <FlatList
+                ref={flatRef}
+                data={comments}
+                keyExtractor={(c) => c.id}
+                style={{ maxHeight: 320 }}
+                contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 6, paddingBottom: 8 }}
+                ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
+                ListEmptyComponent={() => (
+                  <View style={{ alignItems: "center", paddingVertical: 30 }}>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 14 }}>
+                      No comments yet. Be the first!
+                    </Text>
+                  </View>
+                )}
+                renderItem={({ item }) => (
+                  <View style={{ flexDirection: "row", gap: 10 }}>
+                    <Avatar initials={initials(item.userName)} color={colorFromId(item.userId)} size={32} />
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                        <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.foreground }}>
+                          {item.userName}
+                        </Text>
+                        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground }}>
+                          {relativeTime(new Date(item.createdAt))}
+                        </Text>
+                      </View>
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: colors.foreground, lineHeight: 20, marginTop: 2 }}>
+                        {item.content}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              />
+            )}
+
+            {/* Input bar */}
+            <View style={[styles.commentInputRow, { borderTopColor: colors.border }]}>
+              <Avatar
+                initials={initials(state.userProfile.name)}
+                color="#E8151B"
+                size={30}
+              />
+              <TextInput
+                style={[styles.commentInput, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]}
+                value={text}
+                onChangeText={setText}
+                placeholder="Add a comment…"
+                placeholderTextColor={colors.mutedForeground}
+                returnKeyType="send"
+                onSubmitEditing={submit}
+                editable={!submitting}
+              />
+              <Pressable
+                onPress={submit}
+                disabled={!text.trim() || submitting}
+                style={{ opacity: text.trim() && !submitting ? 1 : 0.4 }}
+              >
+                <Feather name="send" size={20} color={colors.primary} />
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Notification Panel ──────────────────────────────────────────────────────
+
+function NotificationPanel({ onClose }: { onClose: () => void }) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { state, markNotificationsRead } = useApp();
+  const { notifications } = state;
+
+  useEffect(() => {
+    markNotificationsRead().catch(() => {});
+  }, []);
+
+  function notifBody(n: AppNotification): string {
+    if (n.type === "like") return "liked your post";
+    if (n.type === "follow") return "started following you";
+    if (n.type === "comment") {
+      return n.commentText ? `commented: "${n.commentText}"` : "commented on your post";
+    }
+    return "";
+  }
+
+  function notifIcon(n: AppNotification): { name: string; color: string } {
+    if (n.type === "like") return { name: "heart", color: colors.primary };
+    if (n.type === "follow") return { name: "user-plus", color: "#3b82f6" };
+    return { name: "message-circle", color: "#22c55e" };
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+        <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 8, maxHeight: "75%" }]}>
+          <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+          <View style={styles.sheetHeader}>
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Notifications</Text>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Feather name="x" size={20} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+
+          {notifications.length === 0 ? (
+            <View style={{ alignItems: "center", paddingVertical: 50, gap: 12 }}>
+              <Feather name="bell" size={36} color={colors.mutedForeground} />
+              <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 14 }}>
+                No notifications yet
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={notifications}
+              keyExtractor={(n) => n.id}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 6, paddingBottom: 12 }}
+              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 8 }} />}
+              renderItem={({ item }) => {
+                const icon = notifIcon(item);
+                return (
+                  <View style={[styles.notifRow, { opacity: item.read ? 0.7 : 1 }]}>
+                    <View style={[styles.notifIconWrap, { backgroundColor: icon.color + "20" }]}>
+                      <Feather name={icon.name as any} size={16} color={icon.color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: colors.foreground, lineHeight: 18 }}>
+                        <Text style={{ fontFamily: "Inter_600SemiBold" }}>{item.actorName}</Text>
+                        {" "}{notifBody(item)}
+                      </Text>
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground, marginTop: 2 }}>
+                        {relativeTime(new Date(item.createdAt))}
+                      </Text>
+                    </View>
+                    {!item.read && (
+                      <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+                    )}
+                  </View>
+                );
+              }}
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Post Card ────────────────────────────────────────────────────────────────
+
+function PostCard({ post, onLike, onOpenComments }: { post: Post; onLike: () => void; onOpenComments: () => void }) {
   const colors = useColors();
 
   const typeIcon = post.type === "workout"
@@ -161,7 +388,13 @@ function PostCard({ post, onLike }: { post: Post; onLike: () => void }) {
             {post.likes}
           </Text>
         </Pressable>
-        <Pressable style={styles.actionBtn}>
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onOpenComments();
+          }}
+          style={styles.actionBtn}
+        >
           <Feather name="message-circle" size={18} color={colors.mutedForeground} />
           <Text style={[styles.actionCount, { color: colors.mutedForeground }]}>{post.comments}</Text>
         </Pressable>
@@ -179,8 +412,8 @@ export default function SocialScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
-  const { state, likePost, addPost, followUser, unfollowUser } = useApp();
-  const { posts, friends, followingIds, userProfile, workoutHistory } = state;
+  const { state, likePost, addPost, followUser, unfollowUser, refreshNotifications } = useApp();
+  const { posts, friends, followingIds, userProfile, workoutHistory, notifications } = state;
   const [tab, setTab] = useState<"feed" | "explore">("feed");
   const [composing, setComposing] = useState(false);
   const [composerStep, setComposerStep] = useState<ComposerStep>("pick-type");
@@ -190,8 +423,18 @@ export default function SocialScreen() {
   const [linkedWorkout, setLinkedWorkout] = useState<typeof workoutHistory[0] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [activeCommentPost, setActiveCommentPost] = useState<Post | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshNotifications().catch(() => {});
+    }, [refreshNotifications]),
+  );
 
   function openComposer() {
     setComposerStep("pick-type");
@@ -240,20 +483,6 @@ export default function SocialScreen() {
     }
     setPickedMedia({ uri: asset.uri, contentType, name: `upload.${ext}`, thumbnailUri });
     setComposerStep("caption");
-  }
-
-  async function requestUploadUrl(name: string, size: number, contentType: string): Promise<{ uploadURL: string; objectPath: string }> {
-    const token = await getToken();
-    const r = await fetch(`${API_BASE}/api/posts/upload-url`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ name, size, contentType }),
-    });
-    if (!r.ok) throw new Error("Failed to get upload URL");
-    return r.json();
   }
 
   async function uploadMedia(media: { uri: string; contentType: string; name: string }): Promise<string> {
@@ -349,12 +578,26 @@ export default function SocialScreen() {
       <View style={[styles.headerWrap, { paddingTop: topPad + 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={styles.headerRow}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>Community</Text>
-          <Pressable
-            onPress={openComposer}
-            style={[styles.composeBtn, { backgroundColor: colors.primary }]}
-          >
-            <Feather name="edit-3" size={16} color="#fff" />
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+            {/* Notification bell */}
+            <Pressable
+              onPress={() => setShowNotifications(true)}
+              style={[styles.headerIconBtn, { backgroundColor: colors.muted }]}
+            >
+              <Feather name="bell" size={18} color={colors.foreground} />
+              {unreadCount > 0 && (
+                <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.badgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+                </View>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={openComposer}
+              style={[styles.composeBtn, { backgroundColor: colors.primary }]}
+            >
+              <Feather name="edit-3" size={16} color="#fff" />
+            </Pressable>
+          </View>
         </View>
 
         {/* Stories Row */}
@@ -416,7 +659,11 @@ export default function SocialScreen() {
             </View>
           )}
           renderItem={({ item }) => (
-            <PostCard post={item} onLike={() => likePost(item.id)} />
+            <PostCard
+              post={item}
+              onLike={() => likePost(item.id)}
+              onOpenComments={() => setActiveCommentPost(item)}
+            />
           )}
         />
       ) : (
@@ -615,6 +862,19 @@ export default function SocialScreen() {
           </View>
         </View>
       )}
+
+      {/* Comment Sheet */}
+      {activeCommentPost && (
+        <CommentSheet
+          post={activeCommentPost}
+          onClose={() => setActiveCommentPost(null)}
+        />
+      )}
+
+      {/* Notification Panel */}
+      {showNotifications && (
+        <NotificationPanel onClose={() => setShowNotifications(false)} />
+      )}
     </View>
   );
 }
@@ -624,6 +884,9 @@ const styles = StyleSheet.create({
   headerWrap: { borderBottomWidth: 1, paddingHorizontal: 0 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 18, marginBottom: 0 },
   headerTitle: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  headerIconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  badge: { position: "absolute", top: 0, right: 0, width: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  badgeText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff" },
   composeBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   storiesScroll: {},
   storyItem: { alignItems: "center", gap: 5 },
@@ -677,4 +940,14 @@ const styles = StyleSheet.create({
   charCount: { fontSize: 13, fontFamily: "Inter_400Regular" },
   postBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 },
   postBtnText: { fontSize: 14, fontFamily: "Inter_700Bold", color: "#fff" },
+  // Sheet styles (comments + notifications)
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12 },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 14 },
+  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, marginBottom: 10 },
+  sheetTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  commentInputRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 18, paddingTop: 12, borderTopWidth: 1, marginTop: 4 },
+  commentInput: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  notifRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 4 },
+  notifIconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
 });

@@ -72,6 +72,17 @@ export const comments = pgTable("comments", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  recipientId: uuid("recipient_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // "like" | "comment" | "follow"
+  postId: uuid("post_id").references(() => posts.id, { onDelete: "cascade" }),
+  commentText: text("comment_text"),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const insertPostSchema = createInsertSchema(posts).omit({ createdAt: true });
 export const insertChallengeSchema = createInsertSchema(challenges).omit({ id: true, createdAt: true });
 export const insertCommentSchema = createInsertSchema(comments).omit({ id: true, createdAt: true });
@@ -81,4 +92,6 @@ export type Follow = typeof follows.$inferSelect;
 export type Like = typeof likes.$inferSelect;
 export type Challenge = typeof challenges.$inferSelect;
 export type ChallengeParticipant = typeof challengeParticipants.$inferSelect;
+export type Comment = typeof comments.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
 export type InsertPost = z.infer<typeof insertPostSchema>;

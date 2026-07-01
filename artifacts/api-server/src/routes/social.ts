@@ -7,6 +7,8 @@ import {
   posts,
   follows,
   likes,
+  comments,
+  notifications,
   challenges,
   challengeParticipants,
 } from "@workspace/db";
@@ -74,10 +76,12 @@ router.get("/feed", requireAuth, async (req, res) => {
       createdAt: posts.createdAt,
       likeCount: sql<number>`cast(count(distinct ${likes.userId}) as int)`.as("like_count"),
       isLiked: sql<boolean>`bool_or(${likes.userId} = ${userId}::uuid)`.as("is_liked"),
+      commentCount: sql<number>`cast(count(distinct ${comments.id}) as int)`.as("comment_count"),
     })
     .from(posts)
     .innerJoin(users, eq(posts.userId, users.id))
     .leftJoin(likes, eq(likes.postId, posts.id))
+    .leftJoin(comments, eq(comments.postId, posts.id))
     .where(whereClause)
     .groupBy(posts.id, users.id, users.name, users.imageUrl, posts.mediaUrl, posts.mediaType, posts.thumbnailUrl, posts.workoutSnapshot)
     .orderBy(desc(posts.createdAt))
@@ -161,7 +165,7 @@ router.post("/posts", requireAuth, async (req, res) => {
   }
 
   req.log.info({ postId: row.id, userId }, "post created");
-  res.status(201).json({ ...withUser, likeCount: 0, isLiked: false });
+  res.status(201).json({ ...withUser, likeCount: 0, isLiked: false, commentCount: 0 });
 });
 
 // ─── Likes ──────────────────────────────────────────────────────────────────
@@ -170,7 +174,7 @@ router.post("/posts/:id/like", requireAuth, async (req, res) => {
   const userId = req.localUserId!;
   const postId = req.params.id as string;
 
-  const [post] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId)).limit(1);
+  const [post] = await db.select({ id: posts.id, userId: posts.userId }).from(posts).where(eq(posts.id, postId)).limit(1);
   if (!post) {
     res.status(404).json({ error: "Post not found" });
     return;
@@ -181,6 +185,13 @@ router.post("/posts/:id/like", requireAuth, async (req, res) => {
     .values({ userId, postId })
     .onConflictDoNothing();
 
+  if (post.userId !== userId) {
+    await db
+      .insert(notifications)
+      .values({ recipientId: post.userId, actorId: userId, type: "like", postId })
+      .onConflictDoNothing();
+  }
+
   res.status(204).send();
 });
 
@@ -190,6 +201,85 @@ router.delete("/posts/:id/like", requireAuth, async (req, res) => {
 
   await db.delete(likes).where(and(eq(likes.userId, userId), eq(likes.postId, postId)));
   res.status(204).send();
+});
+
+// ─── Comments ───────────────────────────────────────────────────────────────
+
+router.get("/posts/:id/comments", requireAuth, async (req, res) => {
+  const postId = req.params.id as string;
+
+  const rows = await db
+    .select({
+      id: comments.id,
+      postId: comments.postId,
+      userId: comments.userId,
+      userName: users.name,
+      userImageUrl: users.imageUrl,
+      content: comments.content,
+      createdAt: comments.createdAt,
+    })
+    .from(comments)
+    .innerJoin(users, eq(comments.userId, users.id))
+    .where(eq(comments.postId, postId))
+    .orderBy(comments.createdAt);
+
+  res.json(rows);
+});
+
+const createCommentSchema = z.object({
+  content: z.string().min(1).max(500),
+});
+
+router.post("/posts/:id/comments", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+  const postId = req.params.id as string;
+
+  const parsed = createCommentSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues });
+    return;
+  }
+
+  const [post] = await db.select({ id: posts.id, userId: posts.userId }).from(posts).where(eq(posts.id, postId)).limit(1);
+  if (!post) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
+
+  const [comment] = await db
+    .insert(comments)
+    .values({ postId, userId, content: parsed.data.content })
+    .returning();
+
+  const [withUser] = await db
+    .select({
+      id: comments.id,
+      postId: comments.postId,
+      userId: comments.userId,
+      userName: users.name,
+      userImageUrl: users.imageUrl,
+      content: comments.content,
+      createdAt: comments.createdAt,
+    })
+    .from(comments)
+    .innerJoin(users, eq(comments.userId, users.id))
+    .where(eq(comments.id, comment.id))
+    .limit(1);
+
+  if (post.userId !== userId) {
+    await db
+      .insert(notifications)
+      .values({
+        recipientId: post.userId,
+        actorId: userId,
+        type: "comment",
+        postId,
+        commentText: parsed.data.content.slice(0, 100),
+      });
+  }
+
+  req.log.info({ commentId: comment.id, postId, userId }, "comment created");
+  res.status(201).json(withUser);
 });
 
 // ─── Follows ────────────────────────────────────────────────────────────────
@@ -206,6 +296,11 @@ router.post("/follows", requireAuth, async (req, res) => {
   await db
     .insert(follows)
     .values({ followerId: userId, followingId: targetId })
+    .onConflictDoNothing();
+
+  await db
+    .insert(notifications)
+    .values({ recipientId: targetId, actorId: userId, type: "follow" })
     .onConflictDoNothing();
 
   res.status(204).send();
@@ -261,6 +356,43 @@ router.get("/users/discover", requireAuth, async (req, res) => {
     .limit(50);
 
   res.json(discovered);
+});
+
+// ─── Notifications ──────────────────────────────────────────────────────────
+
+router.get("/notifications", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+
+  const rows = await db
+    .select({
+      id: notifications.id,
+      type: notifications.type,
+      read: notifications.read,
+      postId: notifications.postId,
+      commentText: notifications.commentText,
+      createdAt: notifications.createdAt,
+      actorId: notifications.actorId,
+      actorName: users.name,
+      actorImageUrl: users.imageUrl,
+    })
+    .from(notifications)
+    .innerJoin(users, eq(notifications.actorId, users.id))
+    .where(eq(notifications.recipientId, userId))
+    .orderBy(desc(notifications.createdAt))
+    .limit(50);
+
+  res.json(rows);
+});
+
+router.patch("/notifications/read", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+
+  await db
+    .update(notifications)
+    .set({ read: true })
+    .where(and(eq(notifications.recipientId, userId), eq(notifications.read, false)));
+
+  res.status(204).send();
 });
 
 // ─── Challenges ─────────────────────────────────────────────────────────────
