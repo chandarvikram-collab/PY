@@ -106,7 +106,7 @@ function colorFromId(id: string): string {
 function CommentSheet({ post, onClose }: { post: Post; onClose: () => void }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { fetchComments, addComment, state } = useApp();
+  const { fetchComments, addComment, deleteComment, state } = useApp();
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
@@ -184,24 +184,54 @@ function CommentSheet({ post, onClose }: { post: Post; onClose: () => void }) {
                     </Text>
                   </View>
                 )}
-                renderItem={({ item }) => (
-                  <View style={{ flexDirection: "row", gap: 10 }}>
-                    <Avatar initials={initials(item.userName)} color={colorFromId(item.userId)} size={32} />
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-                        <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.foreground }}>
-                          {item.userName}
-                        </Text>
-                        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground }}>
-                          {relativeTime(new Date(item.createdAt))}
-                        </Text>
+                renderItem={({ item }) => {
+                  const canDelete = item.userId === state.userProfile.id || post.userId === state.userProfile.id;
+                  function handleLongPress() {
+                    if (!canDelete) return;
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    Alert.alert("Delete Comment", "Remove this comment?", [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: async () => {
+                          setComments((prev) => prev.filter((c) => c.id !== item.id));
+                          const ok = await deleteComment(post.id, item.id);
+                          if (!ok) {
+                            setComments((prev) => {
+                              if (prev.find((c) => c.id === item.id)) return prev;
+                              const idx = prev.findIndex((c) => new Date(c.createdAt) > new Date(item.createdAt));
+                              const next = [...prev];
+                              if (idx === -1) next.push(item);
+                              else next.splice(idx, 0, item);
+                              return next;
+                            });
+                          }
+                        },
+                      },
+                    ]);
+                  }
+                  return (
+                    <Pressable onLongPress={handleLongPress} delayLongPress={400}>
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Avatar initials={initials(item.userName)} color={colorFromId(item.userId)} size={32} />
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: colors.foreground }}>
+                              {item.userName}
+                            </Text>
+                            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: colors.mutedForeground }}>
+                              {relativeTime(new Date(item.createdAt))}
+                            </Text>
+                          </View>
+                          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: colors.foreground, lineHeight: 20, marginTop: 2 }}>
+                            {item.content}
+                          </Text>
+                        </View>
                       </View>
-                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: colors.foreground, lineHeight: 20, marginTop: 2 }}>
-                        {item.content}
-                      </Text>
-                    </View>
-                  </View>
-                )}
+                    </Pressable>
+                  );
+                }}
               />
             )}
 

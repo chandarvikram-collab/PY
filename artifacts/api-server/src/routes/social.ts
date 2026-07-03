@@ -283,6 +283,45 @@ router.post("/posts/:id/comments", requireAuth, async (req, res) => {
   res.status(201).json(withUser);
 });
 
+router.delete("/posts/:postId/comments/:commentId", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+  const { postId, commentId } = req.params as { postId: string; commentId: string };
+
+  const [comment] = await db
+    .select({ id: comments.id, userId: comments.userId, postId: comments.postId })
+    .from(comments)
+    .where(and(eq(comments.id, commentId), eq(comments.postId, postId)))
+    .limit(1);
+
+  if (!comment) {
+    res.status(404).json({ error: "Comment not found" });
+    return;
+  }
+
+  const [post] = await db
+    .select({ id: posts.id, userId: posts.userId })
+    .from(posts)
+    .where(eq(posts.id, postId))
+    .limit(1);
+
+  if (!post) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
+
+  const isCommentAuthor = comment.userId === userId;
+  const isPostOwner = post.userId === userId;
+
+  if (!isCommentAuthor && !isPostOwner) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  await db.delete(comments).where(eq(comments.id, commentId));
+  req.log.info({ commentId, postId, userId }, "comment deleted");
+  res.status(204).send();
+});
+
 // ─── Follows ────────────────────────────────────────────────────────────────
 
 router.post("/follows", requireAuth, async (req, res) => {

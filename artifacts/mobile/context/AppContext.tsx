@@ -359,6 +359,7 @@ type AppContextType = {
   loadMealTemplate: (date: string, templateId: string, targetMeal: FoodEntry["meal"]) => void;
   fetchComments: (postId: string) => Promise<Comment[]>;
   addComment: (postId: string, content: string) => Promise<Comment | null>;
+  deleteComment: (postId: string, commentId: string) => Promise<boolean>;
   refreshNotifications: () => Promise<void>;
   markNotificationsRead: () => Promise<void>;
   fetchDiscover: (userLevel: string, goals: string[], equipment: string[]) => Promise<DiscoverUser[]>;
@@ -1296,6 +1297,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [update]);
 
+  const deleteComment = useCallback(async (postId: string, commentId: string): Promise<boolean> => {
+    try {
+      const r = await socialFetch(`/posts/${postId}/comments/${commentId}`, { method: "DELETE" });
+      if (!r.ok) return false;
+      update((prev) => ({
+        ...prev,
+        posts: prev.posts.map((p) =>
+          p.id === postId ? { ...p, comments: Math.max(0, p.comments - 1) } : p,
+        ),
+      }));
+      return true;
+    } catch {
+      return false;
+    }
+  }, [update]);
+
   const refreshNotifications = useCallback(async (): Promise<void> => {
     try {
       const r = await socialFetch("/notifications");
@@ -1706,6 +1723,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         loadMealTemplate,
         fetchComments,
         addComment,
+        deleteComment,
         refreshNotifications,
         markNotificationsRead,
         fetchDiscover,
