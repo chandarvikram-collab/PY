@@ -26,7 +26,6 @@ import { useAuth } from "@clerk/expo";
 import { useRouter } from "expo-router";
 
 import { useApp } from "@/context/AppContext";
-import { ME_USER_ID } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import type { AppNotification, Comment, DiscoverUser, Friend, InviteStatus, Post, WorkoutInvite } from "@/context/AppContext";
 
@@ -911,7 +910,7 @@ export default function SocialScreen() {
   const recentWorkouts = workoutHistory.slice(0, 5);
 
   const buddies = friends.filter((f) => followingIds.includes(f.id));
-  const pendingInvites = workoutInvites.filter((i) => i.receiverId === ME_USER_ID && i.status === "pending");
+  const pendingInvites = workoutInvites.filter((i) => i.receiverId === userProfile.id && i.status === "pending");
   const upcomingInvites = workoutInvites.filter((i) => i.status === "accepted");
 
   const filteredDiscover = discoverQuery.trim()
@@ -993,7 +992,7 @@ export default function SocialScreen() {
         </View>
       </View>
 
-      {tab === "feed" ? (
+      {tab === "feed" && (
         <FlatList
           data={posts}
           keyExtractor={(p) => p.id}
@@ -1016,7 +1015,9 @@ export default function SocialScreen() {
             />
           )}
         />
-      ) : (
+      )}
+
+      {tab === "explore" && (
         <View style={{ flex: 1 }}>
           {/* Search bar */}
           <View style={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 6 }}>
@@ -1097,7 +1098,7 @@ export default function SocialScreen() {
                   <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 8 }]}>Upcoming</Text>
                   {upcomingInvites.map((inv) => (
                     <View key={inv.id} style={{ marginBottom: 10 }}>
-                      <InviteRow invite={inv} isReceived={inv.receiverId === ME_USER_ID} />
+                      <InviteRow invite={inv} isReceived={inv.receiverId === userProfile.id} />
                     </View>
                   ))}
                 </View>

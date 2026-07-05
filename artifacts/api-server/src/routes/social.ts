@@ -44,6 +44,20 @@ async function setPublicAcl(url: string, ownerId: string, log: { error: (obj: ob
 
 const router = Router();
 
+async function isConnected(userId: string, otherId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: follows.followerId })
+    .from(follows)
+    .where(
+      or(
+        and(eq(follows.followerId, userId), eq(follows.followingId, otherId)),
+        and(eq(follows.followerId, otherId), eq(follows.followingId, userId)),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
 // ─── Feed ───────────────────────────────────────────────────────────────────
 
 router.get("/feed", requireAuth, async (req, res) => {
@@ -767,6 +781,11 @@ router.post("/invites", requireAuth, async (req, res) => {
     return;
   }
 
+  if (!(await isConnected(userId, receiverId))) {
+    res.status(403).json({ error: "You must follow (or be followed by) this user to send an invite" });
+    return;
+  }
+
   const [invite] = await db
     .insert(workoutInvites)
     .values({ senderId: userId, receiverId, activity, location, date, time, status: "pending" })
@@ -966,6 +985,11 @@ router.post("/messages/:friendId", requireAuth, async (req, res) => {
   const [friend] = await db.select({ id: users.id }).from(users).where(eq(users.id, friendId)).limit(1);
   if (!friend) {
     res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  if (!(await isConnected(userId, friendId))) {
+    res.status(403).json({ error: "You must follow (or be followed by) this user to message them" });
     return;
   }
 
