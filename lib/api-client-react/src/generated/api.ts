@@ -22,12 +22,19 @@ import type {
 import type {
   AuthUserEnvelope,
   BeginBrowserLoginParams,
+  CreateWorkoutInviteRequest,
+  DirectMessageRecord,
   ErrorEnvelope,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
   LogoutSuccess,
+  MessageThread,
   MobileTokenExchangeRequest,
-  MobileTokenExchangeSuccess
+  MobileTokenExchangeSuccess,
+  RespondToWorkoutInviteRequest,
+  SendDirectMessageRequest,
+  WorkoutInvite,
+  WorkoutInviteRecord
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -581,5 +588,451 @@ export const useLogoutMobileSession = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getLogoutMobileSessionMutationOptions(options));
+    }
+
+export const getListWorkoutInvitesUrl = () => {
+
+
+
+
+  return `/api/invites`
+}
+
+/**
+ * @summary List workout invites sent or received by the current user
+ */
+export const listWorkoutInvites = async ( options?: RequestInit): Promise<WorkoutInvite[]> => {
+
+  return customFetch<WorkoutInvite[]>(getListWorkoutInvitesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWorkoutInvitesQueryKey = () => {
+    return [
+    `/api/invites`
+    ] as const;
+    }
+
+
+export const getListWorkoutInvitesQueryOptions = <TData = Awaited<ReturnType<typeof listWorkoutInvites>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWorkoutInvites>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWorkoutInvitesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWorkoutInvites>>> = ({ signal }) => listWorkoutInvites({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWorkoutInvites>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListWorkoutInvitesQueryResult = NonNullable<Awaited<ReturnType<typeof listWorkoutInvites>>>
+export type ListWorkoutInvitesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List workout invites sent or received by the current user
+ */
+
+export function useListWorkoutInvites<TData = Awaited<ReturnType<typeof listWorkoutInvites>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWorkoutInvites>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListWorkoutInvitesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateWorkoutInviteUrl = () => {
+
+
+
+
+  return `/api/invites`
+}
+
+/**
+ * @summary Send a workout invite to a connected user
+ */
+export const createWorkoutInvite = async (createWorkoutInviteRequest: CreateWorkoutInviteRequest, options?: RequestInit): Promise<WorkoutInviteRecord> => {
+
+  return customFetch<WorkoutInviteRecord>(getCreateWorkoutInviteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createWorkoutInviteRequest,)
+  }
+);}
+
+
+
+
+export const getCreateWorkoutInviteMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWorkoutInvite>>, TError,{data: BodyType<CreateWorkoutInviteRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createWorkoutInvite>>, TError,{data: BodyType<CreateWorkoutInviteRequest>}, TContext> => {
+
+const mutationKey = ['createWorkoutInvite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createWorkoutInvite>>, {data: BodyType<CreateWorkoutInviteRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createWorkoutInvite(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateWorkoutInviteMutationResult = NonNullable<Awaited<ReturnType<typeof createWorkoutInvite>>>
+    export type CreateWorkoutInviteMutationBody = BodyType<CreateWorkoutInviteRequest>
+    export type CreateWorkoutInviteMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Send a workout invite to a connected user
+ */
+export const useCreateWorkoutInvite = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWorkoutInvite>>, TError,{data: BodyType<CreateWorkoutInviteRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createWorkoutInvite>>,
+        TError,
+        {data: BodyType<CreateWorkoutInviteRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateWorkoutInviteMutationOptions(options));
+    }
+
+export const getRespondToWorkoutInviteUrl = (id: string,) => {
+
+
+
+
+  return `/api/invites/${id}`
+}
+
+/**
+ * @summary Accept, decline, or mark as tentative a received workout invite
+ */
+export const respondToWorkoutInvite = async (id: string,
+    respondToWorkoutInviteRequest: RespondToWorkoutInviteRequest, options?: RequestInit): Promise<WorkoutInviteRecord> => {
+
+  return customFetch<WorkoutInviteRecord>(getRespondToWorkoutInviteUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      respondToWorkoutInviteRequest,)
+  }
+);}
+
+
+
+
+export const getRespondToWorkoutInviteMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof respondToWorkoutInvite>>, TError,{id: string;data: BodyType<RespondToWorkoutInviteRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof respondToWorkoutInvite>>, TError,{id: string;data: BodyType<RespondToWorkoutInviteRequest>}, TContext> => {
+
+const mutationKey = ['respondToWorkoutInvite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof respondToWorkoutInvite>>, {id: string;data: BodyType<RespondToWorkoutInviteRequest>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  respondToWorkoutInvite(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RespondToWorkoutInviteMutationResult = NonNullable<Awaited<ReturnType<typeof respondToWorkoutInvite>>>
+    export type RespondToWorkoutInviteMutationBody = BodyType<RespondToWorkoutInviteRequest>
+    export type RespondToWorkoutInviteMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Accept, decline, or mark as tentative a received workout invite
+ */
+export const useRespondToWorkoutInvite = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof respondToWorkoutInvite>>, TError,{id: string;data: BodyType<RespondToWorkoutInviteRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof respondToWorkoutInvite>>,
+        TError,
+        {id: string;data: BodyType<RespondToWorkoutInviteRequest>},
+        TContext
+      > => {
+      return useMutation(getRespondToWorkoutInviteMutationOptions(options));
+    }
+
+export const getListMessageThreadsUrl = () => {
+
+
+
+
+  return `/api/messages/threads`
+}
+
+/**
+ * @summary List message threads with followed users and existing chat partners
+ */
+export const listMessageThreads = async ( options?: RequestInit): Promise<MessageThread[]> => {
+
+  return customFetch<MessageThread[]>(getListMessageThreadsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMessageThreadsQueryKey = () => {
+    return [
+    `/api/messages/threads`
+    ] as const;
+    }
+
+
+export const getListMessageThreadsQueryOptions = <TData = Awaited<ReturnType<typeof listMessageThreads>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMessageThreads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMessageThreadsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMessageThreads>>> = ({ signal }) => listMessageThreads({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMessageThreads>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMessageThreadsQueryResult = NonNullable<Awaited<ReturnType<typeof listMessageThreads>>>
+export type ListMessageThreadsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List message threads with followed users and existing chat partners
+ */
+
+export function useListMessageThreads<TData = Awaited<ReturnType<typeof listMessageThreads>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMessageThreads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMessageThreadsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMessagesWithFriendUrl = (friendId: string,) => {
+
+
+
+
+  return `/api/messages/${friendId}`
+}
+
+/**
+ * @summary Get the full message history with a connected user
+ */
+export const getMessagesWithFriend = async (friendId: string, options?: RequestInit): Promise<DirectMessageRecord[]> => {
+
+  return customFetch<DirectMessageRecord[]>(getGetMessagesWithFriendUrl(friendId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMessagesWithFriendQueryKey = (friendId: string,) => {
+    return [
+    `/api/messages/${friendId}`
+    ] as const;
+    }
+
+
+export const getGetMessagesWithFriendQueryOptions = <TData = Awaited<ReturnType<typeof getMessagesWithFriend>>, TError = ErrorType<unknown>>(friendId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMessagesWithFriend>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMessagesWithFriendQueryKey(friendId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMessagesWithFriend>>> = ({ signal }) => getMessagesWithFriend(friendId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(friendId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMessagesWithFriend>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMessagesWithFriendQueryResult = NonNullable<Awaited<ReturnType<typeof getMessagesWithFriend>>>
+export type GetMessagesWithFriendQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the full message history with a connected user
+ */
+
+export function useGetMessagesWithFriend<TData = Awaited<ReturnType<typeof getMessagesWithFriend>>, TError = ErrorType<unknown>>(
+ friendId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMessagesWithFriend>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMessagesWithFriendQueryOptions(friendId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSendDirectMessageUrl = (friendId: string,) => {
+
+
+
+
+  return `/api/messages/${friendId}`
+}
+
+/**
+ * @summary Send a direct message to a connected user
+ */
+export const sendDirectMessage = async (friendId: string,
+    sendDirectMessageRequest: SendDirectMessageRequest, options?: RequestInit): Promise<DirectMessageRecord> => {
+
+  return customFetch<DirectMessageRecord>(getSendDirectMessageUrl(friendId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      sendDirectMessageRequest,)
+  }
+);}
+
+
+
+
+export const getSendDirectMessageMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDirectMessage>>, TError,{friendId: string;data: BodyType<SendDirectMessageRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendDirectMessage>>, TError,{friendId: string;data: BodyType<SendDirectMessageRequest>}, TContext> => {
+
+const mutationKey = ['sendDirectMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendDirectMessage>>, {friendId: string;data: BodyType<SendDirectMessageRequest>}> = (props) => {
+          const {friendId,data} = props ?? {};
+
+          return  sendDirectMessage(friendId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendDirectMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendDirectMessage>>>
+    export type SendDirectMessageMutationBody = BodyType<SendDirectMessageRequest>
+    export type SendDirectMessageMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Send a direct message to a connected user
+ */
+export const useSendDirectMessage = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDirectMessage>>, TError,{friendId: string;data: BodyType<SendDirectMessageRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendDirectMessage>>,
+        TError,
+        {friendId: string;data: BodyType<SendDirectMessageRequest>},
+        TContext
+      > => {
+      return useMutation(getSendDirectMessageMutationOptions(options));
     }
 

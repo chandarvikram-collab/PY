@@ -51,6 +51,88 @@ export interface ErrorEnvelope {
   error: string;
 }
 
+export type WorkoutInviteStatus = typeof WorkoutInviteStatus[keyof typeof WorkoutInviteStatus];
+
+
+export const WorkoutInviteStatus = {
+  pending: 'pending',
+  accepted: 'accepted',
+  declined: 'declined',
+  maybe: 'maybe',
+} as const;
+
+export interface WorkoutInviteRecord {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  activity: string;
+  location: string;
+  date: string;
+  time: string;
+  status: WorkoutInviteStatus;
+  createdAt: string;
+}
+
+export type WorkoutInvite = WorkoutInviteRecord & {
+  senderName: string;
+  receiverName: string;
+};
+
+export interface CreateWorkoutInviteRequest {
+  receiverId: string;
+  /** @minLength 1 */
+  activity: string;
+  /** @maxLength 200 */
+  location?: string;
+  /** @minLength 1 */
+  date: string;
+  /** @maxLength 50 */
+  time?: string;
+}
+
+export type RespondToWorkoutInviteRequestStatus = typeof RespondToWorkoutInviteRequestStatus[keyof typeof RespondToWorkoutInviteRequestStatus];
+
+
+export const RespondToWorkoutInviteRequestStatus = {
+  accepted: 'accepted',
+  declined: 'declined',
+  maybe: 'maybe',
+} as const;
+
+export interface RespondToWorkoutInviteRequest {
+  status: RespondToWorkoutInviteRequestStatus;
+}
+
+export interface MessageThread {
+  friendId: string;
+  friendName: string;
+  /** @nullable */
+  friendUsername: string | null;
+  /** @nullable */
+  friendImageUrl: string | null;
+  lastMessage: string;
+  /** @nullable */
+  lastMessageAt: string | null;
+  unreadCount: number;
+}
+
+export interface DirectMessageRecord {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  content: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface SendDirectMessageRequest {
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  content: string;
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */

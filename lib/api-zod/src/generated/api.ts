@@ -96,3 +96,140 @@ export const LogoutMobileSessionResponse = zod.object({
 })
 
 
+/**
+ * @summary List workout invites sent or received by the current user
+ */
+export const ListWorkoutInvitesHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const ListWorkoutInvitesResponseItem = zod.object({
+  "id": zod.string(),
+  "senderId": zod.string(),
+  "receiverId": zod.string(),
+  "activity": zod.string(),
+  "location": zod.string(),
+  "date": zod.string(),
+  "time": zod.string(),
+  "status": zod.enum(['pending', 'accepted', 'declined', 'maybe']),
+  "createdAt": zod.coerce.date()
+}).and(zod.object({
+  "senderName": zod.string(),
+  "receiverName": zod.string()
+}))
+export const ListWorkoutInvitesResponse = zod.array(ListWorkoutInvitesResponseItem)
+
+
+/**
+ * @summary Send a workout invite to a connected user
+ */
+export const CreateWorkoutInviteHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+export const createWorkoutInviteBodyLocationMax = 200;
+
+
+export const createWorkoutInviteBodyTimeMax = 50;
+
+
+
+export const CreateWorkoutInviteBody = zod.object({
+  "receiverId": zod.string(),
+  "activity": zod.string().min(1),
+  "location": zod.string().max(createWorkoutInviteBodyLocationMax).optional(),
+  "date": zod.string().min(1),
+  "time": zod.string().max(createWorkoutInviteBodyTimeMax).optional()
+})
+
+
+/**
+ * @summary Accept, decline, or mark as tentative a received workout invite
+ */
+export const RespondToWorkoutInviteParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const RespondToWorkoutInviteHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const RespondToWorkoutInviteBody = zod.object({
+  "status": zod.enum(['accepted', 'declined', 'maybe'])
+})
+
+export const RespondToWorkoutInviteResponse = zod.object({
+  "id": zod.string(),
+  "senderId": zod.string(),
+  "receiverId": zod.string(),
+  "activity": zod.string(),
+  "location": zod.string(),
+  "date": zod.string(),
+  "time": zod.string(),
+  "status": zod.enum(['pending', 'accepted', 'declined', 'maybe']),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List message threads with followed users and existing chat partners
+ */
+export const ListMessageThreadsHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const ListMessageThreadsResponseItem = zod.object({
+  "friendId": zod.string(),
+  "friendName": zod.string(),
+  "friendUsername": zod.string().nullable(),
+  "friendImageUrl": zod.string().nullable(),
+  "lastMessage": zod.string(),
+  "lastMessageAt": zod.coerce.date().nullable(),
+  "unreadCount": zod.number()
+})
+export const ListMessageThreadsResponse = zod.array(ListMessageThreadsResponseItem)
+
+
+/**
+ * @summary Get the full message history with a connected user
+ */
+export const GetMessagesWithFriendParams = zod.object({
+  "friendId": zod.coerce.string()
+})
+
+export const GetMessagesWithFriendHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetMessagesWithFriendResponseItem = zod.object({
+  "id": zod.string(),
+  "senderId": zod.string(),
+  "receiverId": zod.string(),
+  "content": zod.string(),
+  "read": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+export const GetMessagesWithFriendResponse = zod.array(GetMessagesWithFriendResponseItem)
+
+
+/**
+ * @summary Send a direct message to a connected user
+ */
+export const SendDirectMessageParams = zod.object({
+  "friendId": zod.coerce.string()
+})
+
+export const SendDirectMessageHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const sendDirectMessageBodyContentMax = 1000;
+
+
+
+export const SendDirectMessageBody = zod.object({
+  "content": zod.string().min(1).max(sendDirectMessageBodyContentMax)
+})
+
+

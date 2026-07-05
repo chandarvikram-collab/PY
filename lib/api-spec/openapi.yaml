@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: Auth
     description: Browser and mobile authentication endpoints.
+  - name: Social
+    description: Workout invites and direct messaging between connected users.
 paths:
   /healthz:
     get:
@@ -142,6 +144,187 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LogoutSuccess'
+  /invites:
+    get:
+      tags: [Social]
+      operationId: listWorkoutInvites
+      summary: List workout invites sent or received by the current user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: Workout invites involving the current user, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkoutInvite'
+    post:
+      tags: [Social]
+      operationId: createWorkoutInvite
+      summary: Send a workout invite to a connected user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkoutInviteRequest'
+      responses:
+        '201':
+          description: Invite created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutInviteRecord'
+        '400':
+          description: Invalid request body, or invitee is the current user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Sender and receiver are not connected (mutual follow required).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Receiver not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /invites/{id}:
+    patch:
+      tags: [Social]
+      operationId: respondToWorkoutInvite
+      summary: Accept, decline, or mark as tentative a received workout invite
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RespondToWorkoutInviteRequest'
+      responses:
+        '200':
+          description: Invite updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutInviteRecord'
+        '400':
+          description: Invalid status value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Only the invite's receiver may respond to it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Invite not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /messages/threads:
+    get:
+      tags: [Social]
+      operationId: listMessageThreads
+      summary: List message threads with followed users and existing chat partners
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: Threads sorted by most recent activity.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MessageThread'
+  /messages/{friendId}:
+    get:
+      tags: [Social]
+      operationId: getMessagesWithFriend
+      summary: Get the full message history with a connected user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: friendId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Messages in chronological order. Marks unread incoming messages as read.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DirectMessageRecord'
+    post:
+      tags: [Social]
+      operationId: sendDirectMessage
+      summary: Send a direct message to a connected user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: friendId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendDirectMessageRequest'
+      responses:
+        '201':
+          description: Message sent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectMessageRecord'
+        '400':
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Sender and receiver are not connected (mutual follow required).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Recipient not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -228,4 +411,109 @@ components:
       properties:
         error:
           type: string
+    WorkoutInviteStatus:
+      type: string
+      enum: [pending, accepted, declined, maybe]
+    WorkoutInviteRecord:
+      type: object
+      required: [id, senderId, receiverId, activity, location, date, time, status, createdAt]
+      properties:
+        id:
+          type: string
+        senderId:
+          type: string
+        receiverId:
+          type: string
+        activity:
+          type: string
+        location:
+          type: string
+        date:
+          type: string
+        time:
+          type: string
+        status:
+          $ref: '#/components/schemas/WorkoutInviteStatus'
+        createdAt:
+          type: string
+          format: date-time
+    WorkoutInvite:
+      allOf:
+        - $ref: '#/components/schemas/WorkoutInviteRecord'
+        - type: object
+          required: [senderName, receiverName]
+          properties:
+            senderName:
+              type: string
+            receiverName:
+              type: string
+    CreateWorkoutInviteRequest:
+      type: object
+      required: [receiverId, activity, date]
+      properties:
+        receiverId:
+          type: string
+        activity:
+          type: string
+          minLength: 1
+        location:
+          type: string
+          maxLength: 200
+        date:
+          type: string
+          minLength: 1
+        time:
+          type: string
+          maxLength: 50
+    RespondToWorkoutInviteRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [accepted, declined, maybe]
+    MessageThread:
+      type: object
+      required: [friendId, friendName, friendUsername, friendImageUrl, lastMessage, lastMessageAt, unreadCount]
+      properties:
+        friendId:
+          type: string
+        friendName:
+          type: string
+        friendUsername:
+          type: [string, 'null']
+        friendImageUrl:
+          type: [string, 'null']
+        lastMessage:
+          type: string
+        lastMessageAt:
+          type: [string, 'null']
+          format: date-time
+        unreadCount:
+          type: integer
+    DirectMessageRecord:
+      type: object
+      required: [id, senderId, receiverId, content, read, createdAt]
+      properties:
+        id:
+          type: string
+        senderId:
+          type: string
+        receiverId:
+          type: string
+        content:
+          type: string
+        read:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    SendDirectMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 1000
 
