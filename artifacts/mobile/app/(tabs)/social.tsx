@@ -23,9 +23,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@clerk/expo";
 
+import { useRouter } from "expo-router";
+
 import { useApp } from "@/context/AppContext";
+import { ME_USER_ID } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import type { AppNotification, Comment, DiscoverUser, Post } from "@/context/AppContext";
+import type { AppNotification, Comment, DiscoverUser, Friend, InviteStatus, Post, WorkoutInvite } from "@/context/AppContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -285,12 +288,15 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
     if (n.type === "comment") {
       return n.commentText ? `commented: "${n.commentText}"` : "commented on your post";
     }
+    if (n.type === "invite") return "invited you to a workout";
+    if (n.type === "invite_response") return "responded to your invite";
     return "";
   }
 
   function notifIcon(n: AppNotification): { name: string; color: string } {
     if (n.type === "like") return { name: "heart", color: colors.primary };
     if (n.type === "follow") return { name: "user-plus", color: "#3b82f6" };
+    if (n.type === "invite" || n.type === "invite_response") return { name: "calendar", color: "#f59e0b" };
     return { name: "message-circle", color: "#22c55e" };
   }
 
@@ -400,6 +406,202 @@ function DiscoverUserCard({ user, isFollowing, onFollow, onUnfollow }: {
         onFollow={onFollow}
         onUnfollow={onUnfollow}
       />
+    </View>
+  );
+}
+
+// ─── Invite Composer ──────────────────────────────────────────────────────────
+
+function InviteComposer({ friend, onClose, onSend }: {
+  friend: Friend;
+  onClose: () => void;
+  onSend: (activity: string, location: string, date: string, time: string) => Promise<boolean>;
+}) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const [activity, setActivity] = useState("");
+  const [location, setLocation] = useState("");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    if (!activity.trim() || !date.trim() || sending) return;
+    setSending(true);
+    setError(null);
+    const ok = await onSend(activity.trim(), location.trim(), date.trim(), time.trim());
+    setSending(false);
+    if (ok) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onClose();
+    } else {
+      setError("Couldn't send invite. Try again.");
+    }
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20, paddingHorizontal: 18 }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+            <View style={styles.sheetHeader}>
+              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Invite {friend.name.split(" ")[0]}</Text>
+              <Pressable onPress={onClose} hitSlop={10}>
+                <Feather name="x" size={20} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+
+            <Text style={[styles.inviteLabel, { color: colors.mutedForeground }]}>Activity</Text>
+            <TextInput
+              style={[styles.inviteInput, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]}
+              value={activity}
+              onChangeText={setActivity}
+              placeholder="e.g. Leg day, 5k run..."
+              placeholderTextColor={colors.mutedForeground}
+            />
+
+            <Text style={[styles.inviteLabel, { color: colors.mutedForeground }]}>Location</Text>
+            <TextInput
+              style={[styles.inviteInput, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]}
+              value={location}
+              onChangeText={setLocation}
+              placeholder="e.g. Downtown Gym"
+              placeholderTextColor={colors.mutedForeground}
+            />
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.inviteLabel, { color: colors.mutedForeground }]}>Date</Text>
+                <TextInput
+                  style={[styles.inviteInput, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]}
+                  value={date}
+                  onChangeText={setDate}
+                  placeholder="e.g. Fri, Jul 10"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.inviteLabel, { color: colors.mutedForeground }]}>Time</Text>
+                <TextInput
+                  style={[styles.inviteInput, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]}
+                  value={time}
+                  onChangeText={setTime}
+                  placeholder="e.g. 6:00 PM"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+            </View>
+
+            {error && (
+              <Text style={{ color: "#ef4444", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 4 }}>{error}</Text>
+            )}
+
+            <Pressable
+              onPress={submit}
+              disabled={!activity.trim() || !date.trim() || sending}
+              style={[styles.postBtn, {
+                backgroundColor: activity.trim() && date.trim() ? colors.primary : colors.border,
+                alignItems: "center",
+                marginTop: 14,
+              }]}
+            >
+              {sending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.postBtnText}>Send Invite</Text>}
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Friend Row ───────────────────────────────────────────────────────────────
+
+function FriendRow({ friend, onMessage, onInvite }: {
+  friend: Friend;
+  onMessage: () => void;
+  onInvite: () => void;
+}) {
+  const colors = useColors();
+  return (
+    <View style={[styles.discoverCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Avatar initials={friend.initials} color={friend.color} size={46} />
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: colors.foreground }}>{friend.name}</Text>
+        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground }}>@{friend.username}</Text>
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+          <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
+            🔥 {friend.streak}d streak
+          </Text>
+        </View>
+      </View>
+      <Pressable onPress={onInvite} style={[styles.friendActionBtn, { borderColor: colors.border }]}>
+        <Feather name="calendar" size={16} color={colors.primary} />
+      </Pressable>
+      <Pressable onPress={onMessage} style={[styles.friendActionBtn, { borderColor: colors.border, marginLeft: 8 }]}>
+        <Feather name="message-circle" size={16} color={colors.primary} />
+      </Pressable>
+    </View>
+  );
+}
+
+// ─── Invite Row ───────────────────────────────────────────────────────────────
+
+function InviteRow({ invite, isReceived, onRespond }: {
+  invite: WorkoutInvite;
+  isReceived: boolean;
+  onRespond?: (status: Exclude<InviteStatus, "pending">) => void;
+}) {
+  const colors = useColors();
+  const otherName = isReceived ? invite.senderName : invite.receiverName;
+  const statusColor = invite.status === "accepted" ? "#22c55e" : invite.status === "declined" ? "#ef4444" : invite.status === "maybe" ? "#f59e0b" : colors.mutedForeground;
+
+  return (
+    <View style={[styles.discoverCard, { backgroundColor: colors.card, borderColor: colors.border, alignItems: "flex-start" }]}>
+      <Avatar initials={initials(otherName)} color={colorFromId(isReceived ? invite.senderId : invite.receiverId)} size={40} />
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: colors.foreground }}>
+          {invite.activity}
+        </Text>
+        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground, marginTop: 2 }}>
+          {isReceived ? `from ${otherName}` : `with ${otherName}`} · {invite.date}{invite.time ? ` at ${invite.time}` : ""}
+        </Text>
+        {invite.location ? (
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground, marginTop: 1 }}>
+            📍 {invite.location}
+          </Text>
+        ) : null}
+
+        {isReceived && invite.status === "pending" && onRespond ? (
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+            <Pressable
+              onPress={() => onRespond("accepted")}
+              style={[styles.inviteRespondBtn, { backgroundColor: "#22c55e" }]}
+            >
+              <Text style={styles.inviteRespondText}>Accept</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onRespond("maybe")}
+              style={[styles.inviteRespondBtn, { backgroundColor: "#f59e0b" }]}
+            >
+              <Text style={styles.inviteRespondText}>Maybe</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onRespond("declined")}
+              style={[styles.inviteRespondBtn, { backgroundColor: "#ef4444" }]}
+            >
+              <Text style={styles.inviteRespondText}>Decline</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={[styles.levelBadge, { backgroundColor: statusColor + "22", borderColor: statusColor + "55", marginTop: 8, alignSelf: "flex-start" }]}>
+            <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: statusColor }}>
+              {invite.status.charAt(0).toUpperCase() + invite.status.slice(1)}
+            </Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -526,9 +728,23 @@ export default function SocialScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
-  const { state, likePost, addPost, followUser, unfollowUser, refreshNotifications, fetchDiscover } = useApp();
-  const { posts, friends, followingIds, userProfile, workoutHistory, notifications } = state;
-  const [tab, setTab] = useState<"feed" | "explore">("feed");
+  const router = useRouter();
+  const {
+    state,
+    likePost,
+    addPost,
+    followUser,
+    unfollowUser,
+    refreshNotifications,
+    fetchDiscover,
+    fetchInvites,
+    fetchThreads,
+    sendInvite,
+    respondInvite,
+  } = useApp();
+  const { posts, friends, followingIds, userProfile, workoutHistory, notifications, workoutInvites } = state;
+  const [tab, setTab] = useState<"feed" | "explore" | "friends">("feed");
+  const [inviteTarget, setInviteTarget] = useState<Friend | null>(null);
   const [composing, setComposing] = useState(false);
   const [composerStep, setComposerStep] = useState<ComposerStep>("pick-type");
   const [draftText, setDraftText] = useState("");
@@ -560,6 +776,12 @@ export default function SocialScreen() {
       .then(setDiscoverUsers)
       .finally(() => setDiscoverLoading(false));
   }, [tab, userProfile.level, userProfile.goals, userProfile.equipment]);
+
+  useEffect(() => {
+    if (tab !== "friends") return;
+    fetchInvites().catch(() => {});
+    fetchThreads().catch(() => {});
+  }, [tab]);
 
   function openComposer() {
     setComposerStep("pick-type");
@@ -688,6 +910,10 @@ export default function SocialScreen() {
 
   const recentWorkouts = workoutHistory.slice(0, 5);
 
+  const buddies = friends.filter((f) => followingIds.includes(f.id));
+  const pendingInvites = workoutInvites.filter((i) => i.receiverId === ME_USER_ID && i.status === "pending");
+  const upcomingInvites = workoutInvites.filter((i) => i.status === "accepted");
+
   const filteredDiscover = discoverQuery.trim()
     ? discoverUsers.filter(
         (u) =>
@@ -756,10 +982,10 @@ export default function SocialScreen() {
 
         {/* Tabs */}
         <View style={[styles.tabRow, { paddingHorizontal: 18 }]}>
-          {(["feed", "explore"] as const).map((t) => (
+          {(["feed", "explore", "friends"] as const).map((t) => (
             <Pressable key={t} onPress={() => setTab(t)} style={styles.tabBtn}>
               <Text style={[styles.tabLabel, { color: tab === t ? colors.primary : colors.mutedForeground }]}>
-                {t === "feed" ? "Following" : "Explore"}
+                {t === "feed" ? "Following" : t === "explore" ? "Explore" : "Friends"}
               </Text>
               {tab === t && <View style={[styles.tabUnderline, { backgroundColor: colors.primary }]} />}
             </Pressable>
@@ -841,6 +1067,69 @@ export default function SocialScreen() {
             />
           )}
         </View>
+      )}
+
+      {tab === "friends" && (
+        <FlatList
+          data={buddies}
+          keyExtractor={(f) => f.id}
+          contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: insets.bottom + 90 }}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          ListHeaderComponent={
+            <View style={{ gap: 10, marginBottom: 14 }}>
+              {pendingInvites.length > 0 && (
+                <View>
+                  <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 8 }]}>Invites</Text>
+                  {pendingInvites.map((inv) => (
+                    <View key={inv.id} style={{ marginBottom: 10 }}>
+                      <InviteRow
+                        invite={inv}
+                        isReceived
+                        onRespond={(status) => respondInvite(inv.id, status)}
+                      />
+                    </View>
+                  ))}
+                </View>
+              )}
+              {upcomingInvites.length > 0 && (
+                <View>
+                  <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 8 }]}>Upcoming</Text>
+                  {upcomingInvites.map((inv) => (
+                    <View key={inv.id} style={{ marginBottom: 10 }}>
+                      <InviteRow invite={inv} isReceived={inv.receiverId === ME_USER_ID} />
+                    </View>
+                  ))}
+                </View>
+              )}
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Buddies</Text>
+            </View>
+          }
+          ListEmptyComponent={() => (
+            <View style={{ alignItems: "center", paddingTop: 40, gap: 12 }}>
+              <Feather name="users" size={40} color={colors.mutedForeground} />
+              <Text style={{ color: colors.mutedForeground, fontSize: 15, fontFamily: "Inter_500Medium" }}>
+                Follow athletes to build your buddy list
+              </Text>
+            </View>
+          )}
+          renderItem={({ item }) => (
+            <FriendRow
+              friend={item}
+              onMessage={() => router.push({ pathname: "/chat/[id]", params: { id: item.id } })}
+              onInvite={() => setInviteTarget(item)}
+            />
+          )}
+        />
+      )}
+
+      {/* Invite Composer */}
+      {inviteTarget && (
+        <InviteComposer
+          friend={inviteTarget}
+          onClose={() => setInviteTarget(null)}
+          onSend={(activity, location, date, time) => sendInvite(inviteTarget.id, activity, location, date, time)}
+        />
       )}
 
       {/* Compose Flow */}
@@ -1087,4 +1376,9 @@ const styles = StyleSheet.create({
   notifRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 4 },
   notifIconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   unreadDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+  friendActionBtn: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  inviteLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 6, marginTop: 12 },
+  inviteInput: { fontSize: 14, fontFamily: "Inter_400Regular", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
+  inviteRespondBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center" },
+  inviteRespondText: { fontSize: 12, fontFamily: "Inter_700Bold", color: "#fff" },
 });

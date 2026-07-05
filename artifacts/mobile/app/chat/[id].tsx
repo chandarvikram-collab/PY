@@ -23,14 +23,17 @@ export default function ChatDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { state, sendMessage, markThreadRead } = useApp();
+  const { state, sendMessage, markThreadRead, fetchThreadMessages } = useApp();
   const [text, setText] = useState("");
   const flatRef = useRef<FlatList>(null);
 
   const thread = state.chatThreads.find((t) => t.id === id);
 
   useEffect(() => {
-    if (id) markThreadRead(id);
+    if (id) {
+      fetchThreadMessages(id);
+      markThreadRead(id);
+    }
   }, [id]);
 
   useEffect(() => {

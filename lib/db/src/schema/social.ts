@@ -83,9 +83,32 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const workoutInvites = pgTable("workout_invites", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  senderId: uuid("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  receiverId: uuid("receiver_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  activity: text("activity").notNull(),
+  location: text("location").notNull().default(""),
+  date: text("date").notNull(),
+  time: text("time").notNull().default(""),
+  status: text("status").notNull().default("pending"), // "pending" | "accepted" | "declined" | "maybe"
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const directMessages = pgTable("direct_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  senderId: uuid("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  receiverId: uuid("receiver_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const insertPostSchema = createInsertSchema(posts).omit({ createdAt: true });
 export const insertChallengeSchema = createInsertSchema(challenges).omit({ id: true, createdAt: true });
 export const insertCommentSchema = createInsertSchema(comments).omit({ id: true, createdAt: true });
+export const insertWorkoutInviteSchema = createInsertSchema(workoutInvites).omit({ id: true, createdAt: true });
+export const insertDirectMessageSchema = createInsertSchema(directMessages).omit({ id: true, createdAt: true });
 
 export type Post = typeof posts.$inferSelect;
 export type Follow = typeof follows.$inferSelect;
@@ -94,4 +117,8 @@ export type Challenge = typeof challenges.$inferSelect;
 export type ChallengeParticipant = typeof challengeParticipants.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type WorkoutInvite = typeof workoutInvites.$inferSelect;
+export type DirectMessage = typeof directMessages.$inferSelect;
 export type InsertPost = z.infer<typeof insertPostSchema>;
+export type InsertWorkoutInvite = z.infer<typeof insertWorkoutInviteSchema>;
+export type InsertDirectMessage = z.infer<typeof insertDirectMessageSchema>;

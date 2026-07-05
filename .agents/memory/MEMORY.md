@@ -1,1 +1,2 @@
 - [DB sync strategy](db-sync-strategy.md) — fire-and-forget API sync over AsyncStorage cache; device UUID as userId stored separately
+- [Expo onboarding gate & screenshot testing](expo-onboarding-gate-screenshot.md) — fresh-session screenshots of deep routes can race into the onboarding redirect; not a real bug

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { alias } from "drizzle-orm/pg-core";
 import { and, desc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -12,6 +13,8 @@ import {
   challenges,
   challengeParticipants,
   workoutSessions,
+  workoutInvites,
+  directMessages,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -732,6 +735,247 @@ router.patch("/challenges/:id/accept", requireAuth, async (req, res) => {
   }
 
   res.json(row);
+});
+
+// ─── Workout Invites ────────────────────────────────────────────────────────
+
+const createInviteSchema = z.object({
+  receiverId: z.string().uuid(),
+  activity: z.string().min(1).max(100),
+  location: z.string().max(200).default(""),
+  date: z.string().min(1),
+  time: z.string().max(50).default(""),
+});
+
+router.post("/invites", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+  const parsed = createInviteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues });
+    return;
+  }
+
+  const { receiverId, activity, location, date, time } = parsed.data;
+  if (receiverId === userId) {
+    res.status(400).json({ error: "Cannot invite yourself" });
+    return;
+  }
+
+  const [receiver] = await db.select({ id: users.id }).from(users).where(eq(users.id, receiverId)).limit(1);
+  if (!receiver) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const [invite] = await db
+    .insert(workoutInvites)
+    .values({ senderId: userId, receiverId, activity, location, date, time, status: "pending" })
+    .returning();
+
+  await db.insert(notifications).values({ recipientId: receiverId, actorId: userId, type: "invite" });
+
+  req.log.info({ inviteId: invite.id, senderId: userId, receiverId }, "workout invite created");
+  res.status(201).json(invite);
+});
+
+router.get("/invites", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+
+  const sender = alias(users, "sender");
+  const receiver = alias(users, "receiver");
+
+  const rows = await db
+    .select({
+      id: workoutInvites.id,
+      senderId: workoutInvites.senderId,
+      senderName: sender.name,
+      receiverId: workoutInvites.receiverId,
+      receiverName: receiver.name,
+      activity: workoutInvites.activity,
+      location: workoutInvites.location,
+      date: workoutInvites.date,
+      time: workoutInvites.time,
+      status: workoutInvites.status,
+      createdAt: workoutInvites.createdAt,
+    })
+    .from(workoutInvites)
+    .innerJoin(sender, eq(sender.id, workoutInvites.senderId))
+    .innerJoin(receiver, eq(receiver.id, workoutInvites.receiverId))
+    .where(or(eq(workoutInvites.senderId, userId), eq(workoutInvites.receiverId, userId)))
+    .orderBy(desc(workoutInvites.createdAt));
+
+  res.json(rows);
+});
+
+const updateInviteSchema = z.object({
+  status: z.enum(["accepted", "declined", "maybe"]),
+});
+
+router.patch("/invites/:id", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+  const inviteId = req.params.id as string;
+  const parsed = updateInviteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues });
+    return;
+  }
+
+  const [invite] = await db.select().from(workoutInvites).where(eq(workoutInvites.id, inviteId)).limit(1);
+  if (!invite) {
+    res.status(404).json({ error: "Invite not found" });
+    return;
+  }
+  if (invite.receiverId !== userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(workoutInvites)
+    .set({ status: parsed.data.status })
+    .where(eq(workoutInvites.id, inviteId))
+    .returning();
+
+  await db.insert(notifications).values({ recipientId: invite.senderId, actorId: userId, type: "invite_response" });
+
+  req.log.info({ inviteId, status: parsed.data.status, userId }, "workout invite responded");
+  res.json(updated);
+});
+
+// ─── Direct Messages ────────────────────────────────────────────────────────
+
+router.get("/messages/threads", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+
+  const [followingRows, partnerRows] = await Promise.all([
+    db.select({ id: follows.followingId }).from(follows).where(eq(follows.followerId, userId)),
+    db
+      .select({
+        senderId: directMessages.senderId,
+        receiverId: directMessages.receiverId,
+      })
+      .from(directMessages)
+      .where(or(eq(directMessages.senderId, userId), eq(directMessages.receiverId, userId))),
+  ]);
+
+  const partnerIds = new Set<string>(followingRows.map((r) => r.id));
+  for (const row of partnerRows) {
+    partnerIds.add(row.senderId === userId ? row.receiverId : row.senderId);
+  }
+  partnerIds.delete(userId);
+
+  if (partnerIds.size === 0) {
+    res.json([]);
+    return;
+  }
+
+  const partnerIdList = Array.from(partnerIds);
+
+  const [partnerUsers, lastMessages, unreadCounts] = await Promise.all([
+    db
+      .select({ id: users.id, name: users.name, username: users.username, imageUrl: users.imageUrl })
+      .from(users)
+      .where(inArray(users.id, partnerIdList)),
+    db
+      .select({
+        senderId: directMessages.senderId,
+        receiverId: directMessages.receiverId,
+        content: directMessages.content,
+        createdAt: directMessages.createdAt,
+      })
+      .from(directMessages)
+      .where(or(eq(directMessages.senderId, userId), eq(directMessages.receiverId, userId)))
+      .orderBy(desc(directMessages.createdAt)),
+    db
+      .select({
+        senderId: directMessages.senderId,
+        count: sql<number>`cast(count(*) as int)`,
+      })
+      .from(directMessages)
+      .where(and(eq(directMessages.receiverId, userId), eq(directMessages.read, false)))
+      .groupBy(directMessages.senderId),
+  ]);
+
+  const lastMessageByPartner = new Map<string, { content: string; createdAt: Date }>();
+  for (const m of lastMessages) {
+    const partnerId = m.senderId === userId ? m.receiverId : m.senderId;
+    if (!lastMessageByPartner.has(partnerId)) {
+      lastMessageByPartner.set(partnerId, { content: m.content, createdAt: m.createdAt });
+    }
+  }
+  const unreadByPartner = new Map<string, number>(unreadCounts.map((r) => [r.senderId, r.count]));
+
+  const threads = partnerUsers.map((u) => {
+    const last = lastMessageByPartner.get(u.id);
+    return {
+      friendId: u.id,
+      friendName: u.name,
+      friendUsername: u.username,
+      friendImageUrl: u.imageUrl,
+      lastMessage: last?.content ?? "",
+      lastMessageAt: last?.createdAt ?? null,
+      unreadCount: unreadByPartner.get(u.id) ?? 0,
+    };
+  });
+
+  threads.sort((a, b) => {
+    const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+    const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+    return bt - at;
+  });
+
+  res.json(threads);
+});
+
+router.get("/messages/:friendId", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+  const friendId = req.params.friendId as string;
+
+  const rows = await db
+    .select()
+    .from(directMessages)
+    .where(
+      or(
+        and(eq(directMessages.senderId, userId), eq(directMessages.receiverId, friendId)),
+        and(eq(directMessages.senderId, friendId), eq(directMessages.receiverId, userId)),
+      ),
+    )
+    .orderBy(directMessages.createdAt);
+
+  await db
+    .update(directMessages)
+    .set({ read: true })
+    .where(and(eq(directMessages.senderId, friendId), eq(directMessages.receiverId, userId), eq(directMessages.read, false)));
+
+  res.json(rows);
+});
+
+const sendMessageSchema = z.object({
+  content: z.string().min(1).max(1000),
+});
+
+router.post("/messages/:friendId", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+  const friendId = req.params.friendId as string;
+  const parsed = sendMessageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues });
+    return;
+  }
+
+  const [friend] = await db.select({ id: users.id }).from(users).where(eq(users.id, friendId)).limit(1);
+  if (!friend) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const [message] = await db
+    .insert(directMessages)
+    .values({ senderId: userId, receiverId: friendId, content: parsed.data.content })
+    .returning();
+
+  req.log.info({ messageId: message.id, senderId: userId, receiverId: friendId }, "direct message sent");
+  res.status(201).json(message);
 });
 
 export default router;

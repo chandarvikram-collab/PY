@@ -270,7 +270,7 @@ export type Comment = {
 
 export type AppNotification = {
   id: string;
-  type: "like" | "comment" | "follow";
+  type: "like" | "comment" | "follow" | "invite" | "invite_response";
   read: boolean;
   postId: string | null;
   commentText: string | null;
@@ -314,6 +314,22 @@ export type ChatThread = {
   isOnline: boolean;
 };
 
+export type InviteStatus = "pending" | "accepted" | "declined" | "maybe";
+
+export type WorkoutInvite = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  receiverId: string;
+  receiverName: string;
+  activity: string;
+  location: string;
+  date: string;
+  time: string;
+  status: InviteStatus;
+  createdAt: string;
+};
+
 type AppState = {
   userProfile: UserProfile;
   routines: Routine[];
@@ -324,6 +340,7 @@ type AppState = {
   challenges: Challenge[];
   posts: Post[];
   chatThreads: ChatThread[];
+  workoutInvites: WorkoutInvite[];
   runHistory: RunSession[];
   mealTemplates: MealTemplate[];
   notifications: AppNotification[];
@@ -347,8 +364,13 @@ type AppContextType = {
   sendChallenge: (challenge: Challenge) => void;
   acceptChallenge: (challengeId: string) => void;
   updateChallengeProgress: (challengeId: string, progress: number) => void;
-  sendMessage: (threadId: string, text: string) => void;
-  markThreadRead: (threadId: string) => void;
+  sendMessage: (friendId: string, text: string) => void;
+  markThreadRead: (friendId: string) => void;
+  fetchThreads: () => Promise<void>;
+  fetchThreadMessages: (friendId: string) => Promise<void>;
+  fetchInvites: () => Promise<void>;
+  sendInvite: (receiverId: string, activity: string, location: string, date: string, time: string) => Promise<boolean>;
+  respondInvite: (inviteId: string, status: Exclude<InviteStatus, "pending">) => Promise<void>;
   getTodayCalories: () => DayCalories;
   getWeeklyNutrition: () => WeeklyNutrition[];
   addRoutine: (routine: Routine) => void;
@@ -765,6 +787,7 @@ const DEFAULT_STATE: AppState = {
   challenges: [],
   posts: [],
   chatThreads: SEED_CHAT_THREADS,
+  workoutInvites: [],
   runHistory: SEED_RUN_HISTORY,
   notifications: [],
 };
@@ -788,6 +811,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isSignedIn || !loaded) return;
     hydrateSocialFromApi(setState);
+    fetchThreads();
+    fetchInvites();
   }, [isSignedIn, loaded]);
 
   useEffect(() => {
@@ -1038,6 +1063,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       challenges: [],
       posts: [],
       chatThreads: [],
+      workoutInvites: [],
       runHistory: [],
       notifications: [],
     };
@@ -1472,35 +1498,155 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const sendMessage = useCallback(
-    (threadId: string, text: string) => {
+    (friendId: string, text: string) => {
       const msg: ChatMessage = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
         senderId: ME_ID,
         text,
         time: "Just now",
       };
+      update((prev) => {
+        const existing = prev.chatThreads.find((t) => t.id === friendId);
+        if (existing) {
+          return {
+            ...prev,
+            chatThreads: prev.chatThreads.map((t) =>
+              t.id === friendId
+                ? { ...t, messages: [...t.messages, msg], lastMessage: text, lastTime: "Just now" }
+                : t,
+            ),
+          };
+        }
+        const friend = prev.friends.find((f) => f.id === friendId);
+        const newThread: ChatThread = {
+          id: friendId,
+          friendId,
+          friendName: friend?.name ?? "Unknown",
+          friendInitials: friend?.initials ?? "?",
+          friendColor: friend?.color ?? colorFromId(friendId),
+          lastMessage: text,
+          lastTime: "Just now",
+          unread: 0,
+          messages: [msg],
+          isOnline: friend?.isOnline ?? false,
+        };
+        return { ...prev, chatThreads: [newThread, ...prev.chatThreads] };
+      });
+      socialFetch(`/messages/${friendId}`, {
+        method: "POST",
+        body: JSON.stringify({ content: text }),
+      }).catch(() => {});
+    },
+    [update],
+  );
+
+  const markThreadRead = useCallback(
+    (friendId: string) => {
       update((prev) => ({
         ...prev,
         chatThreads: prev.chatThreads.map((t) =>
-          t.id === threadId
-            ? { ...t, messages: [...t.messages, msg], lastMessage: text, lastTime: "Just now" }
-            : t,
+          t.id === friendId ? { ...t, unread: 0 } : t,
         ),
       }));
     },
     [update],
   );
 
-  const markThreadRead = useCallback(
-    (threadId: string) => {
-      update((prev) => ({
+  const fetchThreads = useCallback(async (): Promise<void> => {
+    try {
+      const r = await socialFetch("/messages/threads");
+      if (!r.ok) return;
+      const rows = (await r.json()) as Array<{
+        friendId: string;
+        friendName: string;
+        friendUsername: string;
+        friendImageUrl?: string | null;
+        lastMessage: string;
+        lastMessageAt: string | null;
+        unreadCount: number;
+      }>;
+      setState((prev) => {
+        const existingByFriend = new Map(prev.chatThreads.map((t) => [t.friendId, t]));
+        const chatThreads: ChatThread[] = rows.map((r) => {
+          const existing = existingByFriend.get(r.friendId);
+          return {
+            id: r.friendId,
+            friendId: r.friendId,
+            friendName: r.friendName,
+            friendInitials: r.friendName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase(),
+            friendColor: colorFromId(r.friendId),
+            lastMessage: r.lastMessage || (existing?.lastMessage ?? ""),
+            lastTime: r.lastMessageAt ? relativeTime(new Date(r.lastMessageAt)) : "",
+            unread: r.unreadCount,
+            messages: existing?.messages ?? [],
+            isOnline: false,
+          };
+        });
+        return { ...prev, chatThreads };
+      });
+    } catch {}
+  }, []);
+
+  const fetchThreadMessages = useCallback(async (friendId: string): Promise<void> => {
+    try {
+      const r = await socialFetch(`/messages/${friendId}`);
+      if (!r.ok) return;
+      const rows = (await r.json()) as Array<{ id: string; senderId: string; content: string; createdAt: string }>;
+      const messages: ChatMessage[] = rows.map((m) => ({
+        id: m.id,
+        senderId: m.senderId === friendId ? m.senderId : ME_ID,
+        text: m.content,
+        time: relativeTime(new Date(m.createdAt)),
+      }));
+      setState((prev) => ({
         ...prev,
         chatThreads: prev.chatThreads.map((t) =>
-          t.id === threadId ? { ...t, unread: 0 } : t,
+          t.id === friendId ? { ...t, messages, unread: 0 } : t,
         ),
       }));
+    } catch {}
+  }, []);
+
+  const fetchInvites = useCallback(async (): Promise<void> => {
+    try {
+      const r = await socialFetch("/invites");
+      if (!r.ok) return;
+      const rows = (await r.json()) as WorkoutInvite[];
+      setState((prev) => ({ ...prev, workoutInvites: rows }));
+    } catch {}
+  }, []);
+
+  const sendInvite = useCallback(
+    async (receiverId: string, activity: string, location: string, date: string, time: string): Promise<boolean> => {
+      try {
+        const r = await socialFetch("/invites", {
+          method: "POST",
+          body: JSON.stringify({ receiverId, activity, location, date, time }),
+        });
+        if (!r.ok) return false;
+        await fetchInvites();
+        return true;
+      } catch {
+        return false;
+      }
     },
-    [update],
+    [fetchInvites],
+  );
+
+  const respondInvite = useCallback(
+    async (inviteId: string, status: Exclude<InviteStatus, "pending">): Promise<void> => {
+      setState((prev) => ({
+        ...prev,
+        workoutInvites: prev.workoutInvites.map((i) => (i.id === inviteId ? { ...i, status } : i)),
+      }));
+      try {
+        await socialFetch(`/invites/${inviteId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status }),
+        });
+      } catch {}
+    },
+    [],
   );
 
   const getTodayCalories = useCallback((): DayCalories => {
@@ -1713,6 +1859,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateChallengeProgress,
         sendMessage,
         markThreadRead,
+        fetchThreads,
+        fetchThreadMessages,
+        fetchInvites,
+        sendInvite,
+        respondInvite,
         getTodayCalories,
         getWeeklyNutrition,
         addRoutine,
