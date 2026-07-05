@@ -26,6 +26,8 @@ export type UserProfile = {
   bio: string;
   goals: string[];
   equipment: string[];
+  activities: string[];
+  availability: string[];
   hasCompletedOnboarding: boolean;
   aiPlan: AIPlan | null;
   calorieGoal: number;
@@ -289,9 +291,13 @@ export type DiscoverUser = {
   streak: number;
   totalWorkouts: number;
   totalPoints: number;
+  activities: string[];
+  availability: string[];
   sharedLevel: boolean;
   sharedGoals: string[];
   sharedEquipment: string[];
+  sharedActivities: string[];
+  sharedAvailability: string[];
 };
 
 export type ChatMessage = {
@@ -384,7 +390,7 @@ type AppContextType = {
   deleteComment: (postId: string, commentId: string) => Promise<boolean>;
   refreshNotifications: () => Promise<void>;
   markNotificationsRead: () => Promise<void>;
-  fetchDiscover: (userLevel: string, goals: string[], equipment: string[]) => Promise<DiscoverUser[]>;
+  fetchDiscover: (userLevel: string, goals: string[], equipment: string[], activities?: string[], availability?: string[]) => Promise<DiscoverUser[]>;
   fetchFollowing: () => Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>>;
 };
 
@@ -469,6 +475,8 @@ type ServerUser = {
   weeklyPaceLbs?: number | null;
   age?: number | null;
   equipment?: string[];
+  activities?: string[];
+  availability?: string[];
   totalPoints: number;
   totalWorkouts: number;
   streak: number;
@@ -754,6 +762,8 @@ const DEFAULT_PROFILE: UserProfile = {
   bio: "Building strength one rep at a time.",
   goals: ["Build Muscle", "Improve Endurance"],
   equipment: ["Barbell", "Dumbbell", "Cable", "Machine"],
+  activities: ["Strength Training", "Running"],
+  availability: ["Weekday Mornings", "Weekends"],
   hasCompletedOnboarding: false,
   aiPlan: null,
   calorieGoal: 2400,
@@ -931,6 +941,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               weeklyPaceLbs: user.weeklyPaceLbs ?? undefined,
               age: user.age ?? undefined,
               equipment: user.equipment ?? prev.userProfile.equipment,
+              activities: user.activities ?? prev.userProfile.activities,
+              availability: user.availability ?? prev.userProfile.availability,
               totalPoints: user.totalPoints,
               totalWorkouts: user.totalWorkouts,
               streak: user.streak,
@@ -969,6 +981,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               weeklyPaceLbs: user.weeklyPaceLbs ?? undefined,
               age: user.age ?? undefined,
               equipment: user.equipment ?? prev.userProfile.equipment,
+              activities: user.activities ?? prev.userProfile.activities,
+              availability: user.availability ?? prev.userProfile.availability,
               totalPoints: user.totalPoints,
               totalWorkouts: user.totalWorkouts,
               streak: user.streak,
@@ -1045,6 +1059,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         id: state.userProfile.id,
         goals: state.userProfile.goals,
         equipment: state.userProfile.equipment,
+        activities: state.userProfile.activities,
+        availability: state.userProfile.availability,
         calorieGoal: state.userProfile.calorieGoal,
         proteinGoal: state.userProfile.proteinGoal,
         hasCompletedOnboarding: state.userProfile.hasCompletedOnboarding,
@@ -1098,6 +1114,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (updates.carbGoal !== undefined) patch.carbGoal = updates.carbGoal;
         if (updates.fatGoal !== undefined) patch.fatGoal = updates.fatGoal;
         if (updates.bio !== undefined) patch.bio = updates.bio;
+        if (updates.activities !== undefined) patch.activities = updates.activities;
+        if (updates.availability !== undefined) patch.availability = updates.availability;
         if (Object.keys(patch).length > 0) {
           queueAndFire("PATCH", `/users/${apiUserIdRef.current}`, patch);
         }
@@ -1358,18 +1376,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  const fetchDiscover = useCallback(async (userLevel: string, goals: string[], equipment: string[]): Promise<DiscoverUser[]> => {
-    try {
-      const params = new URLSearchParams({ level: userLevel });
-      if (goals.length) params.set("goals", goals.join(","));
-      if (equipment.length) params.set("equipment", equipment.join(","));
-      const r = await socialFetch(`/discover?${params.toString()}`);
-      if (!r.ok) return [];
-      return (await r.json()) as DiscoverUser[];
-    } catch {
-      return [];
-    }
-  }, []);
+  const fetchDiscover = useCallback(
+    async (
+      userLevel: string,
+      goals: string[],
+      equipment: string[],
+      activities: string[] = [],
+      availability: string[] = [],
+    ): Promise<DiscoverUser[]> => {
+      try {
+        const params = new URLSearchParams({ level: userLevel });
+        if (goals.length) params.set("goals", goals.join(","));
+        if (equipment.length) params.set("equipment", equipment.join(","));
+        if (activities.length) params.set("activities", activities.join(","));
+        if (availability.length) params.set("availability", availability.join(","));
+        const r = await socialFetch(`/discover?${params.toString()}`);
+        if (!r.ok) return [];
+        return (await r.json()) as DiscoverUser[];
+      } catch {
+        return [];
+      }
+    },
+    [],
+  );
 
   const fetchFollowing = useCallback(async (): Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>> => {
     try {

@@ -463,6 +463,12 @@ router.get("/discover", requireAuth, async (req, res) => {
   const userEquipment: string[] = req.query.equipment
     ? String(req.query.equipment).split(",").filter(Boolean)
     : [];
+  const filterActivities: string[] = req.query.activities
+    ? String(req.query.activities).split(",").filter(Boolean)
+    : [];
+  const filterAvailability: string[] = req.query.availability
+    ? String(req.query.availability).split(",").filter(Boolean)
+    : [];
 
   const followingRows = await db
     .select({ id: follows.followingId })
@@ -483,6 +489,8 @@ router.get("/discover", requireAuth, async (req, res) => {
       totalPoints: users.totalPoints,
       goals: users.goals,
       equipment: users.equipment,
+      activities: users.activities,
+      availability: users.availability,
     })
     .from(users)
     .where(notInArray(users.id, excludeIds))
@@ -491,23 +499,38 @@ router.get("/discover", requireAuth, async (req, res) => {
 
   const goalSet = new Set(userGoals);
   const equipSet = new Set(userEquipment);
+  const activitySet = new Set(filterActivities);
+  const availabilitySet = new Set(filterAvailability);
 
-  const scored = discovered.map((u) => {
-    const sharedGoals = (u.goals ?? []).filter((g) => goalSet.has(g));
-    const sharedEquipment = (u.equipment ?? []).filter((e) => equipSet.has(e));
-    const sharedLevel = userLevel ? u.level === userLevel : false;
-    const score =
-      sharedGoals.length * 3 +
-      sharedEquipment.length * 2 +
-      (sharedLevel ? 2 : 0) +
-      Math.log1p(u.totalPoints) * 0.1;
-    return { u, sharedGoals, sharedEquipment, sharedLevel, score };
-  });
+  const scored = discovered
+    .map((u) => {
+      const sharedGoals = (u.goals ?? []).filter((g) => goalSet.has(g));
+      const sharedEquipment = (u.equipment ?? []).filter((e) => equipSet.has(e));
+      const sharedActivities = (u.activities ?? []).filter((a) => activitySet.has(a));
+      const sharedAvailability = (u.availability ?? []).filter((a) => availabilitySet.has(a));
+      const sharedLevel = userLevel ? u.level === userLevel : false;
+      const score =
+        sharedGoals.length * 3 +
+        sharedEquipment.length * 2 +
+        sharedActivities.length * 3 +
+        sharedAvailability.length * 2 +
+        (sharedLevel ? 2 : 0) +
+        Math.log1p(u.totalPoints) * 0.1;
+      return { u, sharedGoals, sharedEquipment, sharedActivities, sharedAvailability, sharedLevel, score };
+    })
+    // When the caller selects explicit activity/availability filters, only
+    // return athletes who actually match at least one of each selected
+    // dimension — this is a real filter, not just a scoring nudge.
+    .filter((row) => {
+      if (activitySet.size > 0 && row.sharedActivities.length === 0) return false;
+      if (availabilitySet.size > 0 && row.sharedAvailability.length === 0) return false;
+      return true;
+    });
 
   scored.sort((a, b) => b.score - a.score);
 
   res.json(
-    scored.map(({ u, sharedGoals, sharedEquipment, sharedLevel }) => ({
+    scored.map(({ u, sharedGoals, sharedEquipment, sharedActivities, sharedAvailability, sharedLevel }) => ({
       id: u.id,
       name: u.name,
       username: u.username,
@@ -516,9 +539,13 @@ router.get("/discover", requireAuth, async (req, res) => {
       streak: u.streak,
       totalWorkouts: u.totalWorkouts,
       totalPoints: u.totalPoints,
+      activities: u.activities ?? [],
+      availability: u.availability ?? [],
       sharedLevel,
       sharedGoals,
       sharedEquipment,
+      sharedActivities,
+      sharedAvailability,
     })),
   );
 });

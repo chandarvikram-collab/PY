@@ -28,6 +28,8 @@ export const users = pgTable("users", {
   bio: text("bio").notNull().default(""),
   goals: text("goals").array().notNull().default(sql`ARRAY[]::text[]`),
   equipment: text("equipment").array().notNull().default(sql`ARRAY[]::text[]`),
+  activities: text("activities").array().notNull().default(sql`ARRAY[]::text[]`),
+  availability: text("availability").array().notNull().default(sql`ARRAY[]::text[]`),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

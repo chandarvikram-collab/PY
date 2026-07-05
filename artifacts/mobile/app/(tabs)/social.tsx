@@ -354,6 +354,10 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ─── Discover filter option lists ──────────────────────────────────────────
+const ACTIVITY_OPTIONS = ["Strength Training", "Running", "Cycling", "Yoga", "HIIT", "Swimming", "Climbing"];
+const AVAILABILITY_OPTIONS = ["Weekday Mornings", "Weekday Evenings", "Weekends", "Lunch Breaks"];
+
 // ─── Discover User Card ───────────────────────────────────────────────────────
 
 function DiscoverUserCard({ user, isFollowing, onFollow, onUnfollow }: {
@@ -387,6 +391,16 @@ function DiscoverUserCard({ user, isFollowing, onFollow, onUnfollow }: {
           {user.sharedEquipment.map((e) => (
             <View key={e} style={[styles.levelBadge, { backgroundColor: colors.primary + "11", borderColor: colors.primary + "44" }]}>
               <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: colors.primary }}>🏋️ {e}</Text>
+            </View>
+          ))}
+          {user.sharedActivities.map((a) => (
+            <View key={a} style={[styles.levelBadge, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "55" }]}>
+              <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: colors.primary }}>🏃 {a}</Text>
+            </View>
+          ))}
+          {user.sharedAvailability.map((a) => (
+            <View key={a} style={[styles.levelBadge, { backgroundColor: colors.primary + "11", borderColor: colors.primary + "44" }]}>
+              <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: colors.primary }}>🕐 {a}</Text>
             </View>
           ))}
         </View>
@@ -757,6 +771,9 @@ export default function SocialScreen() {
   const [discoverUsers, setDiscoverUsers] = useState<DiscoverUser[]>([]);
   const [discoverQuery, setDiscoverQuery] = useState("");
   const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [activityFilters, setActivityFilters] = useState<string[]>([]);
+  const [availabilityFilters, setAvailabilityFilters] = useState<string[]>([]);
+  const [showDiscoverFilters, setShowDiscoverFilters] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -771,10 +788,22 @@ export default function SocialScreen() {
   useEffect(() => {
     if (tab !== "explore") return;
     setDiscoverLoading(true);
-    fetchDiscover(userProfile.level, userProfile.goals, userProfile.equipment)
+    fetchDiscover(userProfile.level, userProfile.goals, userProfile.equipment, activityFilters, availabilityFilters)
       .then(setDiscoverUsers)
       .finally(() => setDiscoverLoading(false));
-  }, [tab, userProfile.level, userProfile.goals, userProfile.equipment]);
+  }, [tab, userProfile.level, userProfile.goals, userProfile.equipment, activityFilters, availabilityFilters]);
+
+  function toggleActivityFilter(activity: string) {
+    setActivityFilters((prev) => (prev.includes(activity) ? prev.filter((a) => a !== activity) : [...prev, activity]));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
+  function toggleAvailabilityFilter(slot: string) {
+    setAvailabilityFilters((prev) => (prev.includes(slot) ? prev.filter((a) => a !== slot) : [...prev, slot]));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
+  const activeFilterCount = activityFilters.length + availabilityFilters.length;
 
   useEffect(() => {
     if (tab !== "friends") return;
@@ -1020,8 +1049,8 @@ export default function SocialScreen() {
       {tab === "explore" && (
         <View style={{ flex: 1 }}>
           {/* Search bar */}
-          <View style={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 6 }}>
-            <View style={[styles.searchBar, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+          <View style={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 6, flexDirection: "row", gap: 8 }}>
+            <View style={[styles.searchBar, { backgroundColor: colors.muted, borderColor: colors.border, flex: 1 }]}>
               <Feather name="search" size={16} color={colors.mutedForeground} />
               <TextInput
                 style={{ flex: 1, color: colors.foreground, fontFamily: "Inter_400Regular", fontSize: 14, marginLeft: 8 }}
@@ -1036,7 +1065,91 @@ export default function SocialScreen() {
                 </Pressable>
               )}
             </View>
+            <Pressable
+              onPress={() => setShowDiscoverFilters((v) => !v)}
+              style={[
+                styles.searchBar,
+                {
+                  backgroundColor: activeFilterCount > 0 ? colors.primary + "22" : colors.muted,
+                  borderColor: activeFilterCount > 0 ? colors.primary : colors.border,
+                  paddingHorizontal: 12,
+                },
+              ]}
+            >
+              <Feather name="sliders" size={16} color={activeFilterCount > 0 ? colors.primary : colors.mutedForeground} />
+              {activeFilterCount > 0 && (
+                <View style={[styles.badge, { backgroundColor: colors.primary, position: "relative", marginLeft: 4 }]}>
+                  <Text style={styles.badgeText}>{activeFilterCount}</Text>
+                </View>
+              )}
+            </Pressable>
           </View>
+
+          {showDiscoverFilters && (
+            <View style={{ paddingHorizontal: 18, paddingBottom: 10, gap: 8 }}>
+              <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase" }}>
+                Activity type
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {ACTIVITY_OPTIONS.map((activity) => {
+                  const active = activityFilters.includes(activity);
+                  return (
+                    <Pressable
+                      key={activity}
+                      onPress={() => toggleActivityFilter(activity)}
+                      style={[
+                        styles.levelBadge,
+                        {
+                          backgroundColor: active ? colors.primary : colors.muted,
+                          borderColor: active ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: active ? "#fff" : colors.mutedForeground }}>
+                        {activity}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase", marginTop: 4 }}>
+                Availability
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {AVAILABILITY_OPTIONS.map((slot) => {
+                  const active = availabilityFilters.includes(slot);
+                  return (
+                    <Pressable
+                      key={slot}
+                      onPress={() => toggleAvailabilityFilter(slot)}
+                      style={[
+                        styles.levelBadge,
+                        {
+                          backgroundColor: active ? colors.primary : colors.muted,
+                          borderColor: active ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: active ? "#fff" : colors.mutedForeground }}>
+                        {slot}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {activeFilterCount > 0 && (
+                <Pressable
+                  onPress={() => {
+                    setActivityFilters([]);
+                    setAvailabilityFilters([]);
+                  }}
+                  style={{ alignSelf: "flex-start", marginTop: 2 }}
+                >
+                  <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: colors.primary }}>Clear filters</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
 
           {discoverLoading ? (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>

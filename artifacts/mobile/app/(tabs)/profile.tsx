@@ -21,6 +21,9 @@ import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/lib/auth";
 
+const ACTIVITY_OPTIONS = ["Strength Training", "Running", "Cycling", "Yoga", "HIIT", "Swimming", "Climbing"];
+const AVAILABILITY_OPTIONS = ["Weekday Mornings", "Weekday Evenings", "Weekends", "Lunch Breaks"];
+
 const AVATAR_COLORS = ["#8b5cf6","#3b82f6","#22c55e","#f59e0b","#ef4444","#06b6d4","#ec4899","#f97316"];
 function colorFromId(id: string): string {
   let h = 0;
@@ -73,6 +76,33 @@ export default function ProfileScreen() {
   const [followingList, setFollowingList] = useState<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
   const { isAuthenticated, signOut } = useAuth();
+  const [editingActivities, setEditingActivities] = useState(false);
+  const [draftActivities, setDraftActivities] = useState<string[]>(userProfile.activities ?? []);
+  const [draftAvailability, setDraftAvailability] = useState<string[]>(userProfile.availability ?? []);
+
+  function openEditActivities() {
+    setDraftActivities(userProfile.activities ?? []);
+    setDraftAvailability(userProfile.availability ?? []);
+    setEditingActivities(true);
+  }
+
+  function cancelEditActivities() {
+    setEditingActivities(false);
+  }
+
+  function saveActivities() {
+    updateProfile({ activities: draftActivities, availability: draftAvailability });
+    setEditingActivities(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  function toggleDraftActivity(activity: string) {
+    setDraftActivities((prev) => (prev.includes(activity) ? prev.filter((a) => a !== activity) : [...prev, activity]));
+  }
+
+  function toggleDraftAvailability(slot: string) {
+    setDraftAvailability((prev) => (prev.includes(slot) ? prev.filter((a) => a !== slot) : [...prev, slot]));
+  }
 
   useEffect(() => {
     if (!showFriends) return;
@@ -220,6 +250,89 @@ export default function ProfileScreen() {
             </View>
           ))}
         </View>
+      </View>
+
+      {/* ── Activities & Availability (Discover matching) ── */}
+      <View style={[styles.section, { paddingHorizontal: 18 }]}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>Activities & Availability</Text>
+          {!editingActivities ? (
+            <Pressable onPress={openEditActivities} style={[styles.pillBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Feather name="edit-2" size={13} color={colors.mutedForeground} />
+              <Text style={[styles.pillBtnText, { color: colors.mutedForeground }]}>Edit</Text>
+            </Pressable>
+          ) : (
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable onPress={cancelEditActivities} style={[styles.pillBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Text style={[styles.pillBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={saveActivities} style={[styles.pillBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                <Feather name="check" size={13} color="#fff" />
+                <Text style={[styles.pillBtnText, { color: "#fff" }]}>Save</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        {!editingActivities ? (
+          <>
+            <View style={styles.chipRow}>
+              {(userProfile.activities ?? []).length > 0 ? (
+                (userProfile.activities ?? []).map((a) => (
+                  <View key={a} style={[styles.chip, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}>
+                    <Text style={[styles.chipText, { color: colors.primary }]}>🏃 {a}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={[styles.goalsHint, { color: colors.mutedForeground, marginTop: 0 }]}>No activities set — used to match you in Discover</Text>
+              )}
+            </View>
+            <View style={[styles.chipRow, { marginTop: 6 }]}>
+              {(userProfile.availability ?? []).map((a) => (
+                <View key={a} style={[styles.chip, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                  <Text style={[styles.chipText, { color: colors.mutedForeground }]}>🕐 {a}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : (
+          <View style={[styles.goalsCard, { backgroundColor: colors.card, borderColor: colors.border, padding: 12, gap: 10 }]}>
+            <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase" }}>
+              Activity type
+            </Text>
+            <View style={styles.chipRow}>
+              {ACTIVITY_OPTIONS.map((activity) => {
+                const active = draftActivities.includes(activity);
+                return (
+                  <Pressable
+                    key={activity}
+                    onPress={() => toggleDraftActivity(activity)}
+                    style={[styles.chip, { backgroundColor: active ? colors.primary : colors.muted, borderColor: active ? colors.primary : colors.border }]}
+                  >
+                    <Text style={[styles.chipText, { color: active ? "#fff" : colors.mutedForeground }]}>{activity}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, textTransform: "uppercase", marginTop: 4 }}>
+              Availability
+            </Text>
+            <View style={styles.chipRow}>
+              {AVAILABILITY_OPTIONS.map((slot) => {
+                const active = draftAvailability.includes(slot);
+                return (
+                  <Pressable
+                    key={slot}
+                    onPress={() => toggleDraftAvailability(slot)}
+                    style={[styles.chip, { backgroundColor: active ? colors.primary : colors.muted, borderColor: active ? colors.primary : colors.border }]}
+                  >
+                    <Text style={[styles.chipText, { color: active ? "#fff" : colors.mutedForeground }]}>{slot}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </View>
 
       {/* ── Nutrition Goals ── */}
