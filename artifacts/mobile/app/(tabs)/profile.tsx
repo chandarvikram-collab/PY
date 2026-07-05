@@ -252,6 +252,44 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* ── Body Profile ── */}
+      {(userProfile.age || userProfile.weightLbs || userProfile.heightFt) && (
+        <View style={[styles.section, { paddingHorizontal: 18 }]}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Body Profile</Text>
+          <View style={styles.chipRow}>
+            {userProfile.biologicalSex && (
+              <View style={[styles.chip, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Text style={[styles.chipText, { color: colors.mutedForeground }]}>
+                  {userProfile.biologicalSex === "male" ? "Male" : "Female"}
+                </Text>
+              </View>
+            )}
+            {userProfile.age && (
+              <View style={[styles.chip, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Text style={[styles.chipText, { color: colors.mutedForeground }]}>{userProfile.age} yrs</Text>
+              </View>
+            )}
+            {userProfile.heightFt !== undefined && (
+              <View style={[styles.chip, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Text style={[styles.chipText, { color: colors.mutedForeground }]}>
+                  {userProfile.heightFt}' {userProfile.heightIn ?? 0}"
+                </Text>
+              </View>
+            )}
+            {userProfile.weightLbs && (
+              <View style={[styles.chip, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Text style={[styles.chipText, { color: colors.mutedForeground }]}>{userProfile.weightLbs} lbs</Text>
+              </View>
+            )}
+            {userProfile.weeklyPaceLbs !== undefined && (
+              <View style={[styles.chip, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Text style={[styles.chipText, { color: colors.mutedForeground }]}>{userProfile.weeklyPaceLbs} lb/wk</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* ── Activities & Availability (Discover matching) ── */}
       <View style={[styles.section, { paddingHorizontal: 18 }]}>
         <View style={styles.sectionHeaderRow}>

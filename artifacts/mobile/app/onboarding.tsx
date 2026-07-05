@@ -95,11 +95,20 @@ export default function OnboardingScreen() {
       : undefined
   );
   const [age, setAge] = useState(userProfile.age ? String(userProfile.age) : "25");
-  const [heightCm, setHeightCm] = useState(userProfile.heightCm ? String(userProfile.heightCm) : "");
-  const [weightKg, setWeightKg] = useState(userProfile.weightKg ? String(userProfile.weightKg) : "");
+  const [heightFt, setHeightFt] = useState(
+    userProfile.heightFt ? String(userProfile.heightFt) : "5"
+  );
+  const [heightIn, setHeightIn] = useState(
+    userProfile.heightIn ? String(userProfile.heightIn) : "9"
+  );
+  const [weightLbs, setWeightLbs] = useState(
+    userProfile.weightLbs ? String(userProfile.weightLbs) : "170"
+  );
   const [activity, setActivity] = useState<string | undefined>(userProfile.activityLevel ?? undefined);
   const [goal, setGoal] = useState<string | undefined>(userProfile.primaryGoal ?? undefined);
-  const [pace, setPace] = useState(userProfile.weeklyPaceLbs ? String(userProfile.weeklyPaceLbs) : "1");
+  const [pace, setPace] = useState<number>(
+    userProfile.weeklyPaceLbs ?? 0.5
+  );
   const [equipment, setEquipment] = useState<Set<string>>(
     () => new Set(userProfile.equipment.length > 0 ? userProfile.equipment : ["Barbell", "Dumbbell"])
   );
@@ -112,15 +121,22 @@ export default function OnboardingScreen() {
     switch (currentStep) {
       case "sex": return !!sex;
       case "age": return !!age && parseInt(age) >= 10 && parseInt(age) <= 120;
-      case "height": return !!heightCm && parseInt(heightCm) >= 50 && parseInt(heightCm) <= 300;
-      case "weight": return !!weightKg && parseInt(weightKg) >= 20 && parseInt(weightKg) <= 300;
+      case "height": {
+        const ft = parseInt(heightFt);
+        const inc = parseInt(heightIn);
+        return ft >= 2 && ft <= 8 && inc >= 0 && inc <= 11;
+      }
+      case "weight": {
+        const w = parseInt(weightLbs);
+        return w >= 50 && w <= 700;
+      }
       case "activity": return !!activity;
       case "goal": return !!goal;
-      case "pace": return !!pace && parseInt(pace) >= 0 && parseInt(pace) <= 5;
+      case "pace": return pace >= 0 && pace <= 5;
       case "equipment": return equipment.size > 0;
       case "review": return true;
     }
-  }, [currentStep, sex, age, heightCm, weightKg, activity, goal, pace, equipment]);
+  }, [currentStep, sex, age, heightFt, heightIn, weightLbs, activity, goal, pace, equipment]);
 
   const advance = useCallback(() => {
     if (!canAdvance) return;
@@ -142,12 +158,13 @@ export default function OnboardingScreen() {
     try {
       const payload = {
         biologicalSex: sex!,
-        heightCm: parseInt(heightCm),
-        weightKg: parseInt(weightKg),
+        heightFt: parseInt(heightFt),
+        heightIn: parseInt(heightIn),
+        weightLbs: parseInt(weightLbs),
         age: parseInt(age),
         activityLevel: activity!,
         primaryGoal: goal!,
-        weeklyPaceLbs: parseInt(pace),
+        weeklyPaceLbs: pace,
         equipment: Array.from(equipment),
       };
 
@@ -169,8 +186,9 @@ export default function OnboardingScreen() {
           carbGoal: data.carbsG,
           fatGoal: data.fatG,
           biologicalSex: payload.biologicalSex,
-          heightCm: payload.heightCm,
-          weightKg: payload.weightKg,
+          heightFt: payload.heightFt,
+          heightIn: payload.heightIn,
+          weightLbs: payload.weightLbs,
           age: payload.age,
           activityLevel: payload.activityLevel,
           primaryGoal: payload.primaryGoal,
@@ -188,7 +206,7 @@ export default function OnboardingScreen() {
     } finally {
       setSaving(false);
     }
-  }, [sex, heightCm, weightKg, age, activity, goal, pace, equipment, userProfile.id, updateProfile, router, getToken]);
+  }, [sex, heightFt, heightIn, weightLbs, age, activity, goal, pace, equipment, userProfile.id, updateProfile, router, getToken]);
 
   function toggleEquipment(item: string) {
     setEquipment((prev) => {
@@ -291,31 +309,47 @@ export default function OnboardingScreen() {
           </>
         )}
 
-        {/* ── Height ── */}
+        {/* ── Height (imperial) ── */}
         {currentStep === "height" && (
           <>
             <Text style={[styles.title, { color: colors.foreground }]}>What is your height?</Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
               Used to calculate your BMR accurately.
             </Text>
-            <View style={styles.inputWrap}>
-              <TextInput
-                style={[styles.bigInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}
-                value={heightCm}
-                onChangeText={setHeightCm}
-                keyboardType="number-pad"
-                maxLength={3}
-                placeholder="175"
-                placeholderTextColor={colors.mutedForeground}
-                selectTextOnFocus
-                autoFocus
-              />
-              <Text style={[styles.bigInputUnit, { color: colors.mutedForeground }]}>cm</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={[styles.inputWrap, { flexDirection: "column", alignItems: "center" }]}>
+                <TextInput
+                  style={[styles.bigInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, width: 100 }]}
+                  value={heightFt}
+                  onChangeText={(t) => { setHeightFt(t.replace(/[^0-9]/g, "").slice(0, 1)); }}
+                  keyboardType="number-pad"
+                  maxLength={1}
+                  placeholder="5"
+                  placeholderTextColor={colors.mutedForeground}
+                  selectTextOnFocus
+                  autoFocus
+                />
+                <Text style={[styles.bigInputUnit, { color: colors.mutedForeground }]}>ft</Text>
+              </View>
+              <Text style={{ fontSize: 24, fontFamily: "Inter_700Bold", color: colors.foreground }}>'</Text>
+              <View style={[styles.inputWrap, { flexDirection: "column", alignItems: "center" }]}>
+                <TextInput
+                  style={[styles.bigInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, width: 100 }]}
+                  value={heightIn}
+                  onChangeText={(t) => { setHeightIn(t.replace(/[^0-9]/g, "").slice(0, 2)); }}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="9"
+                  placeholderTextColor={colors.mutedForeground}
+                  selectTextOnFocus
+                />
+                <Text style={[styles.bigInputUnit, { color: colors.mutedForeground }]}>in</Text>
+              </View>
             </View>
           </>
         )}
 
-        {/* ── Weight ── */}
+        {/* ── Weight (imperial) ── */}
         {currentStep === "weight" && (
           <>
             <Text style={[styles.title, { color: colors.foreground }]}>What is your current weight?</Text>
@@ -325,16 +359,16 @@ export default function OnboardingScreen() {
             <View style={styles.inputWrap}>
               <TextInput
                 style={[styles.bigInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}
-                value={weightKg}
-                onChangeText={setWeightKg}
+                value={weightLbs}
+                onChangeText={(t) => { setWeightLbs(t.replace(/[^0-9]/g, "").slice(0, 3)); }}
                 keyboardType="number-pad"
                 maxLength={3}
-                placeholder="75"
+                placeholder="170"
                 placeholderTextColor={colors.mutedForeground}
                 selectTextOnFocus
                 autoFocus
               />
-              <Text style={[styles.bigInputUnit, { color: colors.mutedForeground }]}>kg</Text>
+              <Text style={[styles.bigInputUnit, { color: colors.mutedForeground }]}>lbs</Text>
             </View>
           </>
         )}
@@ -412,21 +446,35 @@ export default function OnboardingScreen() {
           <>
             <Text style={[styles.title, { color: colors.foreground }]}>Weekly pace</Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              How fast do you want to {goal === "lose_fat" ? "lose" : goal === "build_muscle" ? "gain" : "adjust"}? 1 lb/week is a safe, sustainable target.
+              How fast do you want to {goal === "lose_fat" ? "lose" : goal === "build_muscle" ? "gain" : "adjust"}?
             </Text>
-            <View style={styles.inputWrap}>
-              <TextInput
-                style={[styles.bigInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}
-                value={pace}
-                onChangeText={setPace}
-                keyboardType="number-pad"
-                maxLength={1}
-                placeholder="1"
-                placeholderTextColor={colors.mutedForeground}
-                selectTextOnFocus
-                autoFocus
-              />
-              <Text style={[styles.bigInputUnit, { color: colors.mutedForeground }]}>lb/week</Text>
+            <View style={styles.optionsColumn}>
+              {[
+                { val: 0.25, label: "0.25 lb/week", sub: "Conservative — slow and steady" },
+                { val: 0.5, label: "0.5 lb/week", sub: "Moderate — most people start here" },
+                { val: 1, label: "1 lb/week", sub: "Aggressive — requires strict consistency" },
+              ].map((p) => (
+                <Pressable
+                  key={p.val}
+                  onPress={() => { setPace(p.val); Haptics.selectionAsync(); }}
+                  style={({ pressed }) => [
+                    styles.optionCard,
+                    {
+                      backgroundColor: pace === p.val ? colors.primary + "22" : colors.card,
+                      borderColor: pace === p.val ? colors.primary : colors.border,
+                      opacity: pressed ? 0.8 : 1,
+                    },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.optionLabel, { color: pace === p.val ? colors.primary : colors.foreground }]}>
+                      {p.label}
+                    </Text>
+                    <Text style={[styles.optionSub, { color: colors.mutedForeground }]}>{p.sub}</Text>
+                  </View>
+                  {pace === p.val && <Feather name="check-circle" size={20} color={colors.primary} />}
+                </Pressable>
+              ))}
             </View>
           </>
         )}
@@ -473,8 +521,8 @@ export default function OnboardingScreen() {
             <View style={[styles.reviewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <ReviewRow label="Sex" value={sex === "male" ? "Male" : "Female"} />
               <ReviewRow label="Age" value={`${age} years`} />
-              <ReviewRow label="Height" value={`${heightCm} cm`} />
-              <ReviewRow label="Weight" value={`${weightKg} kg`} />
+              <ReviewRow label="Height" value={`${heightFt}' ${heightIn}"`} />
+              <ReviewRow label="Weight" value={`${weightLbs} lbs`} />
               <ReviewRow label="Activity" value={ACTIVITY_LEVELS.find((a) => a.key === activity)?.label ?? ""} />
               <ReviewRow label="Goal" value={GOALS.find((g) => g.key === goal)?.label ?? ""} />
               <ReviewRow label="Pace" value={`${pace} lb/week`} />

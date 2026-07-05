@@ -107,7 +107,8 @@ export default function RunDetailScreen() {
       });
   }, [id, session, updateRunSession]);
 
-  const weightKg = state.userProfile.weightKg ?? 75;
+  const weightLbs = state.userProfile.weightLbs ?? 170;
+  const weightKg = Math.round(weightLbs * 0.453592);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 

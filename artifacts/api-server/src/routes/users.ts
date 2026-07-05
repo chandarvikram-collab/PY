@@ -3,7 +3,7 @@ import { eq, desc, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, users, workoutSessions, foodEntries, runSessions, insertUserSchema, profilePatchSchema } from "@workspace/db";
 import { requireAuth, requireOwner } from "../middlewares/requireAuth";
-import { calculateNutrition } from "@workspace/nutrition";
+import { calculateNutrition, calculateNutritionFromImperial, inchesToCm, lbsToKg } from "@workspace/nutrition";
 
 const router = Router();
 
@@ -131,14 +131,24 @@ router.post("/users/clerk-link", async (req, res) => {
 
 const nutritionGoalsSchema = z.object({
   biologicalSex: z.enum(["male", "female"]),
-  heightCm: z.number().int().min(50).max(300),
-  weightKg: z.number().int().min(20).max(300),
   age: z.number().int().min(10).max(120),
   activityLevel: z.enum(["sedentary", "light", "moderate", "active", "very_active"]),
   primaryGoal: z.enum(["lose_fat", "maintain", "build_muscle", "improve_endurance"]),
-  weeklyPaceLbs: z.number().int().min(0).max(5).optional(),
+  weeklyPaceLbs: z.number().min(0).max(5).optional(),
   equipment: z.array(z.string()).optional(),
-});
+  // Metric (legacy but still accepted)
+  heightCm: z.number().int().min(50).max(300).optional(),
+  weightKg: z.number().int().min(20).max(300).optional(),
+  // Imperial (preferred)
+  heightFt: z.number().int().min(2).max(8).optional(),
+  heightIn: z.number().int().min(0).max(11).optional(),
+  weightLbs: z.number().int().min(50).max(700).optional(),
+}).refine((data) => {
+  // Require at least one measurement system
+  const hasMetric = data.heightCm !== undefined && data.weightKg !== undefined;
+  const hasImperial = data.heightFt !== undefined && data.heightIn !== undefined && data.weightLbs !== undefined;
+  return hasMetric || hasImperial;
+}, { message: "Must provide either metric (heightCm + weightKg) or imperial (heightFt + heightIn + weightLbs) measurements" });
 
 router.post("/users/:id/nutrition-goals", requireAuth, requireOwner((req) => req.params.id), async (req, res) => {
   const id = req.params.id as string;
@@ -149,15 +159,48 @@ router.post("/users/:id/nutrition-goals", requireAuth, requireOwner((req) => req
   }
   const data = parsed.data;
 
-  const { dailyCalories, proteinG, carbsG, fatG } = calculateNutrition({
-    biologicalSex: data.biologicalSex,
-    heightCm: data.heightCm,
-    weightKg: data.weightKg,
-    age: data.age,
-    activityLevel: data.activityLevel,
-    primaryGoal: data.primaryGoal,
-    weeklyPaceLbs: data.weeklyPaceLbs,
-  });
+  // Detect measurement system and calculate
+  const hasImperial = data.heightFt !== undefined && data.heightIn !== undefined && data.weightLbs !== undefined;
+  let dailyCalories: number, proteinG: number, carbsG: number, fatG: number;
+
+  if (hasImperial) {
+    const result = calculateNutritionFromImperial({
+      biologicalSex: data.biologicalSex,
+      heightFt: data.heightFt!,
+      heightIn: data.heightIn!,
+      weightLbs: data.weightLbs!,
+      age: data.age,
+      activityLevel: data.activityLevel,
+      primaryGoal: data.primaryGoal,
+      weeklyPaceLbs: data.weeklyPaceLbs,
+    });
+    dailyCalories = result.dailyCalories;
+    proteinG = result.proteinG;
+    carbsG = result.carbsG;
+    fatG = result.fatG;
+  } else {
+    const result = calculateNutrition({
+      biologicalSex: data.biologicalSex,
+      heightCm: data.heightCm!,
+      weightKg: data.weightKg!,
+      age: data.age,
+      activityLevel: data.activityLevel,
+      primaryGoal: data.primaryGoal,
+      weeklyPaceLbs: data.weeklyPaceLbs,
+    });
+    dailyCalories = result.dailyCalories;
+    proteinG = result.proteinG;
+    carbsG = result.carbsG;
+    fatG = result.fatG;
+  }
+
+  // Always store both metric and imperial for display flexibility
+  const heightCm = hasImperial
+    ? inchesToCm(data.heightFt!, data.heightIn!)
+    : data.heightCm!;
+  const weightKg = hasImperial
+    ? lbsToKg(data.weightLbs!)
+    : data.weightKg!;
 
   const updateData: Record<string, unknown> = {
     calorieGoal: dailyCalories,
@@ -165,14 +208,27 @@ router.post("/users/:id/nutrition-goals", requireAuth, requireOwner((req) => req
     carbGoal: carbsG,
     fatGoal: fatG,
     biologicalSex: data.biologicalSex,
-    heightCm: data.heightCm,
-    weightKg: data.weightKg,
+    heightCm,
+    weightKg,
     activityLevel: data.activityLevel,
     primaryGoal: data.primaryGoal,
     weeklyPaceLbs: data.weeklyPaceLbs ?? null,
     age: data.age,
     updatedAt: new Date(),
   };
+
+  if (hasImperial) {
+    updateData.heightFt = data.heightFt;
+    updateData.heightIn = data.heightIn;
+    updateData.weightLbs = data.weightLbs;
+  } else {
+    // Back-fill imperial from metric for display
+    const totalInches = Math.round(data.heightCm! / 2.54);
+    updateData.heightFt = Math.floor(totalInches / 12);
+    updateData.heightIn = totalInches % 12;
+    updateData.weightLbs = Math.round(data.weightKg! * 2.20462);
+  }
+
   if (data.equipment !== undefined) {
     updateData.equipment = data.equipment;
   }

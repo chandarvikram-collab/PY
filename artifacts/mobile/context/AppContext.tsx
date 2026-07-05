@@ -37,6 +37,9 @@ export type UserProfile = {
   biologicalSex?: string;
   heightCm?: number;
   weightKg?: number;
+  heightFt?: number;
+  heightIn?: number;
+  weightLbs?: number;
   activityLevel?: string;
   primaryGoal?: string;
   weeklyPaceLbs?: number;
@@ -470,6 +473,9 @@ type ServerUser = {
   biologicalSex?: string | null;
   heightCm?: number | null;
   weightKg?: number | null;
+  heightFt?: number | null;
+  heightIn?: number | null;
+  weightLbs?: number | null;
   activityLevel?: string | null;
   primaryGoal?: string | null;
   weeklyPaceLbs?: number | null;
@@ -936,6 +942,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               biologicalSex: user.biologicalSex ?? undefined,
               heightCm: user.heightCm ?? undefined,
               weightKg: user.weightKg ?? undefined,
+              heightFt: user.heightFt ?? undefined,
+              heightIn: user.heightIn ?? undefined,
+              weightLbs: user.weightLbs ?? undefined,
               activityLevel: user.activityLevel ?? undefined,
               primaryGoal: user.primaryGoal ?? undefined,
               weeklyPaceLbs: user.weeklyPaceLbs ?? undefined,
@@ -976,6 +985,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               biologicalSex: user.biologicalSex ?? undefined,
               heightCm: user.heightCm ?? undefined,
               weightKg: user.weightKg ?? undefined,
+              heightFt: user.heightFt ?? undefined,
+              heightIn: user.heightIn ?? undefined,
+              weightLbs: user.weightLbs ?? undefined,
               activityLevel: user.activityLevel ?? undefined,
               primaryGoal: user.primaryGoal ?? undefined,
               weeklyPaceLbs: user.weeklyPaceLbs ?? undefined,
@@ -1064,6 +1076,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         calorieGoal: state.userProfile.calorieGoal,
         proteinGoal: state.userProfile.proteinGoal,
         hasCompletedOnboarding: state.userProfile.hasCompletedOnboarding,
+        biologicalSex: state.userProfile.biologicalSex,
+        heightCm: state.userProfile.heightCm,
+        weightKg: state.userProfile.weightKg,
+        heightFt: state.userProfile.heightFt,
+        heightIn: state.userProfile.heightIn,
+        weightLbs: state.userProfile.weightLbs,
+        activityLevel: state.userProfile.activityLevel,
+        primaryGoal: state.userProfile.primaryGoal,
+        weeklyPaceLbs: state.userProfile.weeklyPaceLbs,
+        age: state.userProfile.age,
         aiPlan: state.userProfile.aiPlan,
         streak: 0,
         totalWorkouts: 0,

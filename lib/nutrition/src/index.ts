@@ -19,6 +19,31 @@ export type NutritionProfile = {
   weeklyPaceLbs?: number; // lbs per week (loss/gain pace)
 };
 
+export type ImperialProfile = {
+  biologicalSex: BiologicalSex;
+  heightFt: number;
+  heightIn: number;
+  weightLbs: number;
+  age: number;
+  activityLevel: ActivityLevel;
+  primaryGoal: NutritionGoal;
+  weeklyPaceLbs?: number;
+};
+
+/**
+ * Convert imperial height (ft + in) to centimeters.
+ */
+export function inchesToCm(ft: number, inches: number): number {
+  return Math.round((ft * 12 + inches) * 2.54);
+}
+
+/**
+ * Convert pounds to kilograms.
+ */
+export function lbsToKg(lbs: number): number {
+  return Math.round(lbs * 0.453592);
+}
+
 export type NutritionResult = {
   dailyCalories: number;
   proteinG: number;
@@ -107,6 +132,22 @@ export function calculateNutrition(profile: NutritionProfile): NutritionResult {
     carbsG,
     fatG,
   };
+}
+
+/**
+ * Convenience entry point: calculate nutrition from imperial measurements.
+ * Converts internally to metric, then delegates to calculateNutrition.
+ */
+export function calculateNutritionFromImperial(profile: ImperialProfile): NutritionResult {
+  return calculateNutrition({
+    biologicalSex: profile.biologicalSex,
+    heightCm: inchesToCm(profile.heightFt, profile.heightIn),
+    weightKg: lbsToKg(profile.weightLbs),
+    age: profile.age,
+    activityLevel: profile.activityLevel,
+    primaryGoal: profile.primaryGoal,
+    weeklyPaceLbs: profile.weeklyPaceLbs,
+  });
 }
 
 /* ── MET-based run calorie calculator ───────────────────────────────────── */
