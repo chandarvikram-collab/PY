@@ -33,6 +33,8 @@ export const sessionPrs = pgTable("session_prs", {
   sessionId: uuid("session_id").notNull().references(() => workoutSessions.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   exerciseName: text("exercise_name").notNull(),
+  exerciseIndex: integer("exercise_index").notNull().default(0),
+  setIndex: integer("set_index").notNull().default(0),
   weightLbs: real("weight_lbs").notNull(),
   reps: integer("reps").notNull(),
   estimatedOneRm: real("estimated_1rm").notNull(),

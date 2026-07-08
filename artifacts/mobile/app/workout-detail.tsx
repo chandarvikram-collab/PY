@@ -26,9 +26,6 @@ function fmtDuration(secs: number) {
   return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
 }
 
-function epley1RM(weight: number, reps: number): number {
-  return weight * (1 + reps / 30);
-}
 
 export default function WorkoutDetailScreen() {
   const colors = useColors();
@@ -46,10 +43,10 @@ export default function WorkoutDetailScreen() {
   const [patchError, setPatchError] = useState<string | null>(null);
 
   // ── PR state ──────────────────────────────────────────────────────────────
-  // Maps exercise name → the estimated 1RM that was a PR in THIS session.
-  // Sourced from session_prs (append-only historical table) so older sessions
-  // keep their badges even after later workouts set higher records.
-  const [sessionPrMap, setSessionPrMap] = useState<Record<string, number>>({});
+  // Set of "exerciseIndex:setIndex" strings for every set that was a PR when
+  // it was logged. Sourced from session_prs (append-only) so historical badges
+  // are permanent even after future workouts set higher records.
+  const [sessionPrSet, setSessionPrSet] = useState<Set<string>>(new Set());
   const [prsLoaded, setPrsLoaded] = useState(false);
 
   const session: WorkoutSession | undefined = useMemo(() => {
@@ -84,16 +81,17 @@ export default function WorkoutDetailScreen() {
   // ── Fetch session PRs after session is available ──────────────────────────
   // Uses /prs/session/:id (append-only historical log) so badges are permanent
   // even when future workouts set higher records for the same exercise.
+  // Each row has exerciseIndex + setIndex so we can badge exactly the right sets.
   useEffect(() => {
     if (!session || prsLoaded) return;
     socialFetch(`/prs/session/${session.id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: { prs: Array<{ exerciseName: string; estimatedOneRm: number }> }) => {
-        const map: Record<string, number> = {};
+      .then((data: { prs: Array<{ exerciseIndex: number; setIndex: number }> }) => {
+        const s = new Set<string>();
         for (const p of data.prs ?? []) {
-          map[p.exerciseName] = p.estimatedOneRm;
+          s.add(`${p.exerciseIndex}:${p.setIndex}`);
         }
-        setSessionPrMap(map);
+        setSessionPrSet(s);
         setPrsLoaded(true);
       })
       .catch(() => {
@@ -103,14 +101,11 @@ export default function WorkoutDetailScreen() {
   }, [session, prsLoaded]);
 
   const isPrSet = useCallback(
-    (exerciseName: string, weight: number, reps: number): boolean => {
-      if (!prsLoaded || weight <= 0 || reps <= 0) return false;
-      const sessionPrOneRm = sessionPrMap[exerciseName];
-      if (sessionPrOneRm == null) return false;
-      // Show badge on the set(s) whose Epley 1RM matches this session's recorded PR
-      return Math.abs(epley1RM(weight, reps) - sessionPrOneRm) < 0.1;
+    (exIdx: number, setIdx: number): boolean => {
+      if (!prsLoaded) return false;
+      return sessionPrSet.has(`${exIdx}:${setIdx}`);
     },
-    [sessionPrMap, prsLoaded],
+    [sessionPrSet, prsLoaded],
   );
 
   const openRestEdit = useCallback(
@@ -216,7 +211,7 @@ export default function WorkoutDetailScreen() {
               </View>
 
               {ex.sets.map((s, si) => {
-                const isPr = isPrSet(ex.name, s.weight, s.reps);
+                const isPr = isPrSet(exIdx, si);
                 return (
                   <Pressable
                     key={si}

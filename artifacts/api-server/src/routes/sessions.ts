@@ -81,72 +81,96 @@ router.post("/sessions/workout", optionalAuth, requireOwnerIfAuthenticated((req)
     .returning();
 
   // ── PR Detection ────────────────────────────────────────────────────────────
+  // Process sets in log order with a rolling best per exercise so that every set
+  // that was a new record *at the time it was logged* gets a session_prs entry.
+  // E.g. if stored best is 80 lbs and the user does 85→90→95, all three sets
+  // are PRs and each gets its own row with (exerciseIndex, setIndex) coordinates.
   const newPrs: string[] = [];
   try {
     // drizzle-zod widens some fields to string|string[]; narrow to string for eq() calls.
     const prUserId: string = Array.isArray(data.userId) ? data.userId[0]! : (data.userId as string);
-    type SetEntry = { weight: number; reps: number };
+    type SetEntry = { weight: number; reps: number; restSeconds?: number };
     type ExEntry = { name: string; category: string; sets: SetEntry[] };
     const exerciseLog = (data.exerciseLogJson ?? []) as ExEntry[];
 
     if (Array.isArray(exerciseLog) && exerciseLog.length > 0) {
-      // Find best Epley 1RM per exercise in this session
-      const sessionBest: Record<string, { weight: number; reps: number; oneRm: number }> = {};
-      for (const ex of exerciseLog) {
-        if (!ex.name) continue;
-        for (const s of ex.sets) {
-          if (s.weight > 0 && s.reps > 0) {
-            const oneRm = s.weight * (1 + s.reps / 30);
-            const cur = sessionBest[ex.name];
-            if (!cur || oneRm > cur.oneRm) {
-              sessionBest[ex.name] = { weight: s.weight, reps: s.reps, oneRm };
-            }
-          }
-        }
-      }
+      const exerciseNames = [...new Set(exerciseLog.filter((e) => e.name).map((e) => e.name))];
 
-      const exerciseNames = Object.keys(sessionBest);
       if (exerciseNames.length > 0) {
+        // Load existing all-time bests as the baseline for rolling comparison.
         const existing = await db
-          .select({ exerciseName: personalRecords.exerciseName, estimatedOneRm: personalRecords.estimatedOneRm })
+          .select({
+            exerciseName: personalRecords.exerciseName,
+            estimatedOneRm: personalRecords.estimatedOneRm,
+          })
           .from(personalRecords)
           .where(and(eq(personalRecords.userId, prUserId), inArray(personalRecords.exerciseName, exerciseNames)));
 
-        const existingMap: Record<string, number> = {};
-        for (const r of existing) existingMap[r.exerciseName] = r.estimatedOneRm;
+        // rollingBest: tracks the current best within this session (seeded from DB).
+        // storedBest: the pre-session values; used to decide INSERT vs UPDATE later.
+        const rollingBest: Record<string, number> = {};
+        const storedBest: Record<string, number> = {};
+        for (const r of existing) {
+          rollingBest[r.exerciseName] = r.estimatedOneRm;
+          storedBest[r.exerciseName] = r.estimatedOneRm;
+        }
 
-        for (const [name, best] of Object.entries(sessionBest)) {
-          if (best.oneRm > (existingMap[name] ?? -1)) {
-            // Insert or update personal_records (current-best, one row per exercise)
-            if (existingMap[name] !== undefined) {
-              await db
-                .update(personalRecords)
-                .set({ weightLbs: best.weight, reps: best.reps, estimatedOneRm: best.oneRm, date: data.date, sessionId: rows[0].id })
-                .where(and(eq(personalRecords.userId, prUserId), eq(personalRecords.exerciseName, name)));
-            } else {
-              await db.insert(personalRecords).values({
-                userId: prUserId,
-                exerciseName: name,
-                weightLbs: best.weight,
-                reps: best.reps,
-                estimatedOneRm: best.oneRm,
-                date: data.date,
-                sessionId: rows[0].id,
-              });
+        // finalBest: best achieved in this session (may span multiple progressive PRs).
+        const finalBest: Record<string, { weight: number; reps: number; oneRm: number }> = {};
+        const prExerciseNames = new Set<string>();
+
+        for (let exIdx = 0; exIdx < exerciseLog.length; exIdx++) {
+          const ex = exerciseLog[exIdx];
+          if (!ex.name) continue;
+
+          for (let setIdx = 0; setIdx < ex.sets.length; setIdx++) {
+            const s = ex.sets[setIdx];
+            if (s.weight > 0 && s.reps > 0) {
+              const oneRm = s.weight * (1 + s.reps / 30);
+              if (oneRm > (rollingBest[ex.name] ?? -1)) {
+                // This set beat every previous set (both stored and earlier in session).
+                rollingBest[ex.name] = oneRm;
+                finalBest[ex.name] = { weight: s.weight, reps: s.reps, oneRm };
+                prExerciseNames.add(ex.name);
+
+                // Append one row per PR-achieving set with exact set coordinates.
+                await db.insert(sessionPrs).values({
+                  sessionId: rows[0].id,
+                  userId: prUserId,
+                  exerciseName: ex.name,
+                  exerciseIndex: exIdx,
+                  setIndex: setIdx,
+                  weightLbs: s.weight,
+                  reps: s.reps,
+                  estimatedOneRm: oneRm,
+                  date: data.date,
+                });
+              }
             }
-            // Append to historical session_prs log (append-only, never overwritten)
-            await db.insert(sessionPrs).values({
-              sessionId: rows[0].id,
+          }
+        }
+
+        // Update personal_records with the final (highest) best per exercise.
+        for (const [name, best] of Object.entries(finalBest)) {
+          if (storedBest[name] !== undefined) {
+            await db
+              .update(personalRecords)
+              .set({ weightLbs: best.weight, reps: best.reps, estimatedOneRm: best.oneRm, date: data.date, sessionId: rows[0].id })
+              .where(and(eq(personalRecords.userId, prUserId), eq(personalRecords.exerciseName, name)));
+          } else {
+            await db.insert(personalRecords).values({
               userId: prUserId,
               exerciseName: name,
               weightLbs: best.weight,
               reps: best.reps,
               estimatedOneRm: best.oneRm,
               date: data.date,
+              sessionId: rows[0].id,
             });
-            newPrs.push(name);
           }
         }
+
+        newPrs.push(...prExerciseNames);
       }
     }
   } catch (prErr) {
