@@ -48,6 +48,7 @@ export const challenges = pgTable("challenges", {
   unit: text("unit").notNull(),
   deadline: text("deadline").notNull(),
   status: text("status").notNull().default("active"),
+  deadlineNotifiedAt: timestamp("deadline_notified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

@@ -1,27 +1,26 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, challenges, challengeParticipants, users } from "@workspace/db";
 import { sendPushNotification } from "./push";
 import { logger } from "./logger";
 
 export async function runChallengeDeadlineCheck(): Promise<void> {
   try {
-    // Find challenges whose deadline is between 24 and 25 hours from now
+    // True 24–25h timestamp window so each challenge is only caught in one hourly run
     const now = new Date();
     const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const in25h = new Date(now.getTime() + 25 * 60 * 60 * 1000);
 
-    const windowStart = in24h.toISOString().slice(0, 10);
-    const windowEnd = in25h.toISOString().slice(0, 10);
-
-    // Only alert for challenges expiring exactly "tomorrow" (date match)
+    // deadline is stored as text "YYYY-MM-DD"; cast to date for comparison.
+    // Also filter to challenges that have never been notified (deadline_notified_at IS NULL)
+    // so the hourly job never fires twice for the same challenge.
     const upcomingChallenges = await db
       .select({ id: challenges.id, title: challenges.title, deadline: challenges.deadline })
       .from(challenges)
       .where(
         and(
           eq(challenges.status, "active"),
-          sql`${challenges.deadline} >= ${windowStart}`,
-          sql`${challenges.deadline} <= ${windowEnd}`,
+          isNull(challenges.deadlineNotifiedAt),
+          sql`${challenges.deadline}::date BETWEEN ${in24h.toISOString()}::timestamptz::date AND ${in25h.toISOString()}::timestamptz::date`,
         ),
       );
 
@@ -29,12 +28,18 @@ export async function runChallengeDeadlineCheck(): Promise<void> {
 
     const challengeIds = upcomingChallenges.map((c) => c.id);
 
+    // Mark all matched challenges as notified immediately (before sending)
+    // to prevent a second concurrent job run from double-sending.
+    await db
+      .update(challenges)
+      .set({ deadlineNotifiedAt: new Date() })
+      .where(inArray(challenges.id, challengeIds));
+
     // Get all accepted participants with push tokens
     const participants = await db
       .select({
         challengeId: challengeParticipants.challengeId,
         expoPushToken: users.expoPushToken,
-        userName: users.name,
       })
       .from(challengeParticipants)
       .innerJoin(users, eq(challengeParticipants.userId, users.id))

@@ -9,6 +9,7 @@ import socialRouter from "./social";
 import storageRouter from "./storage";
 import routinesRouter from "./routines";
 import plansRouter from "./plans";
+import internalRouter from "./internal";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(socialRouter);
 router.use(storageRouter);
 router.use(routinesRouter);
 router.use(plansRouter);
+router.use(internalRouter);
 
 export default router;

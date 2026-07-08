@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import { Platform } from "react-native";
+import { useAuth } from "@clerk/expo";
 import { useApp } from "@/context/AppContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
@@ -27,6 +28,7 @@ Notifications.setNotificationHandler({
  */
 export function usePushNotifications() {
   const { state } = useApp();
+  const { getToken } = useAuth();
   const registeredRef = useRef(false);
 
   useEffect(() => {
@@ -60,10 +62,15 @@ export function usePushNotifications() {
         const tokenData = await Notifications.getExpoPushTokenAsync();
         const expoPushToken = tokenData.data;
 
-        // Register token with the server
+        const authToken = await getToken();
+
+        // Register token with the server (authenticated)
         const res = await fetch(`${API_BASE}/api/users/${userId}/push-token`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
           body: JSON.stringify({ expoPushToken }),
         });
 
