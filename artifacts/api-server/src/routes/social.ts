@@ -19,6 +19,7 @@ import {
 import { requireAuth } from "../middlewares/requireAuth";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { setObjectAclPolicy } from "../lib/objectAcl";
+import { sendPushNotification } from "../lib/push";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -43,6 +44,60 @@ async function setPublicAcl(url: string, ownerId: string, log: { error: (obj: ob
 }
 
 const router = Router();
+
+/** Look up actor name + recipient push token then fire a push — fire-and-forget, never throws. */
+async function fireNotificationPush(
+  recipientId: string,
+  actorId: string,
+  notifType: string,
+  extra: Record<string, string> = {},
+): Promise<void> {
+  try {
+    const [[actor], [recipient]] = await Promise.all([
+      db.select({ name: users.name }).from(users).where(eq(users.id, actorId)).limit(1),
+      db.select({ expoPushToken: users.expoPushToken }).from(users).where(eq(users.id, recipientId)).limit(1),
+    ]);
+    if (!recipient?.expoPushToken) return;
+
+    const actorName = actor?.name ?? "Someone";
+    let title: string;
+    let body: string;
+
+    switch (notifType) {
+      case "like":
+        title = "❤️ New like";
+        body = `${actorName} liked your post`;
+        break;
+      case "comment":
+        title = "💬 New comment";
+        body = extra.commentText ? `${actorName}: "${extra.commentText}"` : `${actorName} commented on your post`;
+        break;
+      case "follow":
+        title = "🏃 New follower";
+        body = `${actorName} started following you`;
+        break;
+      case "invite":
+        title = "🏋️ Workout invite";
+        body = `${actorName} invited you to a workout`;
+        break;
+      case "invite_response":
+        title = "📅 Invite response";
+        body = `${actorName} responded to your workout invite`;
+        break;
+      default:
+        return;
+    }
+
+    void sendPushNotification({
+      token: recipient.expoPushToken,
+      title,
+      body,
+      data: { type: notifType, ...extra },
+    });
+  } catch {
+    // Never let push failures affect the HTTP response
+  }
+}
 
 async function isConnected(userId: string, otherId: string): Promise<boolean> {
   const [row] = await db
@@ -208,6 +263,7 @@ router.post("/posts/:id/like", requireAuth, async (req, res) => {
     await db
       .insert(notifications)
       .values({ recipientId: post.userId, actorId: userId, type: "like", postId });
+    void fireNotificationPush(post.userId, userId, "like", { postId });
   }
 
   res.status(204).send();
@@ -285,6 +341,7 @@ router.post("/posts/:id/comments", requireAuth, async (req, res) => {
     .limit(1);
 
   if (post.userId !== userId) {
+    const snippet = parsed.data.content.slice(0, 100);
     await db
       .insert(notifications)
       .values({
@@ -292,8 +349,9 @@ router.post("/posts/:id/comments", requireAuth, async (req, res) => {
         actorId: userId,
         type: "comment",
         postId,
-        commentText: parsed.data.content.slice(0, 100),
+        commentText: snippet,
       });
+    void fireNotificationPush(post.userId, userId, "comment", { postId, commentText: snippet });
   }
 
   req.log.info({ commentId: comment.id, postId, userId }, "comment created");
@@ -360,6 +418,7 @@ router.post("/follows", requireAuth, async (req, res) => {
     await db
       .insert(notifications)
       .values({ recipientId: targetId, actorId: userId, type: "follow" });
+    void fireNotificationPush(targetId, userId, "follow");
   }
 
   res.status(204).send();
@@ -819,6 +878,7 @@ router.post("/invites", requireAuth, async (req, res) => {
     .returning();
 
   await db.insert(notifications).values({ recipientId: receiverId, actorId: userId, type: "invite" });
+  void fireNotificationPush(receiverId, userId, "invite", { inviteId: invite.id });
 
   req.log.info({ inviteId: invite.id, senderId: userId, receiverId }, "workout invite created");
   res.status(201).json(invite);
@@ -883,6 +943,7 @@ router.patch("/invites/:id", requireAuth, async (req, res) => {
     .returning();
 
   await db.insert(notifications).values({ recipientId: invite.senderId, actorId: userId, type: "invite_response" });
+  void fireNotificationPush(invite.senderId, userId, "invite_response", { inviteId });
 
   req.log.info({ inviteId, status: parsed.data.status, userId }, "workout invite responded");
   res.json(updated);

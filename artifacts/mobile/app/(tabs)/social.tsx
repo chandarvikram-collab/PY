@@ -27,6 +27,7 @@ import { useRouter } from "expo-router";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import type { AppNotification, Comment, DiscoverUser, Friend, InviteStatus, Post, WorkoutInvite } from "@/context/AppContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
@@ -742,6 +743,9 @@ export default function SocialScreen() {
   const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
   const router = useRouter();
+
+  // Request push permissions in social context (not on app launch)
+  usePushNotifications();
   const {
     state,
     likePost,

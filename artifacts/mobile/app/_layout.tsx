@@ -7,6 +7,7 @@ import {
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
+import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
@@ -211,6 +212,38 @@ function OnboardingGate() {
   return null;
 }
 
+function NotificationTapHandler() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, string> | undefined;
+      if (!data?.type) return;
+
+      switch (data.type) {
+        case "like":
+        case "comment":
+        case "follow":
+          router.push("/(tabs)/social");
+          break;
+        case "invite":
+        case "invite_response":
+          router.push("/(tabs)/profile");
+          break;
+        case "challenge_deadline":
+          router.push("/(tabs)/challenges");
+          break;
+        default:
+          break;
+      }
+    });
+
+    return () => sub.remove();
+  }, [router]);
+
+  return null;
+}
+
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -278,6 +311,7 @@ export default function RootLayout() {
               <AppProvider>
                 <FirstLoginHandler />
                 <OnboardingGate />
+                <NotificationTapHandler />
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <KeyboardProvider>
                     <RootLayoutNav />

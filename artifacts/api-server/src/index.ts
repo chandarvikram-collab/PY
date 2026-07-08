@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { runChallengeDeadlineCheck } from "./lib/challengeDeadlineJob";
 
 const rawPort = process.env["PORT"];
 
@@ -22,4 +23,11 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  // Run challenge deadline checks every hour
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  runChallengeDeadlineCheck().catch(() => {});
+  setInterval(() => {
+    runChallengeDeadlineCheck().catch(() => {});
+  }, ONE_HOUR_MS);
 });

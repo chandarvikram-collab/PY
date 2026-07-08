@@ -55,6 +55,19 @@ router.patch("/users/:id", requireAuth, requireOwner((req) => req.params.id), as
   res.json(row);
 });
 
+const pushTokenSchema = z.object({ expoPushToken: z.string().min(1) });
+
+router.patch("/users/:id/push-token", requireAuth, requireOwner((req) => req.params.id), async (req, res) => {
+  const id = req.params.id as string;
+  const parsed = pushTokenSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues });
+    return;
+  }
+  await db.update(users).set({ expoPushToken: parsed.data.expoPushToken }).where(eq(users.id, id));
+  res.status(204).send();
+});
+
 router.post("/users/clerk-link", async (req, res) => {
   const { clerkId, localUuid, firstName, lastName, imageUrl } = req.body as {
     clerkId?: string;
