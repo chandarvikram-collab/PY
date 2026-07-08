@@ -4,8 +4,10 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Dimensions,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -16,10 +18,19 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth as useClerkAuth } from "@clerk/expo";
+import * as ImagePicker from "expo-image-picker";
+import { LineChart } from "react-native-chart-kit";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/lib/auth";
+
+const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : "";
+
+const CHART_WIDTH = Dimensions.get("window").width - 36;
 
 const ACTIVITY_OPTIONS = ["Strength Training", "Running", "Cycling", "Yoga", "HIIT", "Swimming", "Climbing"];
 const AVAILABILITY_OPTIONS = ["Weekday Mornings", "Weekday Evenings", "Weekends", "Lunch Breaks"];
@@ -66,6 +77,9 @@ function MenuRow({ icon, label, onPress, danger, value }: { icon: string; label:
 
 type GoalField = { label: string; value: string; setValue: (v: string) => void; unit: string; color: string };
 
+type ProgressPhotoEntry = { id: string; date: string; imageUrl: string | null; weightKg: number; notes: string };
+type WeightEntry = { id: string; date: string; weightKg: number };
+
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -76,9 +90,93 @@ export default function ProfileScreen() {
   const [followingList, setFollowingList] = useState<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
   const { isAuthenticated, signOut } = useAuth();
+  const { getToken } = useClerkAuth();
+
+  // ── Progress tracking state ────────────────────────────────────────────────
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState<string | null>(null);
+  const [progressPhotosData, setProgressPhotosData] = useState<ProgressPhotoEntry[]>([]);
+  const [weightHistoryData, setWeightHistoryData] = useState<WeightEntry[]>([]);
+  const [showAddProgress, setShowAddProgress] = useState(false);
+  const [draftWeight, setDraftWeight] = useState("");
+  const [draftNotes, setDraftNotes] = useState("");
+  const [draftPhoto, setDraftPhoto] = useState<{ uri: string; contentType: string; name: string } | null>(null);
+  const [progressSubmitting, setProgressSubmitting] = useState(false);
+  const [progressSubmitError, setProgressSubmitError] = useState<string | null>(null);
   const [editingActivities, setEditingActivities] = useState(false);
   const [draftActivities, setDraftActivities] = useState<string[]>(userProfile.activities ?? []);
   const [draftAvailability, setDraftAvailability] = useState<string[]>(userProfile.availability ?? []);
+
+  // ── Progress fetch & submit ────────────────────────────────────────────────
+  async function fetchProgressEntries() {
+    setProgressLoading(true);
+    setProgressError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_BASE}/api/progress/entries`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Failed to fetch");
+      const data = await res.json();
+      setProgressPhotosData(data.progressPhotos ?? []);
+      setWeightHistoryData(data.weightHistory ?? []);
+    } catch {
+      setProgressError("Could not load progress data");
+    } finally {
+      setProgressLoading(false);
+    }
+  }
+
+  async function submitProgressEntry() {
+    const lbs = parseFloat(draftWeight);
+    if (!draftWeight || isNaN(lbs) || lbs <= 0) {
+      setProgressSubmitError("Please enter a valid weight");
+      return;
+    }
+    setProgressSubmitting(true);
+    setProgressSubmitError(null);
+    try {
+      const token = await getToken();
+      const today = new Date().toISOString().slice(0, 10);
+      const weightKg = lbs / 2.20462;
+      const formData = new FormData();
+      formData.append("date", today);
+      formData.append("weightKg", String(weightKg));
+      formData.append("notes", draftNotes);
+      if (draftPhoto) {
+        formData.append("file", { uri: draftPhoto.uri, type: draftPhoto.contentType, name: draftPhoto.name } as any);
+      }
+      const res = await fetch(`${API_BASE}/api/progress/entries`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      setShowAddProgress(false);
+      setDraftWeight("");
+      setDraftNotes("");
+      setDraftPhoto(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await fetchProgressEntries();
+    } catch {
+      setProgressSubmitError("Could not save entry. Please try again.");
+    } finally {
+      setProgressSubmitting(false);
+    }
+  }
+
+  async function pickProgressPhoto() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [3, 4],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      setDraftPhoto({ uri: asset.uri, contentType: asset.mimeType ?? "image/jpeg", name: asset.fileName ?? "progress.jpg" });
+    }
+  }
 
   function openEditActivities() {
     setDraftActivities(userProfile.activities ?? []);
@@ -105,12 +203,41 @@ export default function ProfileScreen() {
   }
 
   useEffect(() => {
+    if (isAuthenticated) {
+      fetchProgressEntries();
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
     if (!showFriends) return;
     setFollowingLoading(true);
     fetchFollowing()
       .then(setFollowingList)
       .finally(() => setFollowingLoading(false));
   }, [showFriends]);
+
+  // ── Weight chart data ──────────────────────────────────────────────────────
+  const chartData = [...weightHistoryData]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-12);
+
+  const hasEnoughChartData = chartData.length >= 2;
+
+  const labelStep = chartData.length > 6 ? Math.ceil(chartData.length / 6) : 1;
+  const lineChartData = {
+    labels: chartData.map((w, i) =>
+      i % labelStep === 0 || i === chartData.length - 1 ? w.date.slice(5) : ""
+    ),
+    datasets: [
+      {
+        data: chartData.length > 0
+          ? chartData.map((w) => parseFloat((w.weightKg * 2.20462).toFixed(1)))
+          : [0],
+        color: (opacity = 1) => colors.primary,
+        strokeWidth: 2,
+      },
+    ],
+  };
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
@@ -442,6 +569,103 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      {/* ── Progress ── */}
+      <View style={[styles.section, { paddingHorizontal: 18 }]}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>Progress</Text>
+          <Pressable
+            onPress={() => { setShowAddProgress(true); setProgressSubmitError(null); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            style={[styles.pillBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+          >
+            <Feather name="plus" size={13} color="#fff" />
+            <Text style={[styles.pillBtnText, { color: "#fff" }]}>Add Entry</Text>
+          </Pressable>
+        </View>
+
+        {progressLoading ? (
+          <View style={{ alignItems: "center", paddingVertical: 30 }}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        ) : progressError ? (
+          <View style={{ alignItems: "center", paddingVertical: 24, gap: 10 }}>
+            <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13 }}>{progressError}</Text>
+            <Pressable onPress={fetchProgressEntries} style={[styles.pillBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Text style={[styles.pillBtnText, { color: colors.mutedForeground }]}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : weightHistoryData.length === 0 ? (
+          <View style={[styles.goalsCard, { backgroundColor: colors.card, borderColor: colors.border, alignItems: "center", paddingVertical: 32, gap: 10 }]}>
+            <Feather name="trending-up" size={32} color={colors.mutedForeground} />
+            <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>No entries yet</Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, textAlign: "center", paddingHorizontal: 20 }}>
+              Add your first weight entry to start tracking your progress
+            </Text>
+          </View>
+        ) : (
+          <>
+            {hasEnoughChartData && (
+              <View style={[styles.goalsCard, { backgroundColor: colors.card, borderColor: colors.border, overflow: "hidden", marginBottom: 12 }]}>
+                <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, paddingTop: 12, paddingLeft: 16, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  Weight (lbs)
+                </Text>
+                <LineChart
+                  data={lineChartData}
+                  width={CHART_WIDTH}
+                  height={180}
+                  chartConfig={{
+                    backgroundColor: colors.card,
+                    backgroundGradientFrom: colors.card,
+                    backgroundGradientTo: colors.card,
+                    decimalPlaces: 0,
+                    color: () => colors.primary,
+                    labelColor: () => colors.mutedForeground,
+                    propsForDots: { r: "4", strokeWidth: "2", stroke: colors.primary },
+                    propsForBackgroundLines: { stroke: colors.border, strokeWidth: 1 },
+                  }}
+                  bezier
+                  style={{ marginLeft: -8 }}
+                  withInnerLines
+                  withOuterLines={false}
+                />
+              </View>
+            )}
+
+            <View style={[styles.goalsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {progressPhotosData.slice(0, 6).map((entry, i) => (
+                <View
+                  key={entry.id}
+                  style={[
+                    styles.progressEntryRow,
+                    { borderBottomWidth: i < Math.min(progressPhotosData.length, 6) - 1 ? 1 : 0, borderBottomColor: colors.border },
+                  ]}
+                >
+                  {entry.imageUrl ? (
+                    <Image source={{ uri: entry.imageUrl }} style={styles.progressThumb} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.progressThumb, { backgroundColor: colors.muted, alignItems: "center", justifyContent: "center" }]}>
+                      <Feather name="image" size={16} color={colors.mutedForeground} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: colors.foreground }}>
+                      {(entry.weightKg * 2.20462).toFixed(1)} lbs
+                    </Text>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground, marginTop: 2 }}>
+                      {entry.date}
+                    </Text>
+                    {entry.notes ? (
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground, marginTop: 2 }} numberOfLines={1}>
+                        {entry.notes}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+      </View>
+
       {/* ── AI Plan ── */}
       <View style={[styles.section, { paddingHorizontal: 18 }]}>
         <Pressable
@@ -548,6 +772,106 @@ export default function ProfileScreen() {
         </View>
       </View>
     </Modal>
+
+    {/* ── Add Progress Entry Modal ── */}
+    <Modal
+      visible={showAddProgress}
+      transparent
+      animationType="slide"
+      onRequestClose={() => { if (!progressSubmitting) setShowAddProgress(false); }}
+    >
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+        <Pressable style={styles.sheetOverlay} onPress={() => { if (!progressSubmitting) setShowAddProgress(false); }} />
+        <View style={[styles.addProgressSheet, { backgroundColor: colors.card }]}>
+          <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+          <View style={styles.sheetHeaderRow}>
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Log Progress</Text>
+            <Pressable onPress={() => { if (!progressSubmitting) setShowAddProgress(false); }} hitSlop={10}>
+              <Feather name="x" size={20} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 32, gap: 16 }} keyboardShouldPersistTaps="handled">
+            {/* Weight input */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Weight (lbs) *
+              </Text>
+              <TextInput
+                style={[styles.progressInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.muted }]}
+                value={draftWeight}
+                onChangeText={setDraftWeight}
+                keyboardType="decimal-pad"
+                placeholder="e.g. 175.5"
+                placeholderTextColor={colors.mutedForeground}
+                selectTextOnFocus
+              />
+            </View>
+
+            {/* Notes input */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Notes (optional)
+              </Text>
+              <TextInput
+                style={[styles.progressInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.muted, height: 80, textAlignVertical: "top" }]}
+                value={draftNotes}
+                onChangeText={setDraftNotes}
+                placeholder="How are you feeling?"
+                placeholderTextColor={colors.mutedForeground}
+                multiline
+              />
+            </View>
+
+            {/* Photo picker */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Progress Photo (optional)
+              </Text>
+              <Pressable
+                onPress={pickProgressPhoto}
+                style={[styles.photoPickerBox, { borderColor: colors.border, backgroundColor: colors.muted }]}
+              >
+                {draftPhoto ? (
+                  <Image source={{ uri: draftPhoto.uri }} style={{ width: "100%", height: "100%", borderRadius: 12 }} resizeMode="cover" />
+                ) : (
+                  <View style={{ alignItems: "center", gap: 8 }}>
+                    <Feather name="camera" size={28} color={colors.mutedForeground} />
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: colors.mutedForeground }}>Tap to add a photo</Text>
+                  </View>
+                )}
+              </Pressable>
+              {draftPhoto && (
+                <Pressable onPress={() => setDraftPhoto(null)}>
+                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#ef4444" }}>Remove photo</Text>
+                </Pressable>
+              )}
+            </View>
+
+            {progressSubmitError ? (
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#ef4444", textAlign: "center" }}>
+                {progressSubmitError}
+              </Text>
+            ) : null}
+
+            <Pressable
+              onPress={submitProgressEntry}
+              disabled={progressSubmitting}
+              style={({ pressed }) => [
+                styles.aiPlanCard,
+                { backgroundColor: colors.primary, opacity: pressed || progressSubmitting ? 0.7 : 1, justifyContent: "center" },
+              ]}
+            >
+              {progressSubmitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.aiPlanTitle}>Save Entry</Text>
+              )}
+            </Pressable>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
     </>
   );
 }
@@ -593,6 +917,12 @@ const styles = StyleSheet.create({
   menuIconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   menuLabel: { fontSize: 15, fontFamily: "Inter_500Medium" },
   menuValue: { fontSize: 13, fontFamily: "Inter_400Regular", marginRight: 4 },
+  progressEntryRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14 },
+  progressThumb: { width: 52, height: 52, borderRadius: 10 },
+  addProgressSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "85%", paddingTop: 10 },
+  sheetOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)" },
+  progressInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, fontFamily: "Inter_400Regular" },
+  photoPickerBox: { width: "100%", height: 160, borderRadius: 12, borderWidth: 1.5, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   version: { textAlign: "center", fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 8, marginBottom: 20 },
   friendsSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, maxHeight: "80%" },
   sheetHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 14 },

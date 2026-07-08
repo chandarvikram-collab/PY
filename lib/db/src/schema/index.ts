@@ -8,3 +8,4 @@ export * from "./food_analyses";
 export * from "./auth";
 export * from "./social";
 export * from "./routines";
+export * from "./progress";
