@@ -212,30 +212,42 @@ function OnboardingGate() {
   return null;
 }
 
+function routeNotification(router: ReturnType<typeof useRouter>, data: Record<string, string> | undefined) {
+  if (!data?.type) return;
+  switch (data.type) {
+    case "like":
+    case "comment":
+    case "follow":
+      router.push("/(tabs)/social");
+      break;
+    case "invite":
+    case "invite_response":
+      router.push("/(tabs)/profile");
+      break;
+    case "challenge_deadline":
+      router.push("/(tabs)/challenges");
+      break;
+    default:
+      break;
+  }
+}
+
 function NotificationTapHandler() {
   const router = useRouter();
 
   useEffect(() => {
+    // Handle cold-start taps (app was terminated when notification arrived)
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        const data = response.notification.request.content.data as Record<string, string> | undefined;
+        routeNotification(router, data);
+      }
+    });
+
+    // Handle taps while app is foregrounded or backgrounded
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as Record<string, string> | undefined;
-      if (!data?.type) return;
-
-      switch (data.type) {
-        case "like":
-        case "comment":
-        case "follow":
-          router.push("/(tabs)/social");
-          break;
-        case "invite":
-        case "invite_response":
-          router.push("/(tabs)/profile");
-          break;
-        case "challenge_deadline":
-          router.push("/(tabs)/challenges");
-          break;
-        default:
-          break;
-      }
+      routeNotification(router, data);
     });
 
     return () => sub.remove();
