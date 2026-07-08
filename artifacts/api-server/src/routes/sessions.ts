@@ -6,6 +6,7 @@ import {
   runSessions,
   users,
   personalRecords,
+  sessionPrs,
   insertWorkoutSessionSchema,
   insertRunSessionSchema,
 } from "@workspace/db";
@@ -82,6 +83,8 @@ router.post("/sessions/workout", optionalAuth, requireOwnerIfAuthenticated((req)
   // ── PR Detection ────────────────────────────────────────────────────────────
   const newPrs: string[] = [];
   try {
+    // drizzle-zod widens some fields to string|string[]; narrow to string for eq() calls.
+    const prUserId: string = Array.isArray(data.userId) ? data.userId[0]! : (data.userId as string);
     type SetEntry = { weight: number; reps: number };
     type ExEntry = { name: string; category: string; sets: SetEntry[] };
     const exerciseLog = (data.exerciseLogJson ?? []) as ExEntry[];
@@ -107,34 +110,40 @@ router.post("/sessions/workout", optionalAuth, requireOwnerIfAuthenticated((req)
         const existing = await db
           .select({ exerciseName: personalRecords.exerciseName, estimatedOneRm: personalRecords.estimatedOneRm })
           .from(personalRecords)
-          .where(and(eq(personalRecords.userId, data.userId), inArray(personalRecords.exerciseName, exerciseNames)));
+          .where(and(eq(personalRecords.userId, prUserId), inArray(personalRecords.exerciseName, exerciseNames)));
 
         const existingMap: Record<string, number> = {};
         for (const r of existing) existingMap[r.exerciseName] = r.estimatedOneRm;
 
         for (const [name, best] of Object.entries(sessionBest)) {
           if (best.oneRm > (existingMap[name] ?? -1)) {
-            await db
-              .insert(personalRecords)
-              .values({
-                userId: data.userId,
+            // Insert or update personal_records (current-best, one row per exercise)
+            if (existingMap[name] !== undefined) {
+              await db
+                .update(personalRecords)
+                .set({ weightLbs: best.weight, reps: best.reps, estimatedOneRm: best.oneRm, date: data.date, sessionId: rows[0].id })
+                .where(and(eq(personalRecords.userId, prUserId), eq(personalRecords.exerciseName, name)));
+            } else {
+              await db.insert(personalRecords).values({
+                userId: prUserId,
                 exerciseName: name,
                 weightLbs: best.weight,
                 reps: best.reps,
                 estimatedOneRm: best.oneRm,
                 date: data.date,
                 sessionId: rows[0].id,
-              })
-              .onConflictDoUpdate({
-                target: [personalRecords.userId, personalRecords.exerciseName],
-                set: {
-                  weightLbs: best.weight,
-                  reps: best.reps,
-                  estimatedOneRm: best.oneRm,
-                  date: data.date,
-                  sessionId: rows[0].id,
-                },
               });
+            }
+            // Append to historical session_prs log (append-only, never overwritten)
+            await db.insert(sessionPrs).values({
+              sessionId: rows[0].id,
+              userId: prUserId,
+              exerciseName: name,
+              weightLbs: best.weight,
+              reps: best.reps,
+              estimatedOneRm: best.oneRm,
+              date: data.date,
+            });
             newPrs.push(name);
           }
         }

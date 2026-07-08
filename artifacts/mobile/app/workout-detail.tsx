@@ -46,8 +46,10 @@ export default function WorkoutDetailScreen() {
   const [patchError, setPatchError] = useState<string | null>(null);
 
   // ── PR state ──────────────────────────────────────────────────────────────
-  // Maps exercise name → best estimated 1RM stored for that user
-  const [prMap, setPrMap] = useState<Record<string, number>>({});
+  // Maps exercise name → the estimated 1RM that was a PR in THIS session.
+  // Sourced from session_prs (append-only historical table) so older sessions
+  // keep their badges even after later workouts set higher records.
+  const [sessionPrMap, setSessionPrMap] = useState<Record<string, number>>({});
   const [prsLoaded, setPrsLoaded] = useState(false);
 
   const session: WorkoutSession | undefined = useMemo(() => {
@@ -79,21 +81,23 @@ export default function WorkoutDetailScreen() {
       });
   }, [id, session, updateWorkoutSession]);
 
-  // ── Fetch PRs after session is available ─────────────────────────────────
+  // ── Fetch session PRs after session is available ──────────────────────────
+  // Uses /prs/session/:id (append-only historical log) so badges are permanent
+  // even when future workouts set higher records for the same exercise.
   useEffect(() => {
     if (!session || prsLoaded) return;
-    socialFetch("/prs")
+    socialFetch(`/prs/session/${session.id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: { records: Array<{ exerciseName: string; estimatedOneRm: number }> }) => {
+      .then((data: { prs: Array<{ exerciseName: string; estimatedOneRm: number }> }) => {
         const map: Record<string, number> = {};
-        for (const r of data.records ?? []) {
-          map[r.exerciseName] = r.estimatedOneRm;
+        for (const p of data.prs ?? []) {
+          map[p.exerciseName] = p.estimatedOneRm;
         }
-        setPrMap(map);
+        setSessionPrMap(map);
         setPrsLoaded(true);
       })
       .catch(() => {
-        // Silent fail — badges just won't appear
+        // Silent fail — badges simply won't appear; no error shown to user
         setPrsLoaded(true);
       });
   }, [session, prsLoaded]);
@@ -101,12 +105,12 @@ export default function WorkoutDetailScreen() {
   const isPrSet = useCallback(
     (exerciseName: string, weight: number, reps: number): boolean => {
       if (!prsLoaded || weight <= 0 || reps <= 0) return false;
-      const storedOneRm = prMap[exerciseName];
-      if (storedOneRm == null) return false;
-      const setOneRm = epley1RM(weight, reps);
-      return Math.abs(setOneRm - storedOneRm) < 0.1;
+      const sessionPrOneRm = sessionPrMap[exerciseName];
+      if (sessionPrOneRm == null) return false;
+      // Show badge on the set(s) whose Epley 1RM matches this session's recorded PR
+      return Math.abs(epley1RM(weight, reps) - sessionPrOneRm) < 0.1;
     },
-    [prMap, prsLoaded],
+    [sessionPrMap, prsLoaded],
   );
 
   const openRestEdit = useCallback(
