@@ -9,3 +9,4 @@ export * from "./auth";
 export * from "./social";
 export * from "./routines";
 export * from "./progress";
+export * from "./personal_records";

@@ -11,6 +11,7 @@ import routinesRouter from "./routines";
 import plansRouter from "./plans";
 import internalRouter from "./internal";
 import progressRouter from "./progress";
+import prsRouter from "./prs";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(routinesRouter);
 router.use(plansRouter);
 router.use(internalRouter);
 router.use(progressRouter);
+router.use(prsRouter);
 
 export default router;

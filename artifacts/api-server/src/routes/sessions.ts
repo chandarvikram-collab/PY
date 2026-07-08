@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { eq, desc, sql } from "drizzle-orm";
+import { and, eq, desc, inArray, sql } from "drizzle-orm";
 import {
   db,
   workoutSessions,
   runSessions,
   users,
+  personalRecords,
   insertWorkoutSessionSchema,
   insertRunSessionSchema,
 } from "@workspace/db";
@@ -78,8 +79,73 @@ router.post("/sessions/workout", optionalAuth, requireOwnerIfAuthenticated((req)
     .where(eq(users.id, data.userId))
     .returning();
 
-  req.log.info({ sessionId: rows[0].id }, "workout session saved");
-  res.status(201).json({ session: rows[0], user: updatedUser });
+  // ── PR Detection ────────────────────────────────────────────────────────────
+  const newPrs: string[] = [];
+  try {
+    type SetEntry = { weight: number; reps: number };
+    type ExEntry = { name: string; category: string; sets: SetEntry[] };
+    const exerciseLog = (data.exerciseLogJson ?? []) as ExEntry[];
+
+    if (Array.isArray(exerciseLog) && exerciseLog.length > 0) {
+      // Find best Epley 1RM per exercise in this session
+      const sessionBest: Record<string, { weight: number; reps: number; oneRm: number }> = {};
+      for (const ex of exerciseLog) {
+        if (!ex.name) continue;
+        for (const s of ex.sets) {
+          if (s.weight > 0 && s.reps > 0) {
+            const oneRm = s.weight * (1 + s.reps / 30);
+            const cur = sessionBest[ex.name];
+            if (!cur || oneRm > cur.oneRm) {
+              sessionBest[ex.name] = { weight: s.weight, reps: s.reps, oneRm };
+            }
+          }
+        }
+      }
+
+      const exerciseNames = Object.keys(sessionBest);
+      if (exerciseNames.length > 0) {
+        const existing = await db
+          .select({ exerciseName: personalRecords.exerciseName, estimatedOneRm: personalRecords.estimatedOneRm })
+          .from(personalRecords)
+          .where(and(eq(personalRecords.userId, data.userId), inArray(personalRecords.exerciseName, exerciseNames)));
+
+        const existingMap: Record<string, number> = {};
+        for (const r of existing) existingMap[r.exerciseName] = r.estimatedOneRm;
+
+        for (const [name, best] of Object.entries(sessionBest)) {
+          if (best.oneRm > (existingMap[name] ?? -1)) {
+            await db
+              .insert(personalRecords)
+              .values({
+                userId: data.userId,
+                exerciseName: name,
+                weightLbs: best.weight,
+                reps: best.reps,
+                estimatedOneRm: best.oneRm,
+                date: data.date,
+                sessionId: rows[0].id,
+              })
+              .onConflictDoUpdate({
+                target: [personalRecords.userId, personalRecords.exerciseName],
+                set: {
+                  weightLbs: best.weight,
+                  reps: best.reps,
+                  estimatedOneRm: best.oneRm,
+                  date: data.date,
+                  sessionId: rows[0].id,
+                },
+              });
+            newPrs.push(name);
+          }
+        }
+      }
+    }
+  } catch (prErr) {
+    req.log.warn({ prErr }, "PR detection failed — non-fatal");
+  }
+
+  req.log.info({ sessionId: rows[0].id, newPrs }, "workout session saved");
+  res.status(201).json({ session: rows[0], user: updatedUser, newPrs });
 });
 
 router.get("/sessions/workout/:userId", requireAuth, requireOwner((req) => req.params.userId), async (req, res) => {

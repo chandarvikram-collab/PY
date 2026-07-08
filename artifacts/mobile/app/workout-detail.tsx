@@ -26,6 +26,10 @@ function fmtDuration(secs: number) {
   return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
 }
 
+function epley1RM(weight: number, reps: number): number {
+  return weight * (1 + reps / 30);
+}
+
 export default function WorkoutDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -40,6 +44,11 @@ export default function WorkoutDetailScreen() {
   const [editSetIndex, setEditSetIndex] = useState(0);
   const [restDraft, setRestDraft] = useState("90");
   const [patchError, setPatchError] = useState<string | null>(null);
+
+  // ── PR state ──────────────────────────────────────────────────────────────
+  // Maps exercise name → best estimated 1RM stored for that user
+  const [prMap, setPrMap] = useState<Record<string, number>>({});
+  const [prsLoaded, setPrsLoaded] = useState(false);
 
   const session: WorkoutSession | undefined = useMemo(() => {
     return state.workoutHistory.find((w) => w.id === id);
@@ -69,6 +78,36 @@ export default function WorkoutDetailScreen() {
         setLoading(false);
       });
   }, [id, session, updateWorkoutSession]);
+
+  // ── Fetch PRs after session is available ─────────────────────────────────
+  useEffect(() => {
+    if (!session || prsLoaded) return;
+    socialFetch("/prs")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: { records: Array<{ exerciseName: string; estimatedOneRm: number }> }) => {
+        const map: Record<string, number> = {};
+        for (const r of data.records ?? []) {
+          map[r.exerciseName] = r.estimatedOneRm;
+        }
+        setPrMap(map);
+        setPrsLoaded(true);
+      })
+      .catch(() => {
+        // Silent fail — badges just won't appear
+        setPrsLoaded(true);
+      });
+  }, [session, prsLoaded]);
+
+  const isPrSet = useCallback(
+    (exerciseName: string, weight: number, reps: number): boolean => {
+      if (!prsLoaded || weight <= 0 || reps <= 0) return false;
+      const storedOneRm = prMap[exerciseName];
+      if (storedOneRm == null) return false;
+      const setOneRm = epley1RM(weight, reps);
+      return Math.abs(setOneRm - storedOneRm) < 0.1;
+    },
+    [prMap, prsLoaded],
+  );
 
   const openRestEdit = useCallback(
     (exIdx: number, setIdx: number, currentRest: number) => {
@@ -172,31 +211,41 @@ export default function WorkoutDetailScreen() {
                 </View>
               </View>
 
-              {ex.sets.map((s, si) => (
-                <Pressable
-                  key={si}
-                  onPress={() => openRestEdit(exIdx, si, s.restSeconds ?? 90)}
-                  style={({ pressed }) => [
-                    styles.setRow,
-                    {
-                      borderBottomColor: colors.border,
-                      borderBottomWidth: si < ex.sets.length - 1 ? 0.5 : 0,
-                      opacity: pressed ? 0.7 : 1,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.setNum, { color: colors.mutedForeground }]}>Set {si + 1}</Text>
-                  <Text style={[styles.setVal, { color: colors.foreground }]}>
-                    {s.weight} lbs × {s.reps}
-                  </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                    <Feather name="clock" size={12} color={colors.mutedForeground} />
-                    <Text style={[styles.restText, { color: colors.mutedForeground }]}>
-                      {s.restSeconds ?? 90}s
+              {ex.sets.map((s, si) => {
+                const isPr = isPrSet(ex.name, s.weight, s.reps);
+                return (
+                  <Pressable
+                    key={si}
+                    onPress={() => openRestEdit(exIdx, si, s.restSeconds ?? 90)}
+                    style={({ pressed }) => [
+                      styles.setRow,
+                      {
+                        borderBottomColor: colors.border,
+                        borderBottomWidth: si < ex.sets.length - 1 ? 0.5 : 0,
+                        opacity: pressed ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.setNum, { color: colors.mutedForeground }]}>Set {si + 1}</Text>
+                    <Text style={[styles.setVal, { color: colors.foreground }]}>
+                      {s.weight} lbs × {s.reps}
                     </Text>
-                  </View>
-                </Pressable>
-              ))}
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      {isPr && (
+                        <View style={[styles.prBadge, { backgroundColor: "#f59e0b22", borderColor: "#f59e0b" }]}>
+                          <Text style={styles.prBadgeText}>🏆 PR</Text>
+                        </View>
+                      )}
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Feather name="clock" size={12} color={colors.mutedForeground} />
+                        <Text style={[styles.restText, { color: colors.mutedForeground }]}>
+                          {s.restSeconds ?? 90}s
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
             </View>
           ))}
         </View>
@@ -264,6 +313,8 @@ const styles = StyleSheet.create({
   setNum: { width: 50, fontSize: 12, fontFamily: "Inter_500Medium" },
   setVal: { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
   restText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  prBadge: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2 },
+  prBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#f59e0b" },
   modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 24 },
   modalCard: { borderRadius: 20, padding: 24, width: "100%", maxWidth: 340 },
   modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold", textAlign: "center" },
