@@ -49,13 +49,14 @@ const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 const AUTH_INITIALIZED_KEY = "ironpace_auth_initialized";
 const SUNDAY_CHECKIN_PREFIX = "ironpace_sunday_checkin_";
 
-function getSundayCheckInKeyForToday(): string | null {
+function getSundayCheckInKeyForToday(userId: string | null | undefined): string | null {
+  if (!userId) return null;
   const now = new Date();
   if (now.getDay() !== 0) return null;
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
-  return `${SUNDAY_CHECKIN_PREFIX}${y}-${m}-${d}`;
+  return `${SUNDAY_CHECKIN_PREFIX}${userId}_${y}-${m}-${d}`;
 }
 
 function slugify(name: string): string {
@@ -238,27 +239,27 @@ function OnboardingGate() {
 function SundayCheckInModal() {
   const colors = useColors();
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, clerkUserId } = useAuth();
   const [visible, setVisible] = useState(false);
-  const checkedRef = useRef(false);
+  const checkedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (isLoading || !isAuthenticated || checkedRef.current) return;
-    checkedRef.current = true;
-    const key = getSundayCheckInKeyForToday();
+    if (isLoading || !isAuthenticated || !clerkUserId || checkedRef.current === clerkUserId) return;
+    checkedRef.current = clerkUserId;
+    const key = getSundayCheckInKeyForToday(clerkUserId);
     if (!key) return;
     AsyncStorage.getItem(key)
       .then((seen) => {
         if (!seen) setVisible(true);
       })
       .catch(() => {});
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading, clerkUserId]);
 
   const dismiss = useCallback(() => {
     setVisible(false);
-    const key = getSundayCheckInKeyForToday();
+    const key = getSundayCheckInKeyForToday(clerkUserId);
     if (key) AsyncStorage.setItem(key, "1").catch(() => {});
-  }, []);
+  }, [clerkUserId]);
 
   const editSchedule = useCallback(() => {
     dismiss();

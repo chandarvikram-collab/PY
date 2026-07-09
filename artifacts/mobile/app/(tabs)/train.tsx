@@ -134,9 +134,10 @@ export default function TrainScreen() {
             onPress={() => router.push("/calendar")}
             accessibilityLabel="Schedule"
             accessibilityHint="Plan your week ahead"
-            style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.scheduleBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
-            <Feather name="calendar" size={20} color={colors.primary} />
+            <Feather name="calendar" size={18} color={colors.primary} />
+            <Text style={[styles.scheduleBtnText, { color: colors.primary }]}>Schedule</Text>
           </Pressable>
           <Pressable
             onPress={() => router.push("/calories")}
@@ -409,6 +410,16 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 3, textTransform: "uppercase" },
   title: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5, marginTop: 2 },
   iconBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  scheduleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+  },
+  scheduleBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   tabToggle: { flexDirection: "row", borderRadius: 14, borderWidth: 1, padding: 4, marginBottom: 18, gap: 4 },
   tabBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10 },
   tabBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
