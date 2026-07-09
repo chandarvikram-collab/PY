@@ -5,6 +5,7 @@ import multer from "multer";
 import { requireAuth } from "../middlewares/requireAuth";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { canAccessObject, ObjectPermission, setObjectAclPolicy } from "../lib/objectAcl";
+import { getPublicOrigin } from "../lib/requestOrigin";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -69,7 +70,7 @@ router.post(
       const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
       await setObjectAclPolicy(objectFile, { owner: userId, visibility: "public" });
 
-      const servingUrl = `${req.protocol}://${req.get("host")}/api/storage${objectPath}`;
+      const servingUrl = `${getPublicOrigin(req)}/api/storage${objectPath}`;
       req.log.info({ objectPath, userId }, "media uploaded");
       res.status(201).json({ url: servingUrl, objectPath });
     } catch (error) {

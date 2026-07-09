@@ -394,6 +394,7 @@ type AppContextType = {
   refreshNotifications: () => Promise<void>;
   markNotificationsRead: () => Promise<void>;
   fetchDiscover: (userLevel: string, goals: string[], equipment: string[], activities?: string[], availability?: string[]) => Promise<DiscoverUser[]>;
+  searchUsers: (query: string) => Promise<DiscoverUser[]>;
   fetchFollowing: () => Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>>;
   isPremium: boolean;
   premiumStatusLoading: boolean;
@@ -685,63 +686,6 @@ function scheduleDrain(): void {
   }, DRAIN_DEBOUNCE_MS);
 }
 
-const SEED_FRIENDS: Friend[] = [
-  { id: "f1", name: "Marcus Chen", username: "mchen_lifts", initials: "MC", color: "#3b82f6", streak: 14, weeklyWorkouts: 5, rank: 1, totalPoints: 4820, isOnline: true },
-  { id: "f2", name: "Sofia Reyes", username: "sofia_runs", initials: "SR", color: "#8b5cf6", streak: 9, weeklyWorkouts: 4, rank: 2, totalPoints: 3940, isOnline: false },
-  { id: "f3", name: "Jake Williams", username: "jwilliams_fit", initials: "JW", color: "#f59e0b", streak: 21, weeklyWorkouts: 6, rank: 3, totalPoints: 3210, isOnline: true },
-  { id: "f4", name: "Priya Patel", username: "priya_active", initials: "PP", color: "#22c55e", streak: 5, weeklyWorkouts: 3, rank: 5, totalPoints: 2150, isOnline: false },
-];
-
-const SEED_CHALLENGES: Challenge[] = [
-  {
-    id: "c1", type: "steps", title: "10K Steps Daily", description: "Hit 10,000 steps every day for a week",
-    fromId: "f1", fromName: "Marcus Chen",
-    participants: [
-      { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 8420, target: 10000 },
-      { id: "f1", name: "Marcus", initials: "MC", color: "#3b82f6", progress: 9800, target: 10000 },
-    ],
-    myProgress: 8420, target: 10000, unit: "steps", deadline: "2026-06-28", status: "active", createdAt: "2026-06-21",
-  },
-  {
-    id: "c2", type: "lifting", title: "Bench Press PR", description: "Hit a new bench press max this week",
-    fromId: "f3", fromName: "Jake Williams",
-    participants: [
-      { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 185, target: 225 },
-      { id: "f3", name: "Jake", initials: "JW", color: "#f59e0b", progress: 210, target: 225 },
-    ],
-    myProgress: 185, target: 225, unit: "lbs", deadline: "2026-06-30", status: "active", createdAt: "2026-06-20",
-  },
-  {
-    id: "c3", type: "distance", title: "30km Run Week", description: "Run 30km total this week",
-    fromId: "f2", fromName: "Sofia Reyes",
-    participants: [
-      { id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 19.2, target: 30 },
-      { id: "f2", name: "Sofia", initials: "SR", color: "#8b5cf6", progress: 24.5, target: 30 },
-    ],
-    myProgress: 19.2, target: 30, unit: "km", deadline: "2026-06-27", status: "active", createdAt: "2026-06-22",
-  },
-  {
-    id: "c4", type: "streak", title: "7-Day Streak", description: "Train every day for 7 days straight",
-    fromId: null, fromName: null,
-    participants: [{ id: ME_ID, name: "You", initials: "ME", color: "#E8151B", progress: 5, target: 7 }],
-    myProgress: 5, target: 7, unit: "days", deadline: "2026-06-26", status: "active", createdAt: "2026-06-19",
-  },
-];
-
-const SEED_POSTS: Post[] = [
-  { id: "p1", userId: "f1", userName: "Marcus Chen", userInitials: "MC", userColor: "#3b82f6", type: "workout", content: "Push day DONE. Hit a new bench PR at 245lbs. The grind never stops.", likes: 24, comments: 5, liked: false, time: "2h ago", stats: { Volume: "18,400 lbs", Sets: "12", Duration: "58 min" } },
-  { id: "p2", userId: "f2", userName: "Sofia Reyes", userInitials: "SR", userColor: "#8b5cf6", type: "milestone", content: "Just crossed 500km run total for the year. Consistency is everything.", likes: 41, comments: 8, liked: true, time: "4h ago", stats: { Distance: "10.2 km", Pace: "5:18 /km", Calories: "612" } },
-  { id: "p3", userId: "f3", userName: "Jake Williams", userInitials: "JW", userColor: "#f59e0b", type: "achievement", content: "21 day workout streak achieved. Body is adapting, mind is locked in.", likes: 33, comments: 12, liked: false, time: "6h ago", stats: { Streak: "21 days", Workouts: "21", "Best Lift": "Squat 315 lbs" } },
-  { id: "p4", userId: "f4", userName: "Priya Patel", userInitials: "PP", userColor: "#22c55e", type: "workout", content: "Leg day is a sacred ritual. Squats, RDLs, lunges. Full send every time.", likes: 18, comments: 3, liked: false, time: "1d ago", stats: { Volume: "12,800 lbs", Sets: "10", Duration: "52 min" } },
-  { id: "p5", userId: "f1", userName: "Marcus Chen", userInitials: "MC", userColor: "#3b82f6", type: "challenge", content: "Just sent a 10K steps challenge to the crew. Who is stepping up?", likes: 9, comments: 6, liked: false, time: "1d ago", stats: {} },
-];
-
-const SEED_CHAT_THREADS: ChatThread[] = [
-  { id: "t1", friendId: "f1", friendName: "Marcus Chen", friendInitials: "MC", friendColor: "#3b82f6", lastMessage: "You in for legs tomorrow?", lastTime: "2h ago", unread: 1, isOnline: true, messages: [{ id: "m1", senderId: "f1", text: "Bro that PR was insane", time: "Yesterday 8:22 PM" }, { id: "m2", senderId: ME_ID, text: "Thanks man, been grinding for it", time: "Yesterday 8:25 PM" }, { id: "m3", senderId: "f1", text: "You in for legs tomorrow?", time: "2h ago" }] },
-  { id: "t2", friendId: "f2", friendName: "Sofia Reyes", friendInitials: "SR", friendColor: "#8b5cf6", lastMessage: "The 6am club is calling", lastTime: "5h ago", unread: 0, isOnline: false, messages: [{ id: "m4", senderId: "f2", text: "Morning run at 6?", time: "Yesterday 9:10 PM" }, { id: "m5", senderId: ME_ID, text: "I will try my best", time: "Yesterday 9:12 PM" }, { id: "m6", senderId: "f2", text: "The 6am club is calling", time: "5h ago" }] },
-  { id: "t3", friendId: "f3", friendName: "Jake Williams", friendInitials: "JW", friendColor: "#f59e0b", lastMessage: "GG on the challenge!", lastTime: "1d ago", unread: 0, isOnline: true, messages: [{ id: "m7", senderId: ME_ID, text: "Challenge accepted Jake", time: "1d ago" }, { id: "m8", senderId: "f3", text: "GG on the challenge!", time: "1d ago" }] },
-];
-
 const SEED_RUN_HISTORY: RunSession[] = [
   { id: "rh1", type: "run", date: "2026-06-23", distance: 8.2, duration: 2640, avgPace: "5:22", bestPace: "4:58", calories: 533, splits: [{ km: 1, pace: "5:41", elapsed: 341 }, { km: 2, pace: "5:28", elapsed: 669 }, { km: 3, pace: "5:15", elapsed: 984 }, { km: 4, pace: "5:10", elapsed: 1294 }, { km: 5, pace: "5:18", elapsed: 1612 }, { km: 6, pace: "5:22", elapsed: 1934 }, { km: 7, pace: "5:30", elapsed: 2264 }, { km: 8, pace: "4:58", elapsed: 2562 }] },
   { id: "rh2", type: "run", date: "2026-06-20", distance: 5.1, duration: 1710, avgPace: "5:35", bestPace: "5:12", calories: 332, splits: [{ km: 1, pace: "5:48", elapsed: 348 }, { km: 2, pace: "5:35", elapsed: 683 }, { km: 3, pace: "5:28", elapsed: 1011 }, { km: 4, pace: "5:22", elapsed: 1333 }, { km: 5, pace: "5:12", elapsed: 1645 }] },
@@ -762,8 +706,8 @@ const SEED_HISTORY: WorkoutSession[] = [
 
 const DEFAULT_PROFILE: UserProfile = {
   id: ME_ID,
-  name: "Alex Jordan",
-  username: "alexjordan",
+  name: "Athlete",
+  username: "athlete",
   level: "intermediate",
   streak: 5,
   totalWorkouts: 48,
@@ -806,7 +750,7 @@ const DEFAULT_STATE: AppState = {
   followingIds: [],
   challenges: [],
   posts: [],
-  chatThreads: SEED_CHAT_THREADS,
+  chatThreads: [],
   workoutInvites: [],
   runHistory: SEED_RUN_HISTORY,
   notifications: [],
@@ -1448,6 +1392,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const searchUsers = useCallback(async (query: string): Promise<DiscoverUser[]> => {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    try {
+      const r = await socialFetch(`/users/search?q=${encodeURIComponent(trimmed)}`);
+      if (!r.ok) return [];
+      const rows = (await r.json()) as Array<{
+        id: string;
+        name: string;
+        username: string;
+        imageUrl?: string | null;
+        level: string;
+        streak: number;
+        totalWorkouts: number;
+        totalPoints: number;
+      }>;
+      return rows.map((u) => ({
+        ...u,
+        activities: [],
+        availability: [],
+        sharedLevel: false,
+        sharedGoals: [],
+        sharedEquipment: [],
+        sharedActivities: [],
+        sharedAvailability: [],
+      }));
+    } catch {
+      return [];
+    }
+  }, []);
+
   const fetchFollowing = useCallback(async (): Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>> => {
     try {
       const r = await socialFetch("/follows/following");
@@ -1955,6 +1930,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         refreshNotifications,
         markNotificationsRead,
         fetchDiscover,
+        searchUsers,
         fetchFollowing,
         isPremium,
         premiumStatusLoading,

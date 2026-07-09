@@ -117,7 +117,7 @@ export default function ChallengesScreen() {
   const [showNew, setShowNew] = useState(false);
   const [limitError, setLimitError] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<"steps" | "distance" | "lifting" | "streak">("steps");
-  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   const [targetStr, setTargetStr] = useState("");
   const [titleStr, setTitleStr] = useState("");
 
@@ -125,37 +125,53 @@ export default function ChallengesScreen() {
   const active = challenges.filter((c) => c.status === "active");
   const pending = challenges.filter((c) => c.status === "pending");
 
+  function toggleFriendSelection(friendId: string) {
+    setSelectedFriendIds((prev) =>
+      prev.includes(friendId) ? prev.filter((id) => id !== friendId) : [...prev, friendId],
+    );
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
   function handleSend() {
     const typeInfo = CHALLENGE_TYPES.find((t) => t.id === selectedType)!;
     const target = parseFloat(targetStr) || typeInfo.defaultTarget;
-    const friend = friends.find((f) => f.id === selectedFriendId);
+    const selectedFriends = friends.filter((f) => selectedFriendIds.includes(f.id));
 
-    const newChallenge: Challenge = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
-      type: selectedType,
-      title: titleStr.trim() || `${typeInfo.label} Challenge`,
-      description: "",
-      fromId: null,
-      fromName: null,
-      participants: [
-        { id: "me", name: "You", initials: "ME", color: "#E8151B", progress: 0, target },
-        ...(friend ? [{ id: friend.id, name: friend.name, initials: friend.initials, color: friend.color, progress: 0, target }] : []),
-      ],
-      myProgress: 0,
-      target,
-      unit: typeInfo.unit,
-      deadline: (() => {
-        const d = new Date();
-        d.setDate(d.getDate() + 7);
-        return d.toISOString().split("T")[0];
-      })(),
-      status: "active",
-      createdAt: new Date().toISOString().split("T")[0],
-    };
+    const deadline = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      return d.toISOString().split("T")[0];
+    })();
+    const createdAt = new Date().toISOString().split("T")[0];
+    const title = titleStr.trim() || `${typeInfo.label} Challenge`;
 
-    sendChallenge(newChallenge);
+    // Send one challenge per selected friend so each gets their own invite,
+    // while showing a single combined card locally.
+    const recipients = selectedFriends.length > 0 ? selectedFriends : [null];
+    recipients.forEach((friend) => {
+      const newChallenge: Challenge = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+        type: selectedType,
+        title,
+        description: "",
+        fromId: null,
+        fromName: null,
+        participants: [
+          { id: "me", name: "You", initials: "ME", color: "#E8151B", progress: 0, target },
+          ...(friend ? [{ id: friend.id, name: friend.name, initials: friend.initials, color: friend.color, progress: 0, target }] : []),
+        ],
+        myProgress: 0,
+        target,
+        unit: typeInfo.unit,
+        deadline,
+        status: "active",
+        createdAt,
+      };
+      sendChallenge(newChallenge);
+    });
+
     setShowNew(false);
-    setSelectedFriendId(null);
+    setSelectedFriendIds([]);
     setTargetStr("");
     setTitleStr("");
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -251,8 +267,18 @@ export default function ChallengesScreen() {
 
       {/* New Challenge Sheet */}
       {showNew && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "flex-end", zIndex: 100 }]}>
-          <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
+        <View style={[StyleSheet.absoluteFill, { justifyContent: "flex-end", zIndex: 100 }]}>
+          <Pressable
+            style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.5)" }]}
+            onPress={() => setShowNew(false)}
+          />
+          <View
+            style={[
+              styles.sheet,
+              { backgroundColor: colors.card, height: "50%", paddingBottom: insets.bottom + 12 },
+            ]}
+          >
+            <View style={styles.sheetHandle} />
             <View style={styles.sheetHeader}>
               <Text style={[styles.sheetTitle, { color: colors.foreground }]}>New Challenge</Text>
               <Pressable onPress={() => setShowNew(false)}>
@@ -260,6 +286,7 @@ export default function ChallengesScreen() {
               </Pressable>
             </View>
 
+            <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
             <Text style={[styles.sheetLabel, { color: colors.mutedForeground }]}>Challenge Type</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: "row", gap: 8 }}>
@@ -300,24 +327,30 @@ export default function ChallengesScreen() {
               keyboardType="numeric"
             />
 
-            <Text style={[styles.sheetLabel, { color: colors.mutedForeground }]}>Challenge a Friend</Text>
+            <Text style={[styles.sheetLabel, { color: colors.mutedForeground }]}>
+              Challenge Friends{selectedFriendIds.length > 0 ? ` (${selectedFriendIds.length} selected)` : ""}
+            </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
               <View style={{ flexDirection: "row", gap: 10 }}>
-                {friends.map((f) => (
-                  <Pressable
-                    key={f.id}
-                    onPress={() => setSelectedFriendId(selectedFriendId === f.id ? null : f.id)}
-                    style={[
-                      styles.friendChip,
-                      { backgroundColor: selectedFriendId === f.id ? f.color + "33" : colors.muted, borderColor: selectedFriendId === f.id ? f.color : colors.border },
-                    ]}
-                  >
-                    <Avatar initials={f.initials} color={f.color} size={28} />
-                    <Text style={[styles.friendChipName, { color: selectedFriendId === f.id ? f.color : colors.mutedForeground }]}>
-                      {f.name.split(" ")[0]}
-                    </Text>
-                  </Pressable>
-                ))}
+                {friends.map((f) => {
+                  const isSelected = selectedFriendIds.includes(f.id);
+                  return (
+                    <Pressable
+                      key={f.id}
+                      onPress={() => toggleFriendSelection(f.id)}
+                      style={[
+                        styles.friendChip,
+                        { backgroundColor: isSelected ? f.color + "33" : colors.muted, borderColor: isSelected ? f.color : colors.border },
+                      ]}
+                    >
+                      <Avatar initials={f.initials} color={f.color} size={28} />
+                      <Text style={[styles.friendChipName, { color: isSelected ? f.color : colors.mutedForeground }]}>
+                        {f.name.split(" ")[0]}
+                      </Text>
+                      {isSelected && <Feather name="check-circle" size={14} color={f.color} />}
+                    </Pressable>
+                  );
+                })}
               </View>
             </ScrollView>
 
@@ -326,8 +359,11 @@ export default function ChallengesScreen() {
               style={[styles.sendBtn, { backgroundColor: colors.primary }]}
             >
               <Feather name="zap" size={18} color="#fff" />
-              <Text style={styles.sendBtnText}>Send Challenge</Text>
+              <Text style={styles.sendBtnText}>
+                {selectedFriendIds.length > 1 ? `Send to ${selectedFriendIds.length} Friends` : "Send Challenge"}
+              </Text>
             </Pressable>
+            </ScrollView>
           </View>
         </View>
       )}
@@ -376,6 +412,7 @@ const styles = StyleSheet.create({
   typeLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   typeUnit: { fontSize: 11, fontFamily: "Inter_400Regular" },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(120,120,120,0.4)", alignSelf: "center", marginBottom: 12 },
   sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   sheetTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
   sheetLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, marginBottom: 8 },

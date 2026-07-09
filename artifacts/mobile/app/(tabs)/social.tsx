@@ -754,6 +754,7 @@ export default function SocialScreen() {
     unfollowUser,
     refreshNotifications,
     fetchDiscover,
+    searchUsers,
     fetchInvites,
     fetchThreads,
     sendInvite,
@@ -791,11 +792,23 @@ export default function SocialScreen() {
 
   useEffect(() => {
     if (tab !== "explore") return;
+    const trimmedQuery = discoverQuery.trim();
     setDiscoverLoading(true);
-    fetchDiscover(userProfile.level, userProfile.goals, userProfile.equipment, activityFilters, availabilityFilters)
-      .then(setDiscoverUsers)
-      .finally(() => setDiscoverLoading(false));
-  }, [tab, userProfile.level, userProfile.goals, userProfile.equipment, activityFilters, availabilityFilters]);
+    const request = trimmedQuery
+      ? searchUsers(trimmedQuery)
+      : fetchDiscover(userProfile.level, userProfile.goals, userProfile.equipment, activityFilters, availabilityFilters);
+    let cancelled = false;
+    request
+      .then((results) => {
+        if (!cancelled) setDiscoverUsers(results);
+      })
+      .finally(() => {
+        if (!cancelled) setDiscoverLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, discoverQuery, userProfile.level, userProfile.goals, userProfile.equipment, activityFilters, availabilityFilters]);
 
   function toggleActivityFilter(activity: string) {
     setActivityFilters((prev) => (prev.includes(activity) ? prev.filter((a) => a !== activity) : [...prev, activity]));

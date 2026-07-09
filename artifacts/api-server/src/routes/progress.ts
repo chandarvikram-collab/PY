@@ -6,6 +6,7 @@ import { db, weightHistory, progressPhotos } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { setObjectAclPolicy } from "../lib/objectAcl";
+import { getPublicOrigin } from "../lib/requestOrigin";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -76,7 +77,7 @@ router.post(
         );
         const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
         await setObjectAclPolicy(objectFile, { owner: userId, visibility: "public" });
-        imageUrl = `${req.protocol}://${req.get("host")}/api/storage${objectPath}`;
+        imageUrl = `${getPublicOrigin(req)}/api/storage${objectPath}`;
       }
 
       // Always write to weight_history

@@ -513,6 +513,40 @@ router.get("/follows/followers", requireAuth, async (req, res) => {
   res.json(followers);
 });
 
+router.get("/users/search", requireAuth, async (req, res) => {
+  const userId = req.localUserId!;
+  const q = String(req.query.q ?? "").trim();
+  if (!q) {
+    res.json([]);
+    return;
+  }
+
+  const pattern = `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+
+  const rows = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      imageUrl: users.imageUrl,
+      level: users.level,
+      streak: users.streak,
+      totalWorkouts: users.totalWorkouts,
+      totalPoints: users.totalPoints,
+    })
+    .from(users)
+    .where(
+      and(
+        sql`${users.id} != ${userId}`,
+        or(sql`${users.name} ilike ${pattern}`, sql`${users.username} ilike ${pattern}`),
+      ),
+    )
+    .orderBy(desc(users.totalPoints))
+    .limit(30);
+
+  res.json(rows);
+});
+
 router.get("/discover", requireAuth, async (req, res) => {
   const userId = req.localUserId!;
   const userLevel = (req.query.level as string) || "";
