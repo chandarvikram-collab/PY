@@ -1,0 +1,129 @@
+Here is your app feedback and feature list organized into a clean, professional **Product Requirement Document (PRD) & Bug Log**.
+
+This is structured to give you a clear bird's-eye view of what needs to be fixed (the bugs) and what needs to be built (the new features) to transition this from a hardcoded demo into a real, production-ready application.
+
+---
+
+## 1. Authentication & Onboarding Flow
+
+**The Goal:** Ensure every user has a private, unique profile and a working setup sequence.
+
+### 🐛 Critical Bugs to Fix
+
+* **The "Stuck" Calculate Button:** After filling out onboarding questions and hitting "Calculate Targets," the screen freezes. It needs to dismiss, save the data, and route directly to the Home Screen.
+* **Calorie Math is Broken:** The app ignores onboarding inputs and defaults everyone to `2400` calories. It needs to dynamically calculate targets based on age, weight, and goals.
+
+### ✨ New Features & UX Changes
+
+* **Strict Auth Guard:** If a user is not logged in, immediately force-redirect them to the Login/Sign-Up page. No viewing the dashboard unauthenticated.
+* **Consolidated Onboarding:** Move the "Activities" and "Availability" questions out of the Profile page and place them directly into the first-time onboarding flow.
+
+---
+
+## 2. Home Screen & Scheduling
+
+**The Goal:** Replace the generic "day streak" with a practical, schedule-driven habit tracker.
+
+```
+[ Sun ]   [ Mon ✓ ]   [ Tue ]   [ Wed ✓ ]   [ Thu ]   [ Fri ]   [ Sat ]
+
+```
+
+### ✨ New Features & UX Changes
+
+* **7-Day Weekly Tracker Bar:** Replace the numeric day streak with a horizontal Sunday–Saturday calendar bar at the top of the Home Screen.
+* If a scheduled workout is completed $\rightarrow$ Show a **Check Mark (✓)**.
+* If incomplete or not scheduled $\rightarrow$ Leave it **Blank**.
+
+
+* **The Sunday Schedule Check-in:** Every Sunday upon opening the app, prompt the user with a pop-up modal: *"Does this schedule look good for the week? Do you want to make any changes?"*
+* **Shift to "Schedule":** In the Training section, change the "Calendar" button to a **"Schedule" button**, allowing users to easily map out their Sunday–Saturday workout routine.
+
+---
+
+## 3. Training & Workout Builder (Lift & Run)
+
+**The Goal:** Make workout creation seamless and fix the broken AI planner. *Note: Running tracking and history are working perfectly and require no changes.*
+
+### 🐛 Critical Bugs to Fix
+
+* **AI Plan Saver:** The AI Plan generator is broken. When saving a generated plan, it only saves a single exercise instead of the full routine, and fails to update the user's calorie targets.
+
+### ✨ New Features & UX Changes
+
+* **Template Builder (No Set Recording):** When clicking *My Routines $\rightarrow$ New*, replace the simple "Create" button with a dedicated **Workout Creation Page**.
+* Name at the top $\rightarrow$ Add Exercises $\rightarrow$ Click **"Create Template"** to save.
+* Users should *not* be forced to record live sets while just building the template.
+
+
+* **Active Routine Execution:** Allow users to tap on any saved template inside "My Routines" to actively open it and perform that workout for the day.
+* **Post-Workout Social Prompt:** The moment a user finishes a workout, trigger a prompt: *"Want to post this workout to your friends and family?"* If yes, instantly share it to the social feed.
+
+---
+
+## 4. Social, Community, & Challenges
+
+**The Goal:** Transform the social feed from an isolated demo into an interconnected, real-world network.
+
+### 🐛 Critical Bugs to Fix
+
+* **Media Post Failure:** The feed currently drops media assets. When posting a photo or video, only the text displays. The media must be properly uploaded and rendered.
+* **Ghost Profiles:** Delete the hardcoded test users (e.g., *Alex Jordan*, *Test User*) from the leaderboard and followers list.
+
+### ✨ New Features & UX Changes
+
+* **Real Account Searching:** Fix the database querying so users can search for and find real accounts (like your dad's account) using unique identifiers.
+* **Half-Screen Challenge Sheet:** When clicking "Send Challenge", present the challenge creation interface as a sleek, top-half bottom sheet overlay.
+* **Multi-Select Friends for Challenges:** Rewrite the challenge distribution logic. Instead of restricting a challenge to a single friend, allow users to multi-select several friends at once for Step, Distance, Lifting, PR, and Streak challenges.
+
+---
+
+## 5. Profile, Analytics, & Premium
+
+**The Goal:** Give the user full control over their identity, open up data visualization, and monetize.
+
+### 🐛 Critical Bugs to Fix
+
+* **Progress Photo Upload:** Fix the permissions/storage bucket pipeline. Taking a progress photo currently fails to save or post.
+* **Dead Pages:** Build out the actual views for **Progress & Analytics** and the **Settings** menu—currently, clicking them does nothing.
+
+### ✨ New Features & UX Changes
+
+* **Unique & Editable Usernames:** Allow users to update their username at will from the settings. Implement a strict backend validation check to ensure all usernames are entirely **unique** to prevent duplicate profile errors.
+* **Goal Transparency:** Clarify where "Building Muscle" and "Improving Endurance" come from by explicitly linking them to the user's onboarding selections.
+* **Stripe Premium Integration:** Remove any dummy "skip checkout" ideas. Hook the $7.99/month Premium button up to a live **Stripe Express/Checkout** gateway to handle real subscription processing.
+
+### 🏆 Brainstormed Achievements System
+
+To populate your blank achievements section, implement a tier-based badge system:
+
+* **The Streaker:** Complete your scheduled workouts perfectly for 1, 4, or 12 weeks straight.
+* **Early Bird / Night Owl:** Complete a workout before 7 AM or after 9 PM.
+* **Social Butterfly:** Send 5 challenges to friends.
+* **PR Crusher:** Log a new personal record in any weightlifting compound movement or running pace.
+
+---
+
+## 6. Architecture & Settings Clean-Up
+
+**The Goal:** Fix the foundational database architecture so users don't overwrite each other's data.
+
+### ⚙️ Structural Overhaul
+
+* **Database Isolation:** Right now, multiple users are manipulating the same data pool. The backend architecture must be refactored so that **every single user account points to its own unique database rows** (isolated user IDs).
+* **Sign-Out Behavior:** When a user clicks "Sign Out", instantly wipe the local session cache and route them cleanly back to the Welcome/Auth Dashboard.
+* **Settings Consolidation:** Clean up the UI clutter. Move **Recalculate Targets**, **Username Updates**, and **Log Out** directly inside the new Settings menu.
+* **Deprecation:** Completely remove the "Help & Support" button for this version.
+
+---
+
+## How to Shift This from Demo to Real (Production)
+
+To get this app running for you, your dad, and real users, your development stack needs to pivot away from static, hardcoded demo files:
+
+1. **Database & Auth (The Backbone):** Move your data to a backend platform like **Supabase** or **Firebase**. This natively handles unique user authentication, ensures your dad's data doesn't overwrite yours, and keeps usernames unique.
+2. **Storage:** Use an object storage bucket (like Supabase Storage or AWS S3) to host the images for your calorie tracker, progress photos, and social feed videos.
+3. **API Logic:** Connect your "AI Plan" generator to a structured LLM API call that returns strict JSON data containing *all* exercises and target adjustments, rather than just returning a single string that breaks your state.
+4. **Payments:** Set up a free Stripe Developer account, input your API keys into your app, and use Stripe webhooks to automatically flip a user's database status to `is_premium = true` upon a successful $7.99 checkout.
+
+Would you like to focus on fixing the database isolation architecture first, or should we map out the specific database schemas for your new scheduling and challenge features?
