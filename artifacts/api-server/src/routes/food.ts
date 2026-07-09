@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { createHash } from "crypto";
+import { z } from "zod";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { db, foodAnalyses } from "@workspace/db";
 
@@ -196,6 +197,99 @@ router.post("/analyze-food", async (req, res) => {
       .set({ status: "error", result: { items: [] }, completedAt: new Date() })
       .where(eq(foodAnalyses.id, row.id));
     req.log.error({ analysisId: row.id, err: msg }, "food analysis failed");
+  }
+});
+
+/* ── Meal suggestion based on remaining daily macros ────────────────────── */
+
+const suggestMealSchema = z.object({
+  caloriesRemaining: z.number(),
+  proteinRemaining: z.number(),
+  carbsRemaining: z.number(),
+  fatRemaining: z.number(),
+});
+
+const SUGGEST_MEAL_PROMPT_TEMPLATE = (remaining: {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}) => `You are a nutrition coach. A user has the following macros remaining for
+the rest of their day:
+- Calories: ${Math.round(remaining.calories)} kcal
+- Protein: ${Math.round(remaining.protein)} g
+- Carbs: ${Math.round(remaining.carbs)} g
+- Fat: ${Math.round(remaining.fat)} g
+
+Suggest ONE simple, realistic meal or recipe idea (things a regular person could
+cook or buy) that would help them hit these remaining targets without going far
+over on calories. Keep it practical — no exotic ingredients.
+Return strict JSON only — no markdown, no explanation, no free text. Use this exact structure:
+{
+  "name": "short meal name",
+  "description": "one or two sentence description of the meal and why it fits",
+  "calories": 450,
+  "proteinG": 35,
+  "carbsG": 40,
+  "fatG": 12
+}`;
+
+router.post("/suggest-meal", async (req, res) => {
+  const parsed = suggestMealSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "caloriesRemaining, proteinRemaining, carbsRemaining, and fatRemaining are required numbers." });
+    return;
+  }
+  const { caloriesRemaining, proteinRemaining, carbsRemaining, fatRemaining } = parsed.data;
+
+  if (caloriesRemaining <= 0) {
+    res.json({ suggestion: null, reason: "goal_met" });
+    return;
+  }
+
+  try {
+    const prompt = SUGGEST_MEAL_PROMPT_TEMPLATE({
+      calories: caloriesRemaining,
+      protein: proteinRemaining,
+      carbs: carbsRemaining,
+      fat: fatRemaining,
+    });
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: { responseMimeType: "application/json" },
+    });
+
+    const text = response.text ?? "";
+    let parsedResult: { name?: string; description?: string; calories?: number; proteinG?: number; carbsG?: number; fatG?: number };
+    try {
+      parsedResult = JSON.parse(text);
+    } catch {
+      req.log.warn({ text }, "suggest-meal: AI returned non-JSON response");
+      res.status(502).json({ error: "Could not generate a meal suggestion right now." });
+      return;
+    }
+
+    if (!parsedResult.name || !parsedResult.description) {
+      res.status(502).json({ error: "Could not generate a meal suggestion right now." });
+      return;
+    }
+
+    req.log.info({ name: parsedResult.name }, "meal suggestion generated");
+    res.json({
+      suggestion: {
+        name: parsedResult.name,
+        description: parsedResult.description,
+        calories: Math.round(parsedResult.calories ?? 0),
+        proteinG: Math.round(parsedResult.proteinG ?? 0),
+        carbsG: Math.round(parsedResult.carbsG ?? 0),
+        fatG: Math.round(parsedResult.fatG ?? 0),
+      },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    req.log.error({ err: msg }, "suggest-meal failed");
+    res.status(502).json({ error: "Could not generate a meal suggestion right now." });
   }
 });
 

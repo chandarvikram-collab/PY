@@ -283,6 +283,146 @@ function FoodChip({ label, color }: { label: string; color: string }) {
   );
 }
 
+// ─── MEAL SUGGESTION CARD ────────────────────────────────────────────────────
+
+type MealSuggestion = {
+  name: string;
+  description: string;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+};
+
+type SuggestionStatus = "loading" | "ready" | "goal_met" | "error";
+
+function MealSuggestionCard({
+  caloriesRemaining,
+  proteinRemaining,
+  carbsRemaining,
+  fatRemaining,
+  colors,
+}: {
+  caloriesRemaining: number;
+  proteinRemaining: number;
+  carbsRemaining: number;
+  fatRemaining: number;
+  colors: ColorsType;
+}) {
+  const [status, setStatus] = useState<SuggestionStatus>("loading");
+  const [suggestion, setSuggestion] = useState<MealSuggestion | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Round remaining macros to the nearest 10 kcal / 5 g so trivial changes
+  // (e.g. logging a single sip of water) don't retrigger a new AI call.
+  const bucketKey = useMemo(() => {
+    const cal = Math.round(caloriesRemaining / 10) * 10;
+    const p = Math.round(proteinRemaining / 5) * 5;
+    const c = Math.round(carbsRemaining / 5) * 5;
+    const f = Math.round(fatRemaining / 5) * 5;
+    return `${cal}|${p}|${c}|${f}`;
+  }, [caloriesRemaining, proteinRemaining, carbsRemaining, fatRemaining]);
+
+  const fetchSuggestion = useCallback(async () => {
+    setStatus("loading");
+    setErrorMsg(null);
+    if (caloriesRemaining <= 0) {
+      setStatus("goal_met");
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/suggest-meal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caloriesRemaining,
+          proteinRemaining,
+          carbsRemaining,
+          fatRemaining,
+        }),
+      });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = (await res.json()) as { suggestion: MealSuggestion | null; reason?: string };
+      if (!data.suggestion) {
+        setStatus("goal_met");
+        return;
+      }
+      setSuggestion(data.suggestion);
+      setStatus("ready");
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "Couldn't get a suggestion.");
+      setStatus("error");
+    }
+  }, [caloriesRemaining, proteinRemaining, carbsRemaining, fatRemaining]);
+
+  useEffect(() => {
+    fetchSuggestion();
+    // Only refetch when the rounded remaining-macro bucket changes, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bucketKey]);
+
+  if (status === "goal_met") {
+    return (
+      <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: 10 }]}>
+        <Feather name="check-circle" size={18} color={colors.success} />
+        <Text style={{ fontSize: 12, fontFamily: "Inter_500Medium", color: colors.mutedForeground, flex: 1 }}>
+          You've hit your calorie goal for today — no more meal suggestions needed.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+        <Feather name="zap" size={15} color={colors.primary} />
+        <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: colors.foreground }}>Suggested for you</Text>
+      </View>
+
+      {status === "loading" && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 }}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>
+            Finding a meal idea based on what's left today...
+          </Text>
+        </View>
+      )}
+
+      {status === "error" && (
+        <View>
+          <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.destructive, marginBottom: 8 }}>
+            {errorMsg ?? "Couldn't get a suggestion."}
+          </Text>
+          <Pressable
+            onPress={fetchSuggestion}
+            style={{ alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+          >
+            <Feather name="refresh-cw" size={12} color={colors.foreground} />
+            <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: colors.foreground }}>Try again</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {status === "ready" && suggestion && (
+        <View>
+          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: colors.foreground, marginBottom: 4 }}>
+            {suggestion.name}
+          </Text>
+          <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginBottom: 10, lineHeight: 17 }}>
+            {suggestion.description}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+            <FoodChip label={`${suggestion.calories} kcal`} color={colors.primary} />
+            <FoodChip label={`${suggestion.proteinG}g protein`} color="#3b82f6" />
+            <FoodChip label={`${suggestion.carbsG}g carbs`} color="#f59e0b" />
+            <FoodChip label={`${suggestion.fatG}g fat`} color="#8b5cf6" />
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ─── MAIN SCREEN ───────────────────────────────────────────────────────────
 
 export default function CaloriesScreen() {
@@ -757,6 +897,15 @@ export default function CaloriesScreen() {
             </Text>
           </View>
         </View>
+
+        {/* ── Meal Suggestion Card ── */}
+        <MealSuggestionCard
+          caloriesRemaining={today.goal - totals.calories}
+          proteinRemaining={proteinGoal - totals.protein}
+          carbsRemaining={carbGoal - totals.carbs}
+          fatRemaining={fatGoal - totals.fat}
+          colors={colors}
+        />
 
         {/* ── Weekly Strip ── */}
         <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: 16 }]}>
