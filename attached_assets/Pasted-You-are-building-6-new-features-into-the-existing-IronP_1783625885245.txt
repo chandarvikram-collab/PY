@@ -1,0 +1,61 @@
+You are building 6 new features into the existing IronPace app, one at a time,
+in the priority order below. Do NOT build more than one feature per turn.
+
+GLOBAL RULES FOR THIS ENTIRE BUILD-OUT:
+- Build ONLY the feature I currently point you to. Do not start the next one
+  early, even if it seems efficient.
+- Before writing code for a feature, briefly restate what you're about to build
+  and confirm it doesn't conflict with existing tables/screens. If it requires
+  a new database table or column, tell me before proceeding — don't just do it.
+- After finishing each feature, STOP and give me:
+  - Changed: what's different now
+  - Why: one line
+  - Test this: the exact thing I should tap/try to confirm it works
+  - Flag: anything that could affect an existing feature, even if you already
+    handled it
+- Do not touch code for features other than the one in progress.
+- Use stable, well-supported libraries only (no experimental/beta packages).
+- Add basic loading and empty states for anything new — don't leave a blank
+  screen while data loads.
+- Add reasonable error handling so a bad photo, empty field, or lost network
+  connection doesn't crash the app.
+- No placeholder/test data left behind in the final version of a feature.
+- If you hit the same error twice while fixing something, stop and tell me
+  plainly instead of trying a third variation.
+
+BUILD ORDER:
+
+FEATURE 1 — Push Notifications
+Add Expo Notifications. Trigger notifications for: challenge deadlines
+approaching, friend activity (likes/comments/follows), and workout invites.
+Include a permissions prompt on first relevant use, not on app launch.
+
+FEATURE 2 — Progress Photos & Weight Graph
+Add a progress_photos table (date, image_url, weight, notes) and a
+weight_history table. Add a photo upload flow to the Profile tab. Add a
+simple line chart showing weight over time. Let users add a new entry
+(photo optional, weight required) from the Profile tab.
+
+FEATURE 3 — PR Tracking (1RM / Personal Records)
+Add a personal_records table (exercise, weight, reps, date). After a gym
+session is logged, check if any set is a new PR for that exercise and save
+it. Show a PR badge in the workout detail screen when a new record is hit.
+
+FEATURE 4 — Meal Planning / Macro Remaining Suggestions
+Extend the existing AI food-analysis endpoint so that, based on a user's
+remaining macros for the day, it can suggest a simple meal or recipe idea
+that would help them hit their targets. Surface this as a card in the
+Calories tab.
+
+FEATURE 5 — Monetization (Premium Tier)
+Integrate RevenueCat (or Stripe if RevenueCat isn't a good fit — tell me why
+if you switch). Gate the following behind a premium tier: advanced AI plans,
+unlimited challenges, detailed analytics. Add a simple upgrade screen. Do
+NOT go live with real billing — use sandbox/test mode until I say otherwise.
+
+FEATURE 6 — Workout Calendar / Scheduling
+Add a weekly/monthly calendar view. Let users schedule routines and see
+their AI training plan mapped onto specific days.
+
+Start with FEATURE 1 now. Stop after it's done and wait for my approval
+before touching Feature 2.
