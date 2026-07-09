@@ -12,10 +12,13 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import type { Challenge } from "@/context/AppContext";
+
+const FREE_ACTIVE_CHALLENGE_LIMIT = 3;
 
 const CHALLENGE_TYPES = [
   { id: "steps", label: "Steps", icon: "navigation", unit: "steps", defaultTarget: 10000 },
@@ -108,9 +111,11 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
 export default function ChallengesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { state, sendChallenge } = useApp();
+  const router = useRouter();
+  const { state, sendChallenge, isPremium } = useApp();
   const { challenges, friends } = state;
   const [showNew, setShowNew] = useState(false);
+  const [limitError, setLimitError] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<"steps" | "distance" | "lifting" | "streak">("steps");
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [targetStr, setTargetStr] = useState("");
@@ -169,13 +174,31 @@ export default function ChallengesScreen() {
             <Text style={[styles.title, { color: colors.foreground }]}>Challenges</Text>
           </View>
           <Pressable
-            onPress={() => setShowNew(true)}
+            onPress={() => {
+              if (!isPremium && active.length >= FREE_ACTIVE_CHALLENGE_LIMIT) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                setLimitError(`Free plan allows up to ${FREE_ACTIVE_CHALLENGE_LIMIT} active challenges. Upgrade for unlimited.`);
+                return;
+              }
+              setLimitError(null);
+              setShowNew(true);
+            }}
             style={[styles.newBtn, { backgroundColor: colors.primary }]}
           >
             <Feather name="plus" size={18} color="#fff" />
             <Text style={styles.newBtnText}>Send Challenge</Text>
           </Pressable>
         </View>
+
+        {limitError && (
+          <Pressable
+            onPress={() => router.push("/upgrade" as any)}
+            style={[styles.limitBanner, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}
+          >
+            <Feather name="lock" size={16} color={colors.primary} />
+            <Text style={[styles.limitBannerText, { color: colors.primary }]}>{limitError} Tap to upgrade.</Text>
+          </Pressable>
+        )}
 
         {/* Stats Row */}
         <View style={[styles.statsRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -319,6 +342,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5, marginTop: 2 },
   newBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20 },
   newBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff" },
+  limitBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 16 },
+  limitBannerText: { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium" },
   statsRow: { flexDirection: "row", borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 22, alignItems: "center" },
   statItem: { flex: 1, alignItems: "center", gap: 3 },
   statVal: { fontSize: 20, fontFamily: "Inter_700Bold" },

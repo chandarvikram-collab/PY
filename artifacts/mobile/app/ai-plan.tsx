@@ -96,7 +96,7 @@ export default function AIPlanScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, saveAIPlan, addRoutine } = useApp();
+  const { state, saveAIPlan, addRoutine, isPremium } = useApp();
   const { getToken } = useAuth();
   const { userProfile } = state;
 
@@ -214,22 +214,35 @@ export default function AIPlanScreen() {
       subtitle: "Be honest — this determines exercise selection and volume",
       content: (
         <View style={{ gap: 10 }}>
-          {LEVELS.map((l) => (
-            <Pressable
-              key={l.id}
-              onPress={() => setSelectedLevel(l.id)}
-              style={[
-                styles.optionCard,
-                { backgroundColor: selectedLevel === l.id ? colors.primary + "22" : colors.card, borderColor: selectedLevel === l.id ? colors.primary : colors.border },
-              ]}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.optionText, { color: selectedLevel === l.id ? colors.primary : colors.foreground }]}>{l.label}</Text>
-                <Text style={[styles.optionDesc, { color: colors.mutedForeground }]}>{l.desc}</Text>
-              </View>
-              <Feather name={selectedLevel === l.id ? "check-circle" : "circle"} size={20} color={selectedLevel === l.id ? colors.primary : colors.mutedForeground} />
-            </Pressable>
-          ))}
+          {LEVELS.map((l) => {
+            const locked = l.id === "advanced" && !isPremium;
+            return (
+              <Pressable
+                key={l.id}
+                onPress={() => {
+                  if (locked) {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                    router.push("/upgrade" as any);
+                    return;
+                  }
+                  setSelectedLevel(l.id);
+                }}
+                style={[
+                  styles.optionCard,
+                  { backgroundColor: selectedLevel === l.id ? colors.primary + "22" : colors.card, borderColor: selectedLevel === l.id ? colors.primary : colors.border, opacity: locked ? 0.6 : 1 },
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={[styles.optionText, { color: selectedLevel === l.id ? colors.primary : colors.foreground }]}>{l.label}</Text>
+                    {locked && <Feather name="lock" size={13} color={colors.mutedForeground} />}
+                  </View>
+                  <Text style={[styles.optionDesc, { color: colors.mutedForeground }]}>{locked ? "Premium — advanced training plans" : l.desc}</Text>
+                </View>
+                <Feather name={selectedLevel === l.id ? "check-circle" : "circle"} size={20} color={selectedLevel === l.id ? colors.primary : colors.mutedForeground} />
+              </Pressable>
+            );
+          })}
         </View>
       ),
     },
@@ -262,22 +275,37 @@ export default function AIPlanScreen() {
       subtitle: "Choose a schedule you can commit to consistently",
       content: (
         <View style={{ gap: 10 }}>
-          {DAYS_OPTIONS.map((d) => (
-            <Pressable
-              key={d}
-              onPress={() => setSelectedDays(d)}
-              style={[
-                styles.optionCard,
-                { backgroundColor: selectedDays === d ? colors.primary + "22" : colors.card, borderColor: selectedDays === d ? colors.primary : colors.border },
-              ]}
-            >
-              <Text style={[styles.optionText, { color: selectedDays === d ? colors.primary : colors.foreground }]}>{d} days / week</Text>
-              <Text style={[styles.optionDesc, { color: colors.mutedForeground }]}>
-                {d === 3 ? "Full body approach, ideal for beginners" : d === 4 ? "Upper/Lower split, great for intermediate" : d === 5 ? "Push/Pull/Legs, classic split" : "PPL + extra volume days"}
-              </Text>
-              <Feather name={selectedDays === d ? "check-circle" : "circle"} size={20} color={selectedDays === d ? colors.primary : colors.mutedForeground} />
-            </Pressable>
-          ))}
+          {DAYS_OPTIONS.map((d) => {
+            const locked = d >= 5 && !isPremium;
+            return (
+              <Pressable
+                key={d}
+                onPress={() => {
+                  if (locked) {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                    router.push("/upgrade" as any);
+                    return;
+                  }
+                  setSelectedDays(d);
+                }}
+                style={[
+                  styles.optionCard,
+                  { backgroundColor: selectedDays === d ? colors.primary + "22" : colors.card, borderColor: selectedDays === d ? colors.primary : colors.border, opacity: locked ? 0.6 : 1 },
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={[styles.optionText, { color: selectedDays === d ? colors.primary : colors.foreground }]}>{d} days / week</Text>
+                    {locked && <Feather name="lock" size={13} color={colors.mutedForeground} />}
+                  </View>
+                  <Text style={[styles.optionDesc, { color: colors.mutedForeground }]}>
+                    {locked ? "Premium — unlock 5-6 day splits" : d === 3 ? "Full body approach, ideal for beginners" : "Upper/Lower split, great for intermediate"}
+                  </Text>
+                </View>
+                <Feather name={selectedDays === d ? "check-circle" : "circle"} size={20} color={selectedDays === d ? colors.primary : colors.mutedForeground} />
+              </Pressable>
+            );
+          })}
         </View>
       ),
     },

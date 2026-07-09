@@ -289,6 +289,10 @@ function RootLayoutNav() {
         name="onboarding"
         options={{ headerShown: false, presentation: "modal" }}
       />
+      <Stack.Screen
+        name="upgrade"
+        options={{ headerShown: false, presentation: "modal" }}
+      />
     </Stack>
   );
 }

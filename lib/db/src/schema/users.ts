@@ -34,6 +34,8 @@ export const users = pgTable("users", {
   activities: text("activities").array().notNull().default(sql`ARRAY[]::text[]`),
   availability: text("availability").array().notNull().default(sql`ARRAY[]::text[]`),
   expoPushToken: text("expo_push_token"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

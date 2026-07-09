@@ -395,6 +395,9 @@ type AppContextType = {
   markNotificationsRead: () => Promise<void>;
   fetchDiscover: (userLevel: string, goals: string[], equipment: string[], activities?: string[], availability?: string[]) => Promise<DiscoverUser[]>;
   fetchFollowing: () => Promise<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>>;
+  isPremium: boolean;
+  premiumStatusLoading: boolean;
+  refreshPremiumStatus: () => Promise<void>;
 };
 
 const ME_ID = "me";
@@ -815,6 +818,8 @@ const CLERK_LINKED_KEY = "ironpace_clerk_linked";
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
   const [loaded, setLoaded] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
+  const [premiumStatusLoading, setPremiumStatusLoading] = useState(true);
   const apiUserIdRef = useRef<string | null>(null);
   const { userId: clerkUserId, isSignedIn, getToken } = useAuth();
   const { user: clerkUser, isLoaded: clerkUserLoaded } = useUser();
@@ -823,6 +828,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     _getToken = getToken;
     return () => { _getToken = null; };
   }, [getToken]);
+
+  const refreshPremiumStatus = useCallback(async (overrideUserId?: string): Promise<void> => {
+    const userId = overrideUserId ?? apiUserIdRef.current;
+    if (!userId) return;
+    setPremiumStatusLoading(true);
+    try {
+      const r = await socialFetch(`/subscription-status/${userId}`);
+      if (r.ok) {
+        const json = (await r.json()) as { isPremium: boolean };
+        setIsPremium(json.isPremium);
+      }
+    } catch {
+    } finally {
+      setPremiumStatusLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isSignedIn || !loaded) return;
@@ -1004,6 +1025,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } catch {}
 
       hydrateFromApi(userId, setState);
+      refreshPremiumStatus(userId).catch(() => {});
     };
 
     run().catch(() => {});
@@ -1930,6 +1952,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         markNotificationsRead,
         fetchDiscover,
         fetchFollowing,
+        isPremium,
+        premiumStatusLoading,
+        refreshPremiumStatus,
       }}
     >
       {children}

@@ -75,6 +75,80 @@ function MenuRow({ icon, label, onPress, danger, value }: { icon: string; label:
   );
 }
 
+function AnalyticsCard({ workoutHistory, colors }: { workoutHistory: { date: string; volume: number; duration: number }[]; colors: ReturnType<typeof useColors> }) {
+  if (workoutHistory.length === 0) {
+    return (
+      <View style={[styles.card, { backgroundColor: colors.muted, borderColor: colors.border, alignItems: "center", paddingVertical: 20 }]}>
+        <Feather name="bar-chart-2" size={22} color={colors.mutedForeground} />
+        <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 8 }}>
+          Log a workout to see your analytics
+        </Text>
+      </View>
+    );
+  }
+
+  const now = Date.now();
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const weeks: { label: string; volume: number; sessions: number }[] = [];
+  for (let i = 3; i >= 0; i--) {
+    const weekStart = now - (i + 1) * weekMs;
+    const weekEnd = now - i * weekMs;
+    const inWeek = workoutHistory.filter((w) => {
+      const t = new Date(w.date).getTime();
+      return t >= weekStart && t < weekEnd;
+    });
+    weeks.push({
+      label: i === 0 ? "This wk" : `${i}wk ago`,
+      volume: inWeek.reduce((sum, w) => sum + w.volume, 0),
+      sessions: inWeek.length,
+    });
+  }
+
+  const avgDuration = Math.round(
+    workoutHistory.reduce((sum, w) => sum + w.duration, 0) / workoutHistory.length / 60,
+  );
+  const totalVolume = workoutHistory.reduce((sum, w) => sum + w.volume, 0);
+  const maxWeekVolume = Math.max(1, ...weeks.map((w) => w.volume));
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+      <View style={{ flexDirection: "row", marginBottom: 16 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.foreground, fontSize: 18, fontFamily: "Inter_700Bold" }}>
+            {totalVolume.toLocaleString()} lbs
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Total volume lifted</Text>
+        </View>
+        <View style={{ flex: 1, alignItems: "flex-end" }}>
+          <Text style={{ color: colors.foreground, fontSize: 18, fontFamily: "Inter_700Bold" }}>
+            {avgDuration} min
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Avg session length</Text>
+        </View>
+      </View>
+
+      <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 8 }}>
+        Weekly volume trend
+      </Text>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", height: 80, gap: 10 }}>
+        {weeks.map((w) => (
+          <View key={w.label} style={{ flex: 1, alignItems: "center" }}>
+            <View
+              style={{
+                width: "100%",
+                height: Math.max(4, (w.volume / maxWeekVolume) * 64),
+                backgroundColor: colors.primary,
+                borderRadius: 4,
+              }}
+            />
+            <Text style={{ color: colors.mutedForeground, fontSize: 10, marginTop: 6 }}>{w.label}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 type GoalField = { label: string; value: string; setValue: (v: string) => void; unit: string; color: string };
 
 type ProgressPhotoEntry = { id: string; date: string; imageUrl: string | null; weightKg: number; notes: string };
@@ -84,7 +158,7 @@ export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, updateProfile, fetchFollowing } = useApp();
+  const { state, updateProfile, fetchFollowing, isPremium, premiumStatusLoading } = useApp();
   const { userProfile, workoutHistory, challenges } = state;
   const [showFriends, setShowFriends] = useState(false);
   const [followingList, setFollowingList] = useState<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>>([]);
@@ -353,6 +427,41 @@ export default function ProfileScreen() {
             </React.Fragment>
           ))}
         </View>
+      </View>
+
+      {/* ── Detailed Analytics (Premium) ── */}
+      <View style={[styles.section, { paddingHorizontal: 18 }]}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>Detailed Analytics</Text>
+          {!isPremium && (
+            <View style={{ marginLeft: 8, backgroundColor: colors.primary + "22", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+              <Text style={{ color: colors.primary, fontSize: 11, fontFamily: "Inter_700Bold" }}>PREMIUM</Text>
+            </View>
+          )}
+        </View>
+        {premiumStatusLoading ? (
+          <View style={{ paddingVertical: 24, alignItems: "center" }}>
+            <ActivityIndicator color={colors.primary} />
+          </View>
+        ) : isPremium ? (
+          <AnalyticsCard workoutHistory={workoutHistory} colors={colors} />
+        ) : (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/upgrade" as any); }}
+            style={({ pressed }) => [
+              styles.card,
+              { backgroundColor: colors.muted, borderColor: colors.border, opacity: pressed ? 0.85 : 1, alignItems: "center", paddingVertical: 20 },
+            ]}
+          >
+            <Feather name="lock" size={22} color={colors.mutedForeground} />
+            <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold", marginTop: 8 }}>
+              Unlock trends, volume charts &amp; more
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 4 }}>
+              Upgrade to IronPace Premium
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       {/* ── Goals chips ── */}
@@ -695,6 +804,12 @@ export default function ProfileScreen() {
           <MenuRow icon="message-circle" label="Messages" onPress={() => router.push("/chat")} value={`${state.chatThreads.reduce((s, t) => s + t.unread, 0) || ""}`} />
           <MenuRow icon="zap" label="Calorie Tracker" onPress={() => router.push("/calories")} />
           <MenuRow icon="bar-chart-2" label="Progress & Analytics" onPress={() => {}} />
+          <MenuRow
+            icon={isPremium ? "star" : "arrow-up-circle"}
+            label={isPremium ? "IronPace Premium" : "Upgrade to Premium"}
+            value={isPremium ? "Active" : ""}
+            onPress={() => router.push("/upgrade" as any)}
+          />
           <MenuRow icon="users" label="Following" onPress={() => { setShowFriends(true); }} value={followingList.length > 0 ? `${followingList.length}` : ""} />
           <MenuRow icon="trophy" label="Achievements" onPress={() => {}} value={`${completedChallenges} completed`} />
         </View>
@@ -899,6 +1014,7 @@ const styles = StyleSheet.create({
   pillBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
   pillBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   goalsCard: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  card: { borderRadius: 16, borderWidth: 1, padding: 16 },
   goalStatsGrid: { flexDirection: "row", flexWrap: "wrap" },
   goalStatItem: { width: "50%", alignItems: "center", paddingVertical: 18, borderRightWidth: 0.5, borderBottomWidth: 0.5 },
   goalInputRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },

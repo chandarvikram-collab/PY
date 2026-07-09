@@ -2,3 +2,5 @@
 - [Expo onboarding gate & screenshot testing](expo-onboarding-gate-screenshot.md) — fresh-session screenshots of deep routes can race into the onboarding redirect; not a real bug
 - [Express v5 params typing](express-v5-params.md) — @types/express v5 widens req.params values to string|string[]; always cast as string before Drizzle eq()
 - [Drizzle composite upsert & UUID widening](drizzle-composite-upsert.md) — two type gotchas with Drizzle 0.45 + drizzle-zod
+- [Replit Stripe connector field name](replit-stripe-connector-field.md) — real field is `settings.secret`, not `secret_key` (stale skill doc)
+- [esbuild bundling breaks package-relative migrations](esbuild-bundling-external-sql-migrations.md) — externalize deps that locate files via `__dirname` at runtime

@@ -12,6 +12,7 @@ import plansRouter from "./plans";
 import internalRouter from "./internal";
 import progressRouter from "./progress";
 import prsRouter from "./prs";
+import stripeRouter from "./stripe";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(plansRouter);
 router.use(internalRouter);
 router.use(progressRouter);
 router.use(prsRouter);
+router.use(stripeRouter);
 
 export default router;
