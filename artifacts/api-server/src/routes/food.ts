@@ -209,6 +209,15 @@ const suggestMealSchema = z.object({
   fatRemaining: z.number(),
 });
 
+const suggestMealAiResponseSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  calories: z.number().nonnegative(),
+  proteinG: z.number().nonnegative(),
+  carbsG: z.number().nonnegative(),
+  fatG: z.number().nonnegative(),
+});
+
 const SUGGEST_MEAL_PROMPT_TEMPLATE = (remaining: {
   calories: number;
   protein: number;
@@ -254,6 +263,10 @@ router.post("/suggest-meal", async (req, res) => {
       carbs: carbsRemaining,
       fat: fatRemaining,
     });
+    // NOTE: gemini-2.5-flash (used by the existing analyze-food route) returns a
+    // hard 404 "model no longer available" error from the provider as of this
+    // writing, so this new endpoint uses the current supported flash model
+    // instead. See follow-up task to migrate analyze-food off the retired model.
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -261,29 +274,32 @@ router.post("/suggest-meal", async (req, res) => {
     });
 
     const text = response.text ?? "";
-    let parsedResult: { name?: string; description?: string; calories?: number; proteinG?: number; carbsG?: number; fatG?: number };
+    let rawParsed: unknown;
     try {
-      parsedResult = JSON.parse(text);
+      rawParsed = JSON.parse(text);
     } catch {
       req.log.warn({ text }, "suggest-meal: AI returned non-JSON response");
       res.status(502).json({ error: "Could not generate a meal suggestion right now." });
       return;
     }
 
-    if (!parsedResult.name || !parsedResult.description) {
+    const validated = suggestMealAiResponseSchema.safeParse(rawParsed);
+    if (!validated.success) {
+      req.log.warn({ rawParsed, issues: validated.error.issues }, "suggest-meal: AI response failed schema validation");
       res.status(502).json({ error: "Could not generate a meal suggestion right now." });
       return;
     }
 
+    const parsedResult = validated.data;
     req.log.info({ name: parsedResult.name }, "meal suggestion generated");
     res.json({
       suggestion: {
         name: parsedResult.name,
         description: parsedResult.description,
-        calories: Math.round(parsedResult.calories ?? 0),
-        proteinG: Math.round(parsedResult.proteinG ?? 0),
-        carbsG: Math.round(parsedResult.carbsG ?? 0),
-        fatG: Math.round(parsedResult.fatG ?? 0),
+        calories: Math.round(parsedResult.calories),
+        proteinG: Math.round(parsedResult.proteinG),
+        carbsG: Math.round(parsedResult.carbsG),
+        fatG: Math.round(parsedResult.fatG),
       },
     });
   } catch (err: unknown) {
