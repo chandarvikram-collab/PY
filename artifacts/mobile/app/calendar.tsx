@@ -252,9 +252,12 @@ export default function CalendarScreen() {
           <Pressable onPress={() => router.back()} style={[styles.iconBtn, { borderColor: colors.border }]}>
             <Feather name="chevron-left" size={20} color={colors.mutedForeground} />
           </Pressable>
-          <Text style={[styles.screenTitle, { color: colors.foreground }]}>Calendar</Text>
+          <Text style={[styles.screenTitle, { color: colors.foreground }]}>Schedule</Text>
           <View style={{ width: 36 }} />
         </View>
+        <Text style={[styles.screenSubtitle, { color: colors.mutedForeground }]}>
+          Plan your week ahead
+        </Text>
 
         <View style={styles.monthNav}>
           <Pressable onPress={goPrevMonth} style={styles.monthArrow}>
@@ -472,6 +475,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   iconBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   screenTitle: { fontSize: 17, fontWeight: "600" },
+  screenSubtitle: { fontSize: 13, fontWeight: "500", textAlign: "center", marginBottom: 4 },
   monthNav: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12, marginBottom: 12 },
   monthArrow: { padding: 6 },
   monthLabel: { fontSize: 20, fontWeight: "700" },

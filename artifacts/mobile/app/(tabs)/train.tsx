@@ -132,6 +132,8 @@ export default function TrainScreen() {
         <View style={{ flexDirection: "row", gap: 10 }}>
           <Pressable
             onPress={() => router.push("/calendar")}
+            accessibilityLabel="Schedule"
+            accessibilityHint="Plan your week ahead"
             style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <Feather name="calendar" size={20} color={colors.primary} />

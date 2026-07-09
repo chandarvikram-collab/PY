@@ -32,6 +32,7 @@ import { tokenCache } from "@clerk/expo/token-cache";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { useAuth } from "@/lib/auth";
+import { useColors } from "@/hooks/useColors";
 
 import { setBaseUrl, setAuthTokenGetter } from "@workspace/api-client-react";
 
@@ -46,6 +47,16 @@ const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
 const AUTH_INITIALIZED_KEY = "ironpace_auth_initialized";
+const SUNDAY_CHECKIN_PREFIX = "ironpace_sunday_checkin_";
+
+function getSundayCheckInKeyForToday(): string | null {
+  const now = new Date();
+  if (now.getDay() !== 0) return null;
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${SUNDAY_CHECKIN_PREFIX}${y}-${m}-${d}`;
+}
 
 function slugify(name: string): string {
   return name.toLowerCase().replace(/\s+/g, "").replace(/[^a-z0-9_]/g, "");
@@ -224,6 +235,106 @@ function OnboardingGate() {
   return null;
 }
 
+function SundayCheckInModal() {
+  const colors = useColors();
+  const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuth();
+  const [visible, setVisible] = useState(false);
+  const checkedRef = useRef(false);
+
+  useEffect(() => {
+    if (isLoading || !isAuthenticated || checkedRef.current) return;
+    checkedRef.current = true;
+    const key = getSundayCheckInKeyForToday();
+    if (!key) return;
+    AsyncStorage.getItem(key)
+      .then((seen) => {
+        if (!seen) setVisible(true);
+      })
+      .catch(() => {});
+  }, [isAuthenticated, isLoading]);
+
+  const dismiss = useCallback(() => {
+    setVisible(false);
+    const key = getSundayCheckInKeyForToday();
+    if (key) AsyncStorage.setItem(key, "1").catch(() => {});
+  }, []);
+
+  const editSchedule = useCallback(() => {
+    dismiss();
+    router.push("/calendar");
+  }, [dismiss, router]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={dismiss}>
+      <View style={checkinStyles.overlay}>
+        <View style={[checkinStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[checkinStyles.title, { color: colors.foreground }]}>Weekly check-in</Text>
+          <Text style={[checkinStyles.body, { color: colors.mutedForeground }]}>
+            Does this schedule look good for the week? Do you want to make any changes?
+          </Text>
+          <View style={checkinStyles.btnRow}>
+            <Pressable
+              onPress={dismiss}
+              style={[checkinStyles.btn, { backgroundColor: colors.muted, borderColor: colors.border }]}
+            >
+              <Text style={[checkinStyles.btnText, { color: colors.mutedForeground }]}>Looks good</Text>
+            </Pressable>
+            <Pressable
+              onPress={editSchedule}
+              style={[checkinStyles.btn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            >
+              <Text style={[checkinStyles.btnText, { color: "#fff" }]}>Edit Schedule</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const checkinStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  card: {
+    width: "100%",
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 22,
+  },
+  title: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    marginBottom: 8,
+  },
+  body: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 20,
+  },
+  btnRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 20,
+  },
+  btn: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  btnText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+});
+
 function routeNotification(router: ReturnType<typeof useRouter>, data: Record<string, string> | undefined) {
   if (!data?.type) return;
   switch (data.type) {
@@ -345,6 +456,7 @@ export default function RootLayout() {
                 <FirstLoginHandler />
                 <OnboardingGate />
                 <NotificationTapHandler />
+                <SundayCheckInModal />
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <KeyboardProvider>
                     <RootLayoutNav />

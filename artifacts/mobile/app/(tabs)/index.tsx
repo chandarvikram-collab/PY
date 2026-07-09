@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -11,8 +11,31 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useApp } from "@/context/AppContext";
+import { socialFetch, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
+
+const WEEKDAY_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
+
+type ScheduledWorkoutLite = { date: string; completed: boolean };
+
+function toDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function getWeekDates(): Date[] {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() - now.getDay());
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(sunday);
+    d.setDate(sunday.getDate() + i);
+    return d;
+  });
+}
 
 function Avatar({ initials, color, size = 40 }: { initials: string; color: string; size?: number }) {
   return (
@@ -26,9 +49,35 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, getTodayCalories } = useApp();
+  const { state, getTodayCalories, apiUserId } = useApp();
   const { userProfile, friends, workoutHistory, challenges } = state;
   const todayCals = getTodayCalories();
+
+  const [scheduledWeek, setScheduledWeek] = useState<ScheduledWorkoutLite[]>([]);
+
+  useEffect(() => {
+    if (!apiUserId) return;
+    let cancelled = false;
+    socialFetch(`/schedule/${apiUserId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { scheduledWorkouts: ScheduledWorkoutLite[] } | null) => {
+        if (!cancelled && data) setScheduledWeek(data.scheduledWorkouts);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUserId]);
+
+  const weekDays = useMemo(() => {
+    const dates = getWeekDates();
+    const todayKey = toDateKey(new Date());
+    return dates.map((d) => {
+      const key = toDateKey(d);
+      const completed = scheduledWeek.some((s) => s.date === key && s.completed);
+      return { key, isToday: key === todayKey, completed };
+    });
+  }, [scheduledWeek]);
 
   const consumed = useMemo(
     () => todayCals.entries.reduce((s, e) => s + e.calories, 0),
@@ -82,14 +131,8 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {/* Streak + Rank Banner */}
+      {/* Rank + Points Banner */}
       <View style={[styles.banner, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}>
-        <View style={styles.bannerItem}>
-          <Feather name="zap" size={18} color={colors.primary} />
-          <Text style={[styles.bannerVal, { color: colors.foreground }]}>{userProfile.streak}</Text>
-          <Text style={[styles.bannerLbl, { color: colors.mutedForeground }]}>Day Streak</Text>
-        </View>
-        <View style={[styles.bannerDivider, { backgroundColor: colors.border }]} />
         <View style={styles.bannerItem}>
           <Feather name="award" size={18} color={colors.primary} />
           <Text style={[styles.bannerVal, { color: colors.foreground }]}>#{myRank}</Text>
@@ -102,6 +145,36 @@ export default function HomeScreen() {
           <Text style={[styles.bannerLbl, { color: colors.mutedForeground }]}>Points</Text>
         </View>
       </View>
+
+      {/* Weekly Schedule Tracker */}
+      <Pressable
+        onPress={() => router.push("/calendar")}
+        style={[styles.weekCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+      >
+        <View style={styles.weekCardHeader}>
+          <Text style={[styles.weekCardTitle, { color: colors.foreground }]}>This Week</Text>
+          <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+        </View>
+        <View style={styles.weekBarRow}>
+          {weekDays.map((day, i) => (
+            <View key={day.key} style={styles.weekBarCol}>
+              <Text style={[styles.weekBarLabel, { color: colors.mutedForeground }]}>{WEEKDAY_SHORT[i]}</Text>
+              <View
+                style={[
+                  styles.weekBarCircle,
+                  {
+                    backgroundColor: day.completed ? colors.primary : colors.muted,
+                    borderColor: day.isToday ? colors.primary : colors.border,
+                    borderWidth: day.isToday ? 2 : 1,
+                  },
+                ]}
+              >
+                {day.completed && <Feather name="check" size={13} color="#fff" />}
+              </View>
+            </View>
+          ))}
+        </View>
+      </Pressable>
 
       {/* Onboarding prompt */}
       {needsOnboarding && (
@@ -311,4 +384,11 @@ const styles = StyleSheet.create({
   },
   onboardingTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   onboardingSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  weekCard: { borderRadius: 16, borderWidth: 1, padding: 14, marginBottom: 16 },
+  weekCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  weekCardTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  weekBarRow: { flexDirection: "row", justifyContent: "space-between" },
+  weekBarCol: { alignItems: "center", gap: 6 },
+  weekBarLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  weekBarCircle: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
 });
