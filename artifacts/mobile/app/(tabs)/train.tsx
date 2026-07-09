@@ -8,14 +8,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import type { Routine, RunSession } from "@/context/AppContext";
+import type { RunSession } from "@/context/AppContext";
 
 const CATEGORY_COLORS: Record<string, string> = {
   Chest: "#ef4444",
@@ -78,11 +77,9 @@ export default function TrainScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, addRoutine } = useApp();
+  const { state } = useApp();
   const { routines, workoutHistory, runHistory } = state;
   const [activeTab, setActiveTab] = useState<"lift" | "run">("lift");
-  const [showNew, setShowNew] = useState(false);
-  const [newName, setNewName] = useState("");
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
@@ -101,19 +98,6 @@ export default function TrainScreen() {
   const prRun = runHistory.length > 0
     ? runHistory.reduce((best, r) => (r.distance > best.distance ? r : best), runHistory[0])
     : null;
-
-  function createRoutine() {
-    if (!newName.trim()) return;
-    const r: Routine = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
-      name: newName.trim(),
-      exercises: [],
-    };
-    addRoutine(r);
-    setNewName("");
-    setShowNew(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }
 
   return (
     <ScrollView
@@ -222,36 +206,16 @@ export default function TrainScreen() {
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>My Routines</Text>
               <Pressable
-                onPress={() => setShowNew(true)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push("/template-builder");
+                }}
                 style={[styles.addBtn, { backgroundColor: colors.primary + "22" }]}
               >
                 <Feather name="plus" size={16} color={colors.primary} />
                 <Text style={[styles.addBtnText, { color: colors.primary }]}>New</Text>
               </Pressable>
             </View>
-
-            {showNew && (
-              <View style={[styles.newRoutineCard, { backgroundColor: colors.card, borderColor: colors.primary }]}>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.muted, color: colors.foreground, borderColor: colors.border }]}
-                  value={newName}
-                  onChangeText={setNewName}
-                  placeholder="Routine name..."
-                  placeholderTextColor={colors.mutedForeground}
-                  autoFocus
-                  returnKeyType="done"
-                  onSubmitEditing={createRoutine}
-                />
-                <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-                  <Pressable onPress={() => { setShowNew(false); setNewName(""); }} style={[styles.cancelBtn, { borderColor: colors.border }]}>
-                    <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
-                  </Pressable>
-                  <Pressable onPress={createRoutine} style={[styles.confirmBtn, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.confirmBtnText}>Create</Text>
-                  </Pressable>
-                </View>
-              </View>
-            )}
 
             {routines.map((routine) => (
               <Pressable
@@ -436,12 +400,6 @@ const styles = StyleSheet.create({
   quickBtnText: { fontSize: 14, fontFamily: "Inter_700Bold", color: "#fff" },
   addBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   addBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  newRoutineCard: { borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 12 },
-  input: { borderRadius: 10, borderWidth: 1, padding: 12, fontSize: 15, fontFamily: "Inter_400Regular" },
-  cancelBtn: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 12, alignItems: "center" },
-  cancelBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  confirmBtn: { flex: 1, borderRadius: 10, padding: 12, alignItems: "center" },
-  confirmBtnText: { fontSize: 14, fontFamily: "Inter_700Bold", color: "#fff" },
   routineCard: { borderRadius: 16, borderWidth: 1, padding: 14, marginBottom: 10 },
   routineRow: { flexDirection: "row", alignItems: "center" },
   routineIcon: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center" },

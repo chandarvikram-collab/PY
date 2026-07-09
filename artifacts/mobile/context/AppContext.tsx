@@ -72,7 +72,7 @@ export type AIPlan = {
   nutrition: AIPlanNutrition;
   equipment_strategy: string;
   weeks: AIPlanWeek[];
-  ai_routine_payload: AIRoutinePayload | null;
+  ai_routine_payloads: AIRoutinePayload[];
 };
 
 export type AIPlanWeek = {

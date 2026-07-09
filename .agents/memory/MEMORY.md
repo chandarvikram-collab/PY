@@ -6,3 +6,4 @@
 - [esbuild bundling breaks package-relative migrations](esbuild-bundling-external-sql-migrations.md) — externalize deps that locate files via `__dirname` at runtime
 - [Drizzle push TTY prompt](drizzle-push-tty-prompt.md) — `db run push` can hang on an unrelated constraint prompt; fall back to direct SQL via executeSql()
 - [Mobile routines are local-only](mobile-routines-local-only.md) — user-created routines live in AsyncStorage only, not the server `routines` table; don't rely on server-side routineId lookups
+- [Expo notifications web crash](expo-notifications-web-crash.md) — getLastNotificationResponse not available on web preview; pre-existing, not a regression signal

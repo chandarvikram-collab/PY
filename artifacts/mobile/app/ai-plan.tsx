@@ -34,13 +34,18 @@ const clientAiRoutinePayloadSchema = z.object({
   exercises: z.array(clientRoutineExerciseSchema).min(1),
 });
 
-function validateAiRoutinePayload(payload: unknown): AIRoutinePayload | null {
-  const result = clientAiRoutinePayloadSchema.safeParse(payload);
-  if (!result.success) {
-    console.warn("[ai-plan] ai_routine_payload failed client validation:", result.error.issues);
-    return null;
+function validateAiRoutinePayloads(payloads: unknown): AIRoutinePayload[] {
+  if (!Array.isArray(payloads)) return [];
+  const valid: AIRoutinePayload[] = [];
+  for (const payload of payloads) {
+    const result = clientAiRoutinePayloadSchema.safeParse(payload);
+    if (!result.success) {
+      console.warn("[ai-plan] ai_routine_payload failed client validation:", result.error.issues);
+      continue;
+    }
+    valid.push(result.data as AIRoutinePayload);
   }
-  return result.data as AIRoutinePayload;
+  return valid;
 }
 
 function parseReps(reps: string): number {
@@ -96,7 +101,7 @@ export default function AIPlanScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, saveAIPlan, addRoutine, isPremium } = useApp();
+  const { state, saveAIPlan, addRoutine, updateProfile, isPremium } = useApp();
   const { getToken } = useAuth();
   const { userProfile } = state;
 
@@ -151,9 +156,9 @@ export default function AIPlanScreen() {
   async function handleSaveToRoutines() {
     if (!plan || saveState === "saving" || saveState === "saved") return;
 
-    const validPayload = validateAiRoutinePayload(plan.ai_routine_payload);
-    if (!validPayload) {
-      console.warn("[ai-plan] ai_routine_payload absent or invalid — cannot save");
+    const validPayloads = validateAiRoutinePayloads(plan.ai_routine_payloads);
+    if (validPayloads.length === 0) {
+      console.warn("[ai-plan] ai_routine_payloads absent or invalid — cannot save");
       setSaveState("error");
       return;
     }
@@ -163,22 +168,37 @@ export default function AIPlanScreen() {
 
     try {
       const token = await getToken();
-      const resp = await fetch(`${API_BASE}/api/routines`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(validPayload),
-      });
+      const savedRoutines: AIRoutinePayload[] = [];
 
-      if (!resp.ok) {
-        console.warn("[ai-plan] routine save failed:", resp.status);
-        setSaveState("error");
-        return;
+      for (const payload of validPayloads) {
+        const resp = await fetch(`${API_BASE}/api/routines`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+          console.warn("[ai-plan] routine save failed:", resp.status);
+          setSaveState("error");
+          return;
+        }
+        savedRoutines.push(payload);
       }
 
-      addRoutine(payloadToLocalRoutine(validPayload, plan.equipment));
+      savedRoutines.forEach((payload) => {
+        addRoutine(payloadToLocalRoutine(payload, plan.equipment));
+      });
+
+      updateProfile({
+        calorieGoal: plan.nutrition.dailyCalories,
+        proteinGoal: plan.nutrition.proteinG,
+        carbGoal: plan.nutrition.carbsG,
+        fatGoal: plan.nutrition.fatG,
+      });
+
       setSaveState("saved");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
@@ -345,7 +365,7 @@ export default function AIPlanScreen() {
             <Feather name="refresh-cw" size={14} color={colors.mutedForeground} />
             <Text style={[styles.regenText, { color: colors.mutedForeground }]}>Redo</Text>
           </Pressable>
-          {validateAiRoutinePayload(plan.ai_routine_payload) !== null && (
+          {validateAiRoutinePayloads(plan.ai_routine_payloads).length > 0 && (
             <Pressable
               onPress={handleSaveToRoutines}
               disabled={saveState === "saved" || saveState === "saving"}
@@ -407,7 +427,7 @@ export default function AIPlanScreen() {
             <View style={[styles.saveBanner, { backgroundColor: "#22c55e18", borderColor: "#22c55e44" }]}>
               <Feather name="check-circle" size={15} color="#22c55e" />
               <Text style={[styles.saveBannerText, { color: "#22c55e" }]}>
-                Routine saved to your Training tab
+                Routines saved to your Training tab, and nutrition goals updated
               </Text>
             </View>
           )}

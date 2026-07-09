@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp, ME_USER_ID } from "@/context/AppContext";
+import { AVAILABLE_EXERCISES } from "@/constants/exercises";
 import { useColors } from "@/hooks/useColors";
 import type { Exercise, ExerciseLog, SetLog, WorkoutSession } from "@/context/AppContext";
 
@@ -28,23 +29,6 @@ function fmtTime(secs: number) {
   const s = secs % 60;
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
-
-const AVAILABLE_EXERCISES: Exercise[] = [
-  { id: "ch-01", name: "Barbell Bench Press", category: "Chest", equipment: "Barbell", sets: 3, reps: 8, weight: 135, rest: 120 },
-  { id: "ch-02", name: "Dumbbell Incline Press", category: "Chest", equipment: "Dumbbell", sets: 3, reps: 10, weight: 50, rest: 90 },
-  { id: "bk-01", name: "Barbell Deadlift", category: "Back", equipment: "Barbell", sets: 3, reps: 5, weight: 225, rest: 180 },
-  { id: "bk-08", name: "Lat Pulldown", category: "Back", equipment: "Cable", sets: 3, reps: 10, weight: 100, rest: 90 },
-  { id: "bk-10", name: "Seated Cable Row", category: "Back", equipment: "Cable", sets: 3, reps: 10, weight: 90, rest: 90 },
-  { id: "lg-01", name: "Barbell Back Squat", category: "Legs", equipment: "Barbell", sets: 4, reps: 6, weight: 185, rest: 180 },
-  { id: "lg-03", name: "Romanian Deadlift", category: "Legs", equipment: "Barbell", sets: 3, reps: 8, weight: 155, rest: 120 },
-  { id: "lg-11", name: "Leg Press", category: "Legs", equipment: "Machine", sets: 3, reps: 10, weight: 220, rest: 90 },
-  { id: "sh-01", name: "Overhead Press", category: "Shoulders", equipment: "Barbell", sets: 3, reps: 8, weight: 95, rest: 120 },
-  { id: "sh-04", name: "Dumbbell Lateral Raise", category: "Shoulders", equipment: "Dumbbell", sets: 3, reps: 15, weight: 15, rest: 60 },
-  { id: "am-01", name: "Barbell Biceps Curl", category: "Arms", equipment: "Barbell", sets: 3, reps: 10, weight: 50, rest: 60 },
-  { id: "am-13", name: "Cable Triceps Pushdown", category: "Arms", equipment: "Cable", sets: 3, reps: 12, weight: 50, rest: 60 },
-  { id: "cr-01", name: "Plank", category: "Core", equipment: "Bodyweight", sets: 3, reps: 1, weight: 0, rest: 60 },
-  { id: "cr-02", name: "Ab Crunch", category: "Core", equipment: "Bodyweight", sets: 3, reps: 20, weight: 0, rest: 45 },
-];
 
 type SetEntry = { weight: string; reps: string; done: boolean };
 type ExEntry = { exercise: Exercise; sets: SetEntry[] };
@@ -174,28 +158,39 @@ export default function SessionScreen() {
 
     addWorkoutSession(session);
 
-    addPost({
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
-      userId: ME_USER_ID,
-      userName: state.userProfile.name,
-      userInitials: state.userProfile.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase(),
-      userColor: "#E8151B",
-      type: "workout",
-      content: `Just finished ${session.name}! ${fmtTime(elapsed)} of hard work.`,
-      likes: 0,
-      comments: 0,
-      liked: false,
-      time: "Just now",
-      stats: {
-        Volume: `${Math.round(totalVolume).toLocaleString()} lbs`,
-        Sets: String(completedSets),
-        Duration: fmtTime(elapsed),
-      },
-    });
-
     if (intervalRef.current) clearInterval(intervalRef.current);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.back();
+
+    const shareToFeed = () => {
+      addPost({
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+        userId: ME_USER_ID,
+        userName: state.userProfile.name,
+        userInitials: state.userProfile.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase(),
+        userColor: "#E8151B",
+        type: "workout",
+        content: `Just finished ${session.name}! ${fmtTime(elapsed)} of hard work.`,
+        likes: 0,
+        comments: 0,
+        liked: false,
+        time: "Just now",
+        stats: {
+          Volume: `${Math.round(totalVolume).toLocaleString()} lbs`,
+          Sets: String(completedSets),
+          Duration: fmtTime(elapsed),
+        },
+      });
+      router.back();
+    };
+
+    Alert.alert(
+      "Share your workout?",
+      `You finished ${session.name} in ${fmtTime(elapsed)}. Post it to your social feed?`,
+      [
+        { text: "Skip", style: "cancel", onPress: () => router.back() },
+        { text: "Share to Feed", onPress: shareToFeed },
+      ],
+    );
   }
 
   return (

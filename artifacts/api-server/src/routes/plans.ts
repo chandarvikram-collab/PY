@@ -49,7 +49,7 @@ type GeneratedPlan = {
   nutrition: NutritionTargets;
   equipment_strategy: string;
   weeks: PlanWeek[];
-  ai_routine_payload: AIRoutinePayload;
+  ai_routine_payloads: AIRoutinePayload[];
 };
 
 // Each exercise maps to an array of OR-groups. All groups must be satisfied (AND).
@@ -319,21 +319,22 @@ function generatePlan(
     { weekNumber: 4, focus: "Deload — 60% intensity, active recovery", workouts: schedule.slice(0, Math.floor(schedule.length / 2)).map((s) => ({ ...s, exercises: s.exercises.map((e) => ({ ...e, sets: 2, reps: "10 (light)", rest: e.rest })) })) },
   ];
 
-  const primaryWorkout = schedule[0];
-  const rawPayload = {
-    name: primaryWorkout.name,
-    exercises: primaryWorkout.exercises.map((e) => ({
-      name: e.name,
-      sets: e.sets,
-      reps: e.reps,
-      restSeconds: e.rest,
-    })),
-  };
-
-  const payloadResult = aiRoutinePayloadSchema.safeParse(rawPayload);
-  if (!payloadResult.success) {
-    throw new Error(`ai_routine_payload failed validation: ${JSON.stringify(payloadResult.error.issues)}`);
-  }
+  const ai_routine_payloads: AIRoutinePayload[] = schedule.map((workout) => {
+    const rawPayload = {
+      name: workout.name,
+      exercises: workout.exercises.map((e) => ({
+        name: e.name,
+        sets: e.sets,
+        reps: e.reps,
+        restSeconds: e.rest,
+      })),
+    };
+    const payloadResult = aiRoutinePayloadSchema.safeParse(rawPayload);
+    if (!payloadResult.success) {
+      throw new Error(`ai_routine_payload failed validation: ${JSON.stringify(payloadResult.error.issues)}`);
+    }
+    return payloadResult.data;
+  });
 
   return {
     goal,
@@ -344,7 +345,7 @@ function generatePlan(
     nutrition,
     equipment_strategy: equipmentStrategy,
     weeks,
-    ai_routine_payload: payloadResult.data,
+    ai_routine_payloads,
   };
 }
 
