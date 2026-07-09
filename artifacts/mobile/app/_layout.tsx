@@ -293,6 +293,10 @@ function RootLayoutNav() {
         name="upgrade"
         options={{ headerShown: false, presentation: "modal" }}
       />
+      <Stack.Screen
+        name="calendar"
+        options={{ headerShown: false }}
+      />
     </Stack>
   );
 }

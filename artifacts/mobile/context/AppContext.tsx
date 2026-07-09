@@ -398,6 +398,7 @@ type AppContextType = {
   isPremium: boolean;
   premiumStatusLoading: boolean;
   refreshPremiumStatus: () => Promise<void>;
+  apiUserId: string | null;
 };
 
 const ME_ID = "me";
@@ -820,6 +821,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [premiumStatusLoading, setPremiumStatusLoading] = useState(true);
+  const [apiUserId, setApiUserId] = useState<string | null>(null);
   const apiUserIdRef = useRef<string | null>(null);
   const { userId: clerkUserId, isSignedIn, getToken } = useAuth();
   const { user: clerkUser, isLoaded: clerkUserLoaded } = useUser();
@@ -891,6 +893,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         if (user.id !== localUuid) {
           apiUserIdRef.current = user.id;
+          setApiUserId(user.id);
           await AsyncStorage.setItem(API_USER_ID_KEY, user.id);
           hydrateFromApi(user.id, setState);
         }
@@ -918,6 +921,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       const userId = storedApiUserId ?? generateUUID();
       apiUserIdRef.current = userId;
+      setApiUserId(userId);
       if (!storedApiUserId) {
         AsyncStorage.setItem(API_USER_ID_KEY, userId).catch(() => {});
       }
@@ -1955,6 +1959,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         isPremium,
         premiumStatusLoading,
         refreshPremiumStatus,
+        apiUserId,
       }}
     >
       {children}

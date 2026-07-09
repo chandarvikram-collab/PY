@@ -4,3 +4,5 @@
 - [Drizzle composite upsert & UUID widening](drizzle-composite-upsert.md) — two type gotchas with Drizzle 0.45 + drizzle-zod
 - [Replit Stripe connector field name](replit-stripe-connector-field.md) — real field is `settings.secret`, not `secret_key` (stale skill doc)
 - [esbuild bundling breaks package-relative migrations](esbuild-bundling-external-sql-migrations.md) — externalize deps that locate files via `__dirname` at runtime
+- [Drizzle push TTY prompt](drizzle-push-tty-prompt.md) — `db run push` can hang on an unrelated constraint prompt; fall back to direct SQL via executeSql()
+- [Mobile routines are local-only](mobile-routines-local-only.md) — user-created routines live in AsyncStorage only, not the server `routines` table; don't rely on server-side routineId lookups
