@@ -6,7 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, useRouter } from "expo-router";
+import { Redirect, Stack, useRouter, useSegments } from "expo-router";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -189,6 +189,18 @@ function FirstLoginHandler() {
   return <NamePickerModal visible={showNamePicker} onDone={handleNameDone} />;
 }
 
+function AuthGate() {
+  const segments = useSegments();
+  const { isAuthenticated, isLoading } = useAuth();
+
+  const inAuthGroup = segments[0] === "(auth)";
+  if (!isLoading && !isAuthenticated && !inAuthGroup) {
+    return <Redirect href="/(auth)/sign-in" />;
+  }
+
+  return null;
+}
+
 function OnboardingGate() {
   const router = useRouter();
   const { state } = useApp();
@@ -329,6 +341,7 @@ export default function RootLayout() {
           <ErrorBoundary>
             <QueryClientProvider client={queryClient}>
               <AppProvider>
+                <AuthGate />
                 <FirstLoginHandler />
                 <OnboardingGate />
                 <NotificationTapHandler />

@@ -33,6 +33,8 @@ type OnboardingStep =
   | "goal"
   | "pace"
   | "equipment"
+  | "activities"
+  | "availability"
   | "review";
 
 const STEPS: OnboardingStep[] = [
@@ -44,8 +46,13 @@ const STEPS: OnboardingStep[] = [
   "goal",
   "pace",
   "equipment",
+  "activities",
+  "availability",
   "review",
 ];
+
+const ACTIVITY_OPTIONS = ["Strength Training", "Running", "Cycling", "Yoga", "HIIT", "Swimming", "Climbing"];
+const AVAILABILITY_OPTIONS = ["Weekday Mornings", "Weekday Evenings", "Weekends", "Lunch Breaks"];
 
 const ACTIVITY_LEVELS = [
   { key: "sedentary", label: "Sedentary", sub: "Desk job, little exercise" },
@@ -112,6 +119,13 @@ export default function OnboardingScreen() {
   const [equipment, setEquipment] = useState<Set<string>>(
     () => new Set(userProfile.equipment.length > 0 ? userProfile.equipment : ["Barbell", "Dumbbell"])
   );
+  const [activities, setActivities] = useState<Set<string>>(
+    () => new Set(userProfile.activities ?? [])
+  );
+  const [availability, setAvailability] = useState<Set<string>>(
+    () => new Set(userProfile.availability ?? [])
+  );
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const currentStep = STEPS[stepIndex];
   const isFirst = stepIndex === 0;
@@ -134,6 +148,8 @@ export default function OnboardingScreen() {
       case "goal": return !!goal;
       case "pace": return pace >= 0 && pace <= 5;
       case "equipment": return equipment.size > 0;
+      case "activities": return true;
+      case "availability": return true;
       case "review": return true;
     }
   }, [currentStep, sex, age, heightFt, heightIn, weightLbs, activity, goal, pace, equipment]);
@@ -155,6 +171,7 @@ export default function OnboardingScreen() {
 
   const submit = useCallback(async () => {
     setSaving(true);
+    setSubmitError(null);
     try {
       const payload = {
         biologicalSex: sex!,
@@ -166,6 +183,8 @@ export default function OnboardingScreen() {
         primaryGoal: goal!,
         weeklyPaceLbs: pace,
         equipment: Array.from(equipment),
+        activities: Array.from(activities),
+        availability: Array.from(availability),
       };
 
       const token = await getToken();
@@ -194,19 +213,45 @@ export default function OnboardingScreen() {
           primaryGoal: payload.primaryGoal,
           weeklyPaceLbs: payload.weeklyPaceLbs,
           equipment: payload.equipment,
+          activities: payload.activities,
+          availability: payload.availability,
           hasCompletedOnboarding: true,
         });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.back();
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/(tabs)");
+        }
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setSubmitError("Couldn't save your info. Please check your connection and try again.");
       }
     } catch {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setSubmitError("Couldn't save your info. Please check your connection and try again.");
     } finally {
       setSaving(false);
     }
-  }, [sex, heightFt, heightIn, weightLbs, age, activity, goal, pace, equipment, userProfile.id, updateProfile, router, getToken]);
+  }, [sex, heightFt, heightIn, weightLbs, age, activity, goal, pace, equipment, activities, availability, userProfile.id, updateProfile, router, getToken]);
+
+  function toggleActivity(item: string) {
+    setActivities((prev) => {
+      const next = new Set(prev);
+      if (next.has(item)) next.delete(item);
+      else next.add(item);
+      return next;
+    });
+  }
+
+  function toggleAvailability(item: string) {
+    setAvailability((prev) => {
+      const next = new Set(prev);
+      if (next.has(item)) next.delete(item);
+      else next.add(item);
+      return next;
+    });
+  }
 
   function toggleEquipment(item: string) {
     setEquipment((prev) => {
@@ -511,6 +556,70 @@ export default function OnboardingScreen() {
           </>
         )}
 
+        {/* ── Activities ── */}
+        {currentStep === "activities" && (
+          <>
+            <Text style={[styles.title, { color: colors.foreground }]}>What activities do you enjoy?</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              We'll use this to match you with others in Discover. Optional — you can skip.
+            </Text>
+            <View style={styles.chipWrap}>
+              {ACTIVITY_OPTIONS.map((a) => {
+                const active = activities.has(a);
+                return (
+                  <Pressable
+                    key={a}
+                    onPress={() => { toggleActivity(a); Haptics.selectionAsync(); }}
+                    style={[
+                      styles.equipChip,
+                      {
+                        backgroundColor: active ? colors.primary + "22" : colors.card,
+                        borderColor: active ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.equipChipText, { color: active ? colors.primary : colors.foreground }]}>
+                      {a}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        {/* ── Availability ── */}
+        {currentStep === "availability" && (
+          <>
+            <Text style={[styles.title, { color: colors.foreground }]}>When are you usually free to train?</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              We'll use this to match you with others in Discover. Optional — you can skip.
+            </Text>
+            <View style={styles.chipWrap}>
+              {AVAILABILITY_OPTIONS.map((a) => {
+                const active = availability.has(a);
+                return (
+                  <Pressable
+                    key={a}
+                    onPress={() => { toggleAvailability(a); Haptics.selectionAsync(); }}
+                    style={[
+                      styles.equipChip,
+                      {
+                        backgroundColor: active ? colors.primary + "22" : colors.card,
+                        borderColor: active ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.equipChipText, { color: active ? colors.primary : colors.foreground }]}>
+                      {a}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        )}
+
         {/* ── Review ── */}
         {currentStep === "review" && (
           <>
@@ -528,6 +637,11 @@ export default function OnboardingScreen() {
               <ReviewRow label="Pace" value={`${pace} lb/week`} />
               <ReviewRow label="Equipment" value={`${equipment.size} selected`} last />
             </View>
+            {submitError ? (
+              <Text style={{ color: "#ef4444", fontFamily: "Inter_500Medium", fontSize: 13, marginTop: 12, textAlign: "center" }}>
+                {submitError}
+              </Text>
+            ) : null}
           </>
         )}
 

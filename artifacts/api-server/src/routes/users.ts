@@ -149,6 +149,8 @@ const nutritionGoalsSchema = z.object({
   primaryGoal: z.enum(["lose_fat", "maintain", "build_muscle", "improve_endurance"]),
   weeklyPaceLbs: z.number().min(0).max(5).optional(),
   equipment: z.array(z.string()).optional(),
+  activities: z.array(z.string()).optional(),
+  availability: z.array(z.string()).optional(),
   // Metric (legacy but still accepted)
   heightCm: z.number().int().min(50).max(300).optional(),
   weightKg: z.number().int().min(20).max(300).optional(),
@@ -244,6 +246,12 @@ router.post("/users/:id/nutrition-goals", requireAuth, requireOwner((req) => req
 
   if (data.equipment !== undefined) {
     updateData.equipment = data.equipment;
+  }
+  if (data.activities !== undefined) {
+    updateData.activities = data.activities;
+  }
+  if (data.availability !== undefined) {
+    updateData.availability = data.availability;
   }
 
   const [row] = await db
