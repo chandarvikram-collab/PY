@@ -11,6 +11,7 @@ import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
+  AppState,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -30,7 +31,7 @@ import { ClerkProvider, ClerkLoaded, useAuth as useClerkAuth } from "@clerk/expo
 import { tokenCache } from "@clerk/expo/token-cache";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AppProvider, useApp } from "@/context/AppContext";
+import { AppProvider, socialFetch, useApp } from "@/context/AppContext";
 import { useAuth } from "@/lib/auth";
 import { useColors } from "@/hooks/useColors";
 
@@ -48,6 +49,7 @@ const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
 const AUTH_INITIALIZED_KEY = "ironpace_auth_initialized";
 const SUNDAY_CHECKIN_PREFIX = "ironpace_sunday_checkin_";
+const MIDWEEK_NUDGE_PREFIX = "ironpace_midweek_nudge_";
 
 function getSundayCheckInKeyForToday(userId: string | null | undefined): string | null {
   if (!userId) return null;
@@ -57,6 +59,24 @@ function getSundayCheckInKeyForToday(userId: string | null | undefined): string 
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
   return `${SUNDAY_CHECKIN_PREFIX}${userId}_${y}-${m}-${d}`;
+}
+
+function toDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// One nudge per calendar week, surfaced from Wednesday onward once the user
+// has had a few days to fall behind on their scheduled workouts.
+function getMidweekNudgeKeyForToday(userId: string | null | undefined): string | null {
+  if (!userId) return null;
+  const now = new Date();
+  if (now.getDay() < 3) return null;
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() - now.getDay());
+  return `${MIDWEEK_NUDGE_PREFIX}${userId}_${toDateKey(sunday)}`;
 }
 
 function slugify(name: string): string {
@@ -294,6 +314,124 @@ function SundayCheckInModal() {
   );
 }
 
+type ScheduledWorkoutLite = { date: string; completed: boolean };
+
+function MidweekNudgeModal() {
+  const colors = useColors();
+  const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuth();
+  const { apiUserId } = useApp();
+  const [visible, setVisible] = useState(false);
+  const [missedCount, setMissedCount] = useState(0);
+  // Tracks the last (userId, dayKey) pair for which we've already checked
+  // and found nothing missed — this is deliberately day-scoped (not
+  // week-scoped) so a "clean" Wednesday doesn't suppress a Thursday check
+  // once a day actually gets missed later in the same week. Persisted
+  // dismissal (user tapped "Not now"/"View Schedule") is tracked separately
+  // via AsyncStorage, keyed per week.
+  const checkedTodayRef = useRef<string | null>(null);
+  // Bumped whenever the app returns to the foreground so a long-lived
+  // session re-evaluates the nudge if the day (or week) has since rolled
+  // over, without requiring a full app restart.
+  const [foregroundTick, setForegroundTick] = useState(0);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") setForegroundTick((t) => t + 1);
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (isLoading || !isAuthenticated || !apiUserId) return;
+    const weekKey = getMidweekNudgeKeyForToday(apiUserId);
+    if (!weekKey) return;
+    const todayKey = `${apiUserId}_${toDateKey(new Date())}`;
+    if (checkedTodayRef.current === todayKey) return;
+    // Set immediately (before any async work starts) so a second effect run
+    // triggered by a rapid foreground transition — or the dismissal-key read
+    // resolving — can't slip in and kick off a duplicate check/fetch for the
+    // same day.
+    checkedTodayRef.current = todayKey;
+
+    let cancelled = false;
+    AsyncStorage.getItem(weekKey)
+      .then((seen) => {
+        if (seen) return;
+        return socialFetch(`/schedule/${apiUserId}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data: { scheduledWorkouts: ScheduledWorkoutLite[] } | null) => {
+            if (cancelled || !data) return;
+            const now = new Date();
+            const nowKey = toDateKey(now);
+            const sunday = new Date(now);
+            sunday.setDate(now.getDate() - now.getDay());
+            const weekStartKey = toDateKey(sunday);
+            // Only count misses from the current week (Sun..yesterday), not
+            // stale incomplete entries from prior weeks.
+            const missed = data.scheduledWorkouts.filter(
+              (s) => !s.completed && s.date >= weekStartKey && s.date < nowKey,
+            ).length;
+            if (missed > 0) {
+              setMissedCount(missed);
+              setVisible(true);
+            }
+          });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isLoading, apiUserId, foregroundTick]);
+
+  const dismiss = useCallback(() => {
+    setVisible(false);
+    const key = getMidweekNudgeKeyForToday(apiUserId);
+    if (!key) return;
+    // Set synchronously so a rapid re-check (e.g. immediate foreground
+    // event) can't race ahead of the AsyncStorage write and re-open the
+    // modal before the dismissal is persisted.
+    checkedTodayRef.current = `${apiUserId}_${toDateKey(new Date())}`;
+    AsyncStorage.setItem(key, "1").catch(() => {});
+  }, [apiUserId]);
+
+  const viewSchedule = useCallback(() => {
+    dismiss();
+    router.push("/calendar");
+  }, [dismiss, router]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={dismiss}>
+      <View style={checkinStyles.overlay}>
+        <View style={[checkinStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[checkinStyles.title, { color: colors.foreground }]}>Falling behind?</Text>
+          <Text style={[checkinStyles.body, { color: colors.mutedForeground }]}>
+            {missedCount === 1
+              ? "You've missed 1 scheduled workout this week."
+              : `You've missed ${missedCount} scheduled workouts this week.`}{" "}
+            Want to catch up or adjust your schedule?
+          </Text>
+          <View style={checkinStyles.btnRow}>
+            <Pressable
+              onPress={dismiss}
+              style={[checkinStyles.btn, { backgroundColor: colors.muted, borderColor: colors.border }]}
+            >
+              <Text style={[checkinStyles.btnText, { color: colors.mutedForeground }]}>Not now</Text>
+            </Pressable>
+            <Pressable
+              onPress={viewSchedule}
+              style={[checkinStyles.btn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            >
+              <Text style={[checkinStyles.btnText, { color: "#fff" }]}>View Schedule</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const checkinStyles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -462,6 +600,7 @@ export default function RootLayout() {
                 <OnboardingGate />
                 <NotificationTapHandler />
                 <SundayCheckInModal />
+                <MidweekNudgeModal />
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <KeyboardProvider>
                     <RootLayoutNav />
