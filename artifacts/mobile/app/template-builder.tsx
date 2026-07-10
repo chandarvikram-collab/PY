@@ -44,6 +44,10 @@ export default function TemplateBuilderScreen() {
   const [name, setName] = useState(editingRoutine?.name ?? "");
   const [selected, setSelected] = useState<Exercise[]>(editingRoutine?.exercises ?? []);
   const [showAdd, setShowAdd] = useState(false);
+  const [editIndex, setEditIndex] = useState<number | null>(null);
+  const [editSets, setEditSets] = useState("");
+  const [editReps, setEditReps] = useState("");
+  const [editRest, setEditRest] = useState("");
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
@@ -65,6 +69,41 @@ export default function TemplateBuilderScreen() {
   function removeExercise(idx: number) {
     setSelected((prev) => prev.filter((_, i) => i !== idx));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
+  function moveExercise(idx: number, dir: -1 | 1) {
+    setSelected((prev) => {
+      const target = idx + dir;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
+  function openEdit(idx: number) {
+    const ex = selected[idx];
+    setEditIndex(idx);
+    setEditSets(String(ex.sets));
+    setEditReps(String(ex.reps));
+    setEditRest(String(ex.rest));
+  }
+
+  function closeEdit() {
+    setEditIndex(null);
+  }
+
+  function saveEdit() {
+    if (editIndex === null) return;
+    const sets = Math.max(1, parseInt(editSets, 10) || 1);
+    const reps = Math.max(1, parseInt(editReps, 10) || 1);
+    const rest = Math.max(0, parseInt(editRest, 10) || 0);
+    setSelected((prev) =>
+      prev.map((ex, i) => (i === editIndex ? { ...ex, sets, reps, rest } : ex)),
+    );
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEditIndex(null);
   }
 
   function saveTemplate() {
@@ -152,7 +191,29 @@ export default function TemplateBuilderScreen() {
 
         {selected.map((ex, idx) => (
           <View key={`${ex.id}-${idx}`} style={[styles.exCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={{ flex: 1 }}>
+            <View style={styles.reorderCol}>
+              <Pressable
+                onPress={() => moveExercise(idx, -1)}
+                disabled={idx === 0}
+                hitSlop={6}
+                style={styles.reorderBtn}
+              >
+                <Feather name="chevron-up" size={16} color={idx === 0 ? colors.border : colors.mutedForeground} />
+              </Pressable>
+              <Pressable
+                onPress={() => moveExercise(idx, 1)}
+                disabled={idx === selected.length - 1}
+                hitSlop={6}
+                style={styles.reorderBtn}
+              >
+                <Feather
+                  name="chevron-down"
+                  size={16}
+                  color={idx === selected.length - 1 ? colors.border : colors.mutedForeground}
+                />
+              </Pressable>
+            </View>
+            <Pressable onPress={() => openEdit(idx)} style={{ flex: 1 }}>
               <Text style={[styles.exName, { color: colors.foreground }]}>{ex.name}</Text>
               <View style={styles.exMetaRow}>
                 <View style={[styles.catChip, { backgroundColor: (CATEGORY_COLORS[ex.category] ?? colors.primary) + "22" }]}>
@@ -162,7 +223,10 @@ export default function TemplateBuilderScreen() {
                   {ex.sets} sets · {ex.reps} reps · {ex.rest}s rest
                 </Text>
               </View>
-            </View>
+            </Pressable>
+            <Pressable onPress={() => openEdit(idx)} style={styles.removeBtn}>
+              <Feather name="edit-2" size={16} color={colors.primary} />
+            </Pressable>
             <Pressable onPress={() => removeExercise(idx)} style={styles.removeBtn}>
               <Feather name="trash-2" size={16} color="#ef4444" />
             </Pressable>
@@ -219,6 +283,56 @@ export default function TemplateBuilderScreen() {
           </View>
         </View>
       )}
+
+      {editIndex !== null && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "flex-end", zIndex: 100 }]}>
+          <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.sheetHeader}>
+              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>{selected[editIndex]?.name}</Text>
+              <Pressable onPress={closeEdit}>
+                <Feather name="x" size={22} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+
+            <View style={styles.editRow}>
+              <View style={styles.editField}>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>Sets</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border, marginBottom: 0 }]}
+                  value={editSets}
+                  onChangeText={setEditSets}
+                  keyboardType="number-pad"
+                  returnKeyType="done"
+                />
+              </View>
+              <View style={styles.editField}>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>Reps</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border, marginBottom: 0 }]}
+                  value={editReps}
+                  onChangeText={setEditReps}
+                  keyboardType="number-pad"
+                  returnKeyType="done"
+                />
+              </View>
+              <View style={styles.editField}>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>Rest (s)</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border, marginBottom: 0 }]}
+                  value={editRest}
+                  onChangeText={setEditRest}
+                  keyboardType="number-pad"
+                  returnKeyType="done"
+                />
+              </View>
+            </View>
+
+            <Pressable onPress={saveEdit} style={[styles.createBtn, { backgroundColor: colors.primary, marginTop: 20 }]}>
+              <Text style={[styles.createBtnText, { color: "#fff" }]}>Save</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -242,6 +356,10 @@ const styles = StyleSheet.create({
   catChipText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   exMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
   removeBtn: { padding: 8 },
+  reorderCol: { marginRight: 10, gap: 2 },
+  reorderBtn: { padding: 4 },
+  editRow: { flexDirection: "row", gap: 10 },
+  editField: { flex: 1, gap: 8 },
   addExBtn: { borderRadius: 16, borderWidth: 2, padding: 18, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 10, marginTop: 4 },
   addExText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   footer: { padding: 18, borderTopWidth: 1 },
