@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -14,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import type { RunSession } from "@/context/AppContext";
+import type { Routine, RunSession } from "@/context/AppContext";
 
 const CATEGORY_COLORS: Record<string, string> = {
   Chest: "#ef4444",
@@ -77,9 +78,37 @@ export default function TrainScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state } = useApp();
+  const { state, deleteRoutine } = useApp();
   const { routines, workoutHistory, runHistory } = state;
   const [activeTab, setActiveTab] = useState<"lift" | "run">("lift");
+
+  function onRoutineOptions(routine: Routine) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(routine.name, undefined, [
+      {
+        text: "Edit",
+        onPress: () => router.push({ pathname: "/template-builder", params: { routineId: routine.id } }),
+      },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          Alert.alert("Delete Template", `Delete "${routine.name}"? This can't be undone.`, [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: () => {
+                deleteRoutine(routine.id);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              },
+            },
+          ]);
+        },
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
@@ -234,7 +263,16 @@ export default function TrainScreen() {
                     <Text style={[styles.routineName, { color: colors.foreground }]}>{routine.name}</Text>
                     <Text style={[styles.routineSub, { color: colors.mutedForeground }]}>{routine.exercises.length} exercises</Text>
                   </View>
-                  <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onRoutineOptions(routine);
+                    }}
+                    hitSlop={10}
+                    style={styles.routineMoreBtn}
+                  >
+                    <Feather name="more-vertical" size={18} color={colors.mutedForeground} />
+                  </Pressable>
                 </View>
                 {routine.exercises.length > 0 && (
                   <View style={styles.muscleRow}>
@@ -405,6 +443,7 @@ const styles = StyleSheet.create({
   routineIcon: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   routineName: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   routineSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  routineMoreBtn: { padding: 6 },
   muscleRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 },
   muscleChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   muscleChipText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },

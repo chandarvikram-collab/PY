@@ -1,8 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useMemo, useState } from "react";
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -31,13 +32,29 @@ export default function TemplateBuilderScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { addRoutine } = useApp();
+  const { state, addRoutine, updateRoutine, deleteRoutine } = useApp();
+  const { routineId } = useLocalSearchParams<{ routineId?: string }>();
 
-  const [name, setName] = useState("");
-  const [selected, setSelected] = useState<Exercise[]>([]);
+  const editingRoutine = useMemo(
+    () => (routineId ? state.routines.find((r) => r.id === routineId) ?? null : null),
+    [routineId, state.routines],
+  );
+  const isEditing = !!editingRoutine;
+
+  const [name, setName] = useState(editingRoutine?.name ?? "");
+  const [selected, setSelected] = useState<Exercise[]>(editingRoutine?.exercises ?? []);
   const [showAdd, setShowAdd] = useState(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
+
+  React.useEffect(() => {
+    if (routineId && !editingRoutine) {
+      Alert.alert("Template Not Found", "This template no longer exists.", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routineId]);
 
   function addExercise(ex: Exercise) {
     setSelected((prev) => [...prev, ex]);
@@ -50,16 +67,40 @@ export default function TemplateBuilderScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }
 
-  function createTemplate() {
+  function saveTemplate() {
     if (!name.trim() || selected.length === 0) return;
-    const routine: Routine = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
-      name: name.trim(),
-      exercises: selected,
-    };
-    addRoutine(routine);
+    if (isEditing && editingRoutine) {
+      updateRoutine(editingRoutine.id, { name: name.trim(), exercises: selected });
+    } else {
+      const routine: Routine = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+        name: name.trim(),
+        exercises: selected,
+      };
+      addRoutine(routine);
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
+  }
+
+  function confirmDelete() {
+    if (!editingRoutine) return;
+    Alert.alert(
+      "Delete Template",
+      `Delete "${editingRoutine.name}"? This can't be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            deleteRoutine(editingRoutine.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            router.back();
+          },
+        },
+      ],
+    );
   }
 
   const canCreate = name.trim().length > 0 && selected.length > 0;
@@ -70,8 +111,16 @@ export default function TemplateBuilderScreen() {
         <Pressable onPress={() => router.back()} style={[styles.iconBtn, { borderColor: colors.border }]}>
           <Feather name="x" size={20} color={colors.mutedForeground} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>New Template</Text>
-        <View style={{ width: 38 }} />
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+          {isEditing ? "Edit Template" : "New Template"}
+        </Text>
+        {isEditing ? (
+          <Pressable onPress={confirmDelete} style={[styles.iconBtn, { borderColor: colors.border }]}>
+            <Feather name="trash-2" size={18} color="#ef4444" />
+          </Pressable>
+        ) : (
+          <View style={{ width: 38 }} />
+        )}
       </View>
 
       <ScrollView
@@ -131,11 +180,13 @@ export default function TemplateBuilderScreen() {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 20, backgroundColor: colors.background, borderTopColor: colors.border }]}>
         <Pressable
-          onPress={createTemplate}
+          onPress={saveTemplate}
           disabled={!canCreate}
           style={[styles.createBtn, { backgroundColor: canCreate ? colors.primary : colors.border }]}
         >
-          <Text style={[styles.createBtnText, { color: canCreate ? "#fff" : colors.mutedForeground }]}>Create Template</Text>
+          <Text style={[styles.createBtnText, { color: canCreate ? "#fff" : colors.mutedForeground }]}>
+            {isEditing ? "Save Changes" : "Create Template"}
+          </Text>
         </Pressable>
       </View>
 

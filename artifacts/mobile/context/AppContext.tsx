@@ -384,6 +384,8 @@ type AppContextType = {
   getTodayCalories: () => DayCalories;
   getWeeklyNutrition: () => WeeklyNutrition[];
   addRoutine: (routine: Routine) => void;
+  updateRoutine: (id: string, updates: Partial<Routine>) => void;
+  deleteRoutine: (id: string) => void;
   addRunSession: (session: RunSession) => void;
   updateRunSession: (id: string, updates: Partial<RunSession>) => void;
   saveMealTemplate: (name: string, entries: FoodEntry[]) => void;
@@ -1761,6 +1763,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [update],
   );
 
+  const updateRoutine = useCallback(
+    (id: string, updates: Partial<Routine>) => {
+      update((prev) => ({
+        ...prev,
+        routines: prev.routines.map((r) => (r.id === id ? { ...r, ...updates } : r)),
+      }));
+    },
+    [update],
+  );
+
+  const deleteRoutine = useCallback(
+    (id: string) => {
+      update((prev) => ({
+        ...prev,
+        routines: prev.routines.filter((r) => r.id !== id),
+      }));
+    },
+    [update],
+  );
+
   const addRunSession = useCallback(
     (session: RunSession) => {
       const points = Math.floor(session.distance * 10) + 20;
@@ -1946,6 +1968,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getTodayCalories,
         getWeeklyNutrition,
         addRoutine,
+        updateRoutine,
+        deleteRoutine,
         addRunSession,
         updateRunSession,
         saveMealTemplate,
