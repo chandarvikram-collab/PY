@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -103,11 +103,37 @@ export default function CalendarScreen() {
   const { state, apiUserId } = useApp();
   const { routines, userProfile } = state;
   const aiPlan = userProfile.aiPlan;
+  const { date: focusDateParam } = useLocalSearchParams<{ date?: string }>();
 
   const today = new Date();
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [selectedDate, setSelectedDate] = useState<string>(toDateKey(today));
+  // If we were opened with a specific date (e.g. tapping a day on the Home
+  // weekly tracker), focus the calendar on that day/month instead of today.
+  // Validate strictly: regex shape alone lets malformed values like
+  // "2026-99-99" through, which JS Date "rolls over" into a nonsensical
+  // date rather than rejecting -- so we round-trip and compare.
+  const focusDate = useMemo(() => {
+    if (focusDateParam && /^\d{4}-\d{2}-\d{2}$/.test(focusDateParam)) {
+      const parsed = new Date(focusDateParam + "T00:00:00");
+      if (!Number.isNaN(parsed.getTime()) && toDateKey(parsed) === focusDateParam) {
+        return parsed;
+      }
+    }
+    return today;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusDateParam]);
+
+  const [viewYear, setViewYear] = useState(focusDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(focusDate.getMonth());
+  const [selectedDate, setSelectedDate] = useState<string>(toDateKey(focusDate));
+
+  // Re-focus if a new 'date' param arrives while this screen instance stays
+  // mounted (e.g. navigating here again from Home with a different day).
+  useEffect(() => {
+    setViewYear(focusDate.getFullYear());
+    setViewMonth(focusDate.getMonth());
+    setSelectedDate(toDateKey(focusDate));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusDateParam]);
 
   const [scheduled, setScheduled] = useState<ScheduledWorkout[]>([]);
   const [loading, setLoading] = useState(true);

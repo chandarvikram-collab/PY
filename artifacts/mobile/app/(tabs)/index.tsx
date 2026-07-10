@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -74,8 +75,10 @@ export default function HomeScreen() {
     const todayKey = toDateKey(new Date());
     return dates.map((d) => {
       const key = toDateKey(d);
-      const completed = scheduledWeek.some((s) => s.date === key && s.completed);
-      return { key, isToday: key === todayKey, completed };
+      const dayEntries = scheduledWeek.filter((s) => s.date === key);
+      const hasScheduled = dayEntries.length > 0;
+      const completed = dayEntries.some((s) => s.completed);
+      return { key, isToday: key === todayKey, completed, hasScheduled };
     });
   }, [scheduledWeek]);
 
@@ -147,34 +150,66 @@ export default function HomeScreen() {
       </View>
 
       {/* Weekly Schedule Tracker */}
-      <Pressable
-        onPress={() => router.push("/calendar")}
-        style={[styles.weekCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-      >
-        <View style={styles.weekCardHeader}>
+      <View style={[styles.weekCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Pressable
+          onPress={() => router.push("/calendar")}
+          style={styles.weekCardHeader}
+        >
           <Text style={[styles.weekCardTitle, { color: colors.foreground }]}>This Week</Text>
           <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
-        </View>
+        </Pressable>
         <View style={styles.weekBarRow}>
           {weekDays.map((day, i) => (
-            <View key={day.key} style={styles.weekBarCol}>
-              <Text style={[styles.weekBarLabel, { color: colors.mutedForeground }]}>{WEEKDAY_SHORT[i]}</Text>
+            <Pressable
+              key={day.key}
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push({ pathname: "/calendar", params: { date: day.key } });
+              }}
+              style={styles.weekBarCol}
+            >
+              <Text
+                style={[
+                  styles.weekBarLabel,
+                  { color: day.isToday ? colors.foreground : colors.mutedForeground },
+                  day.isToday && styles.weekBarLabelToday,
+                ]}
+              >
+                {WEEKDAY_SHORT[i]}
+              </Text>
               <View
                 style={[
                   styles.weekBarCircle,
-                  {
-                    backgroundColor: day.completed ? colors.primary : colors.muted,
-                    borderColor: day.isToday ? colors.primary : colors.border,
-                    borderWidth: day.isToday ? 2 : 1,
-                  },
+                  // Circle fill/border communicates schedule state only
+                  // (matches the calendar screen's convention where primary
+                  // = scheduled): completed days are solid primary,
+                  // scheduled-but-incomplete days are a primary-tinted
+                  // outline, and days with nothing scheduled are an empty
+                  // dashed circle. "Today" is called out separately below
+                  // so it never gets confused with the scheduled state.
+                  day.completed
+                    ? { backgroundColor: colors.primary, borderColor: colors.primary, borderWidth: 1 }
+                    : day.hasScheduled
+                    ? { backgroundColor: colors.primary + "18", borderColor: colors.primary + "77", borderWidth: 1 }
+                    : { backgroundColor: "transparent", borderStyle: "dashed", borderColor: colors.border, borderWidth: 1 },
                 ]}
               >
-                {day.completed && <Feather name="check" size={13} color="#fff" />}
+                {day.completed ? (
+                  <Feather name="check" size={13} color="#fff" />
+                ) : day.hasScheduled ? (
+                  <View style={[styles.weekBarDot, { backgroundColor: colors.primary }]} />
+                ) : null}
               </View>
-            </View>
+              <View
+                style={[
+                  styles.weekBarTodayDot,
+                  { backgroundColor: day.isToday ? colors.foreground : "transparent" },
+                ]}
+              />
+            </Pressable>
           ))}
         </View>
-      </Pressable>
+      </View>
 
       {/* Onboarding prompt */}
       {needsOnboarding && (
@@ -391,4 +426,7 @@ const styles = StyleSheet.create({
   weekBarCol: { alignItems: "center", gap: 6 },
   weekBarLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
   weekBarCircle: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  weekBarDot: { width: 6, height: 6, borderRadius: 3 },
+  weekBarLabelToday: { fontFamily: "Inter_700Bold" },
+  weekBarTodayDot: { width: 4, height: 4, borderRadius: 2, marginTop: 4 },
 });
