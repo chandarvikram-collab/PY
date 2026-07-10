@@ -33,6 +33,13 @@ const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
 const CHART_WIDTH = Dimensions.get("window").width - 36;
 
 const AVATAR_COLORS = ["#8b5cf6","#3b82f6","#22c55e","#f59e0b","#ef4444","#06b6d4","#ec4899","#f97316"];
+
+const GOAL_LABELS: Record<string, string> = {
+  lose_fat: "Lose Fat",
+  maintain: "Maintain",
+  build_muscle: "Build Muscle",
+  improve_endurance: "Improve Endurance",
+};
 function colorFromId(id: string): string {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
@@ -234,6 +241,11 @@ export default function ProfileScreen() {
   }
 
   async function pickProgressPhoto() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      setProgressSubmitError("Permission to access photos is required.");
+      return;
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
@@ -292,6 +304,8 @@ export default function ProfileScreen() {
     .slice(0, 2)
     .toUpperCase();
 
+  const primaryGoalLabel = userProfile.primaryGoal ? GOAL_LABELS[userProfile.primaryGoal] : undefined;
+
   const completedChallenges = challenges.filter((c) => c.status === "completed").length;
   const weekSessions = workoutHistory.filter((w) => {
     const d = new Date(w.date);
@@ -304,6 +318,59 @@ export default function ProfileScreen() {
   const defaultFat = Math.round((userProfile.calorieGoal * 0.3) / 9);
   const displayCarbs = userProfile.carbGoal ?? defaultCarbs;
   const displayFat = userProfile.fatGoal ?? defaultFat;
+
+  // ── Username editing state ──────────────────────────────────────────────────
+  const [showEditUsername, setShowEditUsername] = useState(false);
+  const [draftUsername, setDraftUsername] = useState("");
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [usernameSaving, setUsernameSaving] = useState(false);
+
+  function openEditUsername() {
+    setDraftUsername(userProfile.username);
+    setUsernameError(null);
+    setShowEditUsername(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
+  async function saveUsername() {
+    const next = draftUsername.trim().toLowerCase();
+    if (next === userProfile.username) {
+      setShowEditUsername(false);
+      return;
+    }
+    if (next.length < 3 || next.length > 24 || !/^[a-z0-9_.]+$/.test(next)) {
+      setUsernameError("3-24 chars: lowercase letters, numbers, _ or . only");
+      return;
+    }
+    setUsernameSaving(true);
+    setUsernameError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_BASE}/api/users/${userProfile.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ username: next }),
+      });
+      if (res.status === 409) {
+        setUsernameError("That username is already taken");
+        return;
+      }
+      if (!res.ok) {
+        setUsernameError("Could not update username. Please try again.");
+        return;
+      }
+      updateProfile({ username: next });
+      setShowEditUsername(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      setUsernameError("Could not update username. Please try again.");
+    } finally {
+      setUsernameSaving(false);
+    }
+  }
 
   // ── Inline editing state ───────────────────────────────────────────────────
   const [editingGoals, setEditingGoals] = useState(false);
@@ -366,9 +433,16 @@ export default function ProfileScreen() {
             <Text style={[styles.heroName, { color: colors.foreground }]}>
               {userProfile.name}
             </Text>
-            <Text style={[styles.heroUsername, { color: colors.mutedForeground }]}>
-              @{userProfile.username}
-            </Text>
+            <Pressable
+              onPress={openEditUsername}
+              hitSlop={6}
+              style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+            >
+              <Text style={[styles.heroUsername, { color: colors.mutedForeground }]}>
+                @{userProfile.username}
+              </Text>
+              <Feather name="edit-2" size={12} color={colors.mutedForeground} />
+            </Pressable>
             <View style={[styles.levelBadge, { backgroundColor: colors.primary + "22" }]}>
               <Text style={[styles.levelText, { color: colors.primary }]}>
                 {userProfile.level.charAt(0).toUpperCase() + userProfile.level.slice(1)}
@@ -438,12 +512,23 @@ export default function ProfileScreen() {
       <View style={[styles.section, { paddingHorizontal: 18 }]}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Goals</Text>
         <View style={styles.chipRow}>
-          {userProfile.goals.map((g) => (
-            <View key={g} style={[styles.chip, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}>
-              <Text style={[styles.chipText, { color: colors.primary }]}>{g}</Text>
+          {primaryGoalLabel ? (
+            <View style={[styles.chip, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}>
+              <Text style={[styles.chipText, { color: colors.primary }]}>{primaryGoalLabel}</Text>
             </View>
-          ))}
+          ) : (
+            userProfile.goals.map((g) => (
+              <View key={g} style={[styles.chip, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}>
+                <Text style={[styles.chipText, { color: colors.primary }]}>{g}</Text>
+              </View>
+            ))
+          )}
         </View>
+        <Text style={[styles.goalsHint, { textAlign: "left", marginTop: 8 }, { color: colors.mutedForeground }]}>
+          {primaryGoalLabel
+            ? "From your onboarding answer to \u201cWhat is your primary goal?\u201d \u2014 tap Recalculate Targets to change it."
+            : "Complete onboarding to set your primary goal."}
+        </Text>
       </View>
 
       {/* ── Equipment chips ── */}
@@ -720,7 +805,7 @@ export default function ProfileScreen() {
         <View style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <MenuRow icon="message-circle" label="Messages" onPress={() => router.push("/chat")} value={`${state.chatThreads.reduce((s, t) => s + t.unread, 0) || ""}`} />
           <MenuRow icon="zap" label="Calorie Tracker" onPress={() => router.push("/calories")} />
-          <MenuRow icon="bar-chart-2" label="Progress & Analytics" onPress={() => {}} />
+          <MenuRow icon="bar-chart-2" label="Progress & Analytics" onPress={() => router.push("/analytics" as any)} />
           <MenuRow
             icon={isPremium ? "star" : "arrow-up-circle"}
             label={isPremium ? "IronPace Premium" : "Upgrade to Premium"}
@@ -728,7 +813,7 @@ export default function ProfileScreen() {
             onPress={() => router.push("/upgrade" as any)}
           />
           <MenuRow icon="users" label="Following" onPress={() => { setShowFriends(true); }} value={followingList.length > 0 ? `${followingList.length}` : ""} />
-          <MenuRow icon="trophy" label="Achievements" onPress={() => {}} value={`${completedChallenges} completed`} />
+          <MenuRow icon="award" label="Achievements" onPress={() => router.push("/achievements" as any)} value={`${completedChallenges} completed`} />
         </View>
       </View>
 
@@ -803,6 +888,61 @@ export default function ProfileScreen() {
           )}
         </View>
       </View>
+    </Modal>
+
+    {/* ── Edit Username Modal ── */}
+    <Modal
+      visible={showEditUsername}
+      transparent
+      animationType="fade"
+      onRequestClose={() => { if (!usernameSaving) setShowEditUsername(false); }}
+    >
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, justifyContent: "center", paddingHorizontal: 24 }}>
+        <Pressable style={styles.sheetOverlay} onPress={() => { if (!usernameSaving) setShowEditUsername(false); }} />
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 12 }]}>
+          <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Edit Username</Text>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, marginRight: 2 }}>@</Text>
+            <TextInput
+              style={[styles.progressInput, { flex: 1, color: colors.foreground, borderColor: colors.border, backgroundColor: colors.muted }]}
+              value={draftUsername}
+              onChangeText={(t) => { setDraftUsername(t.toLowerCase()); setUsernameError(null); }}
+              placeholder="username"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={24}
+            />
+          </View>
+          {usernameError ? (
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#ef4444" }}>{usernameError}</Text>
+          ) : (
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground }}>
+              Usernames must be unique across IronPace.
+            </Text>
+          )}
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+            <Pressable
+              onPress={() => setShowEditUsername(false)}
+              disabled={usernameSaving}
+              style={[styles.pillBtn, { flex: 1, justifyContent: "center", backgroundColor: colors.muted, borderColor: colors.border }]}
+            >
+              <Text style={[styles.pillBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={saveUsername}
+              disabled={usernameSaving}
+              style={[styles.pillBtn, { flex: 1, justifyContent: "center", backgroundColor: colors.primary, borderColor: colors.primary, opacity: usernameSaving ? 0.7 : 1 }]}
+            >
+              {usernameSaving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={[styles.pillBtnText, { color: "#fff" }]}>Save</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
 
     {/* ── Add Progress Entry Modal ── */}

@@ -36,6 +36,13 @@ router.get("/users/:id", async (req, res) => {
   res.json(row);
 });
 
+const usernameSchema = z
+  .string()
+  .trim()
+  .min(3, "Username must be at least 3 characters")
+  .max(24, "Username must be at most 24 characters")
+  .regex(/^[a-z0-9_.]+$/, "Username can only contain lowercase letters, numbers, underscores, and periods");
+
 router.patch("/users/:id", requireAuth, requireOwner((req) => req.params.id), async (req, res) => {
   const id = req.params.id as string;
   const parsed = profilePatchSchema.safeParse(req.body);
@@ -43,9 +50,31 @@ router.patch("/users/:id", requireAuth, requireOwner((req) => req.params.id), as
     res.status(400).json({ error: parsed.error.issues });
     return;
   }
+
+  const data = { ...parsed.data };
+
+  if (data.username !== undefined) {
+    const usernameParsed = usernameSchema.safeParse(data.username);
+    if (!usernameParsed.success) {
+      res.status(400).json({ error: usernameParsed.error.issues[0]?.message ?? "Invalid username" });
+      return;
+    }
+    const normalized = usernameParsed.data.toLowerCase();
+    const [taken] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`lower(${users.username}) = ${normalized} and ${users.id} != ${id}`)
+      .limit(1);
+    if (taken) {
+      res.status(409).json({ error: "That username is already taken" });
+      return;
+    }
+    data.username = normalized;
+  }
+
   const [row] = await db
     .update(users)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...data, updatedAt: new Date() })
     .where(eq(users.id, id))
     .returning();
   if (!row) {
