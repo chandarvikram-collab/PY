@@ -167,7 +167,7 @@ export default function ProfileScreen() {
   const [showFriends, setShowFriends] = useState(false);
   const [followingList, setFollowingList] = useState<Array<{ id: string; name: string; username: string; level: string; streak: number; totalWorkouts: number; totalPoints: number; weeklyWorkouts: number; rank: number }>>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
-  const { isAuthenticated, signOut } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { getToken } = useClerkAuth();
 
   // ── Progress tracking state ────────────────────────────────────────────────
@@ -319,59 +319,6 @@ export default function ProfileScreen() {
   const displayCarbs = userProfile.carbGoal ?? defaultCarbs;
   const displayFat = userProfile.fatGoal ?? defaultFat;
 
-  // ── Username editing state ──────────────────────────────────────────────────
-  const [showEditUsername, setShowEditUsername] = useState(false);
-  const [draftUsername, setDraftUsername] = useState("");
-  const [usernameError, setUsernameError] = useState<string | null>(null);
-  const [usernameSaving, setUsernameSaving] = useState(false);
-
-  function openEditUsername() {
-    setDraftUsername(userProfile.username);
-    setUsernameError(null);
-    setShowEditUsername(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }
-
-  async function saveUsername() {
-    const next = draftUsername.trim().toLowerCase();
-    if (next === userProfile.username) {
-      setShowEditUsername(false);
-      return;
-    }
-    if (next.length < 3 || next.length > 24 || !/^[a-z0-9_.]+$/.test(next)) {
-      setUsernameError("3-24 chars: lowercase letters, numbers, _ or . only");
-      return;
-    }
-    setUsernameSaving(true);
-    setUsernameError(null);
-    try {
-      const token = await getToken();
-      const res = await fetch(`${API_BASE}/api/users/${userProfile.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ username: next }),
-      });
-      if (res.status === 409) {
-        setUsernameError("That username is already taken");
-        return;
-      }
-      if (!res.ok) {
-        setUsernameError("Could not update username. Please try again.");
-        return;
-      }
-      updateProfile({ username: next });
-      setShowEditUsername(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
-      setUsernameError("Could not update username. Please try again.");
-    } finally {
-      setUsernameSaving(false);
-    }
-  }
-
   // ── Inline editing state ───────────────────────────────────────────────────
   const [editingGoals, setEditingGoals] = useState(false);
   const [draftCals, setDraftCals] = useState("");
@@ -433,16 +380,9 @@ export default function ProfileScreen() {
             <Text style={[styles.heroName, { color: colors.foreground }]}>
               {userProfile.name}
             </Text>
-            <Pressable
-              onPress={openEditUsername}
-              hitSlop={6}
-              style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
-            >
-              <Text style={[styles.heroUsername, { color: colors.mutedForeground }]}>
-                @{userProfile.username}
-              </Text>
-              <Feather name="edit-2" size={12} color={colors.mutedForeground} />
-            </Pressable>
+            <Text style={[styles.heroUsername, { color: colors.mutedForeground }]}>
+              @{userProfile.username}
+            </Text>
             <View style={[styles.levelBadge, { backgroundColor: colors.primary + "22" }]}>
               <Text style={[styles.levelText, { color: colors.primary }]}>
                 {userProfile.level.charAt(0).toUpperCase() + userProfile.level.slice(1)}
@@ -819,12 +759,8 @@ export default function ProfileScreen() {
 
       <View style={[styles.menuSection, { marginHorizontal: 18 }]}>
         <View style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <MenuRow icon="settings" label="Settings" onPress={() => {}} />
-          <MenuRow icon="refresh-cw" label="Recalculate Targets" onPress={() => router.push("/onboarding")} />
-          <MenuRow icon="help-circle" label="Help & Support" onPress={() => {}} />
-          {isAuthenticated ? (
-            <MenuRow icon="log-out" label="Sign Out" onPress={() => signOut()} danger />
-          ) : (
+          <MenuRow icon="settings" label="Settings" onPress={() => router.push("/settings")} />
+          {!isAuthenticated && (
             <MenuRow icon="log-in" label="Sign In / Create Account" onPress={() => router.push("/(auth)/sign-in")} />
           )}
         </View>
@@ -888,61 +824,6 @@ export default function ProfileScreen() {
           )}
         </View>
       </View>
-    </Modal>
-
-    {/* ── Edit Username Modal ── */}
-    <Modal
-      visible={showEditUsername}
-      transparent
-      animationType="fade"
-      onRequestClose={() => { if (!usernameSaving) setShowEditUsername(false); }}
-    >
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, justifyContent: "center", paddingHorizontal: 24 }}>
-        <Pressable style={styles.sheetOverlay} onPress={() => { if (!usernameSaving) setShowEditUsername(false); }} />
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 12 }]}>
-          <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Edit Username</Text>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground, marginRight: 2 }}>@</Text>
-            <TextInput
-              style={[styles.progressInput, { flex: 1, color: colors.foreground, borderColor: colors.border, backgroundColor: colors.muted }]}
-              value={draftUsername}
-              onChangeText={(t) => { setDraftUsername(t.toLowerCase()); setUsernameError(null); }}
-              placeholder="username"
-              placeholderTextColor={colors.mutedForeground}
-              autoCapitalize="none"
-              autoCorrect={false}
-              maxLength={24}
-            />
-          </View>
-          {usernameError ? (
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#ef4444" }}>{usernameError}</Text>
-          ) : (
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colors.mutedForeground }}>
-              Usernames must be unique across IronPace.
-            </Text>
-          )}
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
-            <Pressable
-              onPress={() => setShowEditUsername(false)}
-              disabled={usernameSaving}
-              style={[styles.pillBtn, { flex: 1, justifyContent: "center", backgroundColor: colors.muted, borderColor: colors.border }]}
-            >
-              <Text style={[styles.pillBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={saveUsername}
-              disabled={usernameSaving}
-              style={[styles.pillBtn, { flex: 1, justifyContent: "center", backgroundColor: colors.primary, borderColor: colors.primary, opacity: usernameSaving ? 0.7 : 1 }]}
-            >
-              {usernameSaving ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={[styles.pillBtnText, { color: "#fff" }]}>Save</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
     </Modal>
 
     {/* ── Add Progress Entry Modal ── */}

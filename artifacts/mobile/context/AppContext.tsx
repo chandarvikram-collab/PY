@@ -358,6 +358,7 @@ type AppState = {
 type AppContextType = {
   state: AppState;
   resetForAuthUser: () => Promise<void>;
+  signOutAndClear: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => void;
   saveAIPlan: (plan: AIPlan) => void;
   addWorkoutSession: (session: WorkoutSession) => void;
@@ -759,6 +760,10 @@ const DEFAULT_STATE: AppState = {
 const AppContext = createContext<AppContextType | null>(null);
 
 const CLERK_LINKED_KEY = "ironpace_clerk_linked";
+// Mirrors the key defined in app/_layout.tsx (FirstLoginHandler) — duplicated
+// here only so sign-out can clear it; the name picker flow must re-run for
+// the next account signed in on this device.
+const AUTH_INITIALIZED_KEY = "ironpace_auth_initialized";
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
@@ -767,7 +772,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [premiumStatusLoading, setPremiumStatusLoading] = useState(true);
   const [apiUserId, setApiUserId] = useState<string | null>(null);
   const apiUserIdRef = useRef<string | null>(null);
-  const { userId: clerkUserId, isSignedIn, getToken } = useAuth();
+  const { userId: clerkUserId, isSignedIn, getToken, signOut: clerkSignOut } = useAuth();
   const { user: clerkUser, isLoaded: clerkUserLoaded } = useUser();
 
   useEffect(() => {
@@ -1078,6 +1083,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
     setState(clean);
   }, [state.userProfile]);
+
+  const signOutAndClear = useCallback(async (): Promise<void> => {
+    // Clear all local session/cache state before (and regardless of) the
+    // Clerk sign-out call so no stale profile, pending-sync items, or
+    // linked-user id leak into the next session on this device.
+    apiUserIdRef.current = null;
+    setApiUserId(null);
+    try {
+      await AsyncStorage.multiRemove([
+        STORAGE_KEY,
+        API_USER_ID_KEY,
+        PENDING_KEY,
+        CLERK_LINKED_KEY,
+        AUTH_INITIALIZED_KEY,
+      ]);
+    } catch {}
+    setState(DEFAULT_STATE);
+    setIsPremium(false);
+    setPremiumStatusLoading(true);
+    await clerkSignOut();
+  }, [clerkSignOut]);
 
   const update = useCallback(
     (fn: (prev: AppState) => AppState) => {
@@ -1894,6 +1920,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       value={{
         state,
         resetForAuthUser,
+        signOutAndClear,
         updateProfile,
         saveAIPlan,
         addWorkoutSession,

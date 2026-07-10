@@ -2,12 +2,15 @@ import { Router } from "express";
 import { eq, desc, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, users, workoutSessions, foodEntries, runSessions, insertUserSchema, profilePatchSchema } from "@workspace/db";
-import { requireAuth, requireOwner } from "../middlewares/requireAuth";
+import { requireAuth, requireOwner, optionalAuth, requireOwnerIfAuthenticated } from "../middlewares/requireAuth";
 import { calculateNutrition, calculateNutritionFromImperial, inchesToCm, lbsToKg } from "@workspace/nutrition";
 
 const router = Router();
 
-router.post("/users", async (req, res) => {
+// Anonymous device-UUID users can be created pre-auth (onboarding before
+// account linking). Once a caller is authenticated, they may only create /
+// no-op-fetch their own linked row — never someone else's by guessing an id.
+router.post("/users", optionalAuth, requireOwnerIfAuthenticated((req) => (req.body as { id?: string })?.id), async (req, res) => {
   const parsed = insertUserSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues });
@@ -26,7 +29,10 @@ router.post("/users", async (req, res) => {
   res.status(201).json(row);
 });
 
-router.get("/users/:id", async (req, res) => {
+// Same anon-pre-auth allowance as POST /users above: unauthenticated callers
+// may fetch by device UUID, but authenticated callers may only fetch their
+// own linked profile — never another user's full record.
+router.get("/users/:id", optionalAuth, requireOwnerIfAuthenticated((req) => req.params.id), async (req, res) => {
   const id = req.params.id as string;
   const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   if (!row) {

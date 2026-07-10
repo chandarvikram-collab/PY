@@ -421,6 +421,10 @@ function RootLayoutNav() {
         name="calendar"
         options={{ headerShown: false }}
       />
+      <Stack.Screen
+        name="settings"
+        options={{ headerShown: false, presentation: "modal" }}
+      />
     </Stack>
   );
 }
