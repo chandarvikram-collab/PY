@@ -191,11 +191,6 @@ export default function ChallengesScreen() {
           </View>
           <Pressable
             onPress={() => {
-              if (!isPremium && active.length >= FREE_ACTIVE_CHALLENGE_LIMIT) {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                setLimitError(`Free plan allows up to ${FREE_ACTIVE_CHALLENGE_LIMIT} active challenges. Upgrade for unlimited.`);
-                return;
-              }
               setLimitError(null);
               setShowNew(true);
             }}

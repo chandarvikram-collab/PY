@@ -29,20 +29,8 @@ router.get("/subscription-status/:userId", requireAuth, async (req, res) => {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-
-  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user) {
-    res.status(404).json({ error: "User not found" });
-    return;
-  }
-
-  try {
-    const isPremium = await getPremiumStatus(user.stripeSubscriptionId);
-    res.json({ isPremium });
-  } catch (err) {
-    req.log.error({ err }, "failed to look up subscription status");
-    res.status(502).json({ error: "Could not check subscription status right now." });
-  }
+  // All features are free — every user is treated as premium.
+  res.json({ isPremium: true });
 });
 
 const checkoutSchema = z.object({

@@ -44,6 +44,8 @@ export type UserProfile = {
   primaryGoal?: string;
   weeklyPaceLbs?: number;
   age?: number;
+  liftDays?: string[];
+  runDays?: string[];
 };
 
 export type AIRoutinePayload = {
@@ -770,8 +772,9 @@ const AUTH_INITIALIZED_KEY = "ironpace_auth_initialized";
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
   const [loaded, setLoaded] = useState(false);
-  const [isPremium, setIsPremium] = useState(false);
-  const [premiumStatusLoading, setPremiumStatusLoading] = useState(true);
+  // All features are free — treat every user as premium.
+  const [isPremium] = useState(true);
+  const [premiumStatusLoading] = useState(false);
   const [apiUserId, setApiUserId] = useState<string | null>(null);
   const apiUserIdRef = useRef<string | null>(null);
   const { userId: clerkUserId, isSignedIn, getToken, signOut: clerkSignOut } = useAuth();
@@ -782,21 +785,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => { _getToken = null; };
   }, [getToken]);
 
-  const refreshPremiumStatus = useCallback(async (overrideUserId?: string): Promise<void> => {
-    const userId = overrideUserId ?? apiUserIdRef.current;
-    if (!userId) return;
-    setPremiumStatusLoading(true);
-    try {
-      const r = await socialFetch(`/subscription-status/${userId}`);
-      if (r.ok) {
-        const json = (await r.json()) as { isPremium: boolean };
-        setIsPremium(json.isPremium);
-      }
-    } catch {
-    } finally {
-      setPremiumStatusLoading(false);
-    }
-  }, []);
+  // All features are free — no-op, isPremium is always true.
+  const refreshPremiumStatus = useCallback(async (_overrideUserId?: string): Promise<void> => {}, []);
 
   useEffect(() => {
     if (!isSignedIn || !loaded) return;
@@ -1102,8 +1092,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ]);
     } catch {}
     setState(DEFAULT_STATE);
-    setIsPremium(false);
-    setPremiumStatusLoading(true);
     await clerkSignOut();
   }, [clerkSignOut]);
 

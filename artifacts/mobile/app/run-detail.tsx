@@ -149,7 +149,7 @@ export default function RunDetailScreen() {
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>Run · {session.date}</Text>
           <Text style={[styles.headerMeta, { color: colors.mutedForeground }]}>
-            {fmtRunTime(session.duration)} · {session.avgPace}/km avg
+            {fmtRunTime(session.duration)} · {session.avgPace}/mi avg
           </Text>
         </View>
       </View>
@@ -159,7 +159,7 @@ export default function RunDetailScreen() {
         <View style={styles.statRow}>
           <View style={styles.statCell}>
             <Text style={[styles.statVal, { color: colors.foreground }]}>{session.distance.toFixed(2)}</Text>
-            <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>km</Text>
+            <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>mi</Text>
           </View>
           <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
           <View style={styles.statCell}>
@@ -203,7 +203,7 @@ export default function RunDetailScreen() {
         <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 10 }]}>Splits</Text>
         <View style={[styles.splitsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.splitHeader, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.splitHeaderText, { color: colors.mutedForeground }]}>KM</Text>
+            <Text style={[styles.splitHeaderText, { color: colors.mutedForeground }]}>MI</Text>
             <Text style={[styles.splitHeaderText, { color: colors.mutedForeground }]}>Pace</Text>
             <Text style={[styles.splitHeaderText, { color: colors.mutedForeground }]}>Time</Text>
           </View>

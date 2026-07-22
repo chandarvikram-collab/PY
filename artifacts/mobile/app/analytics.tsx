@@ -130,22 +130,7 @@ export default function AnalyticsScreen() {
 
         {/* Training volume — premium gated, same as Detailed Analytics card on profile */}
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Training Volume</Text>
-        {premiumStatusLoading ? (
-          <View style={{ paddingVertical: 24, alignItems: "center" }}>
-            <ActivityIndicator color={colors.primary} />
-          </View>
-        ) : !isPremium ? (
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/upgrade" as any); }}
-            style={({ pressed }) => [styles.card, { backgroundColor: colors.muted, borderColor: colors.border, opacity: pressed ? 0.85 : 1, alignItems: "center", paddingVertical: 20, marginBottom: 20 }]}
-          >
-            <Feather name="lock" size={22} color={colors.mutedForeground} />
-            <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold", marginTop: 8 }}>
-              Unlock trends, volume charts &amp; more
-            </Text>
-            <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 4 }}>Upgrade to IronPace Premium</Text>
-          </Pressable>
-        ) : workoutHistory.length === 0 ? (
+        {workoutHistory.length === 0 ? (
           <View style={[styles.card, { backgroundColor: colors.muted, borderColor: colors.border, alignItems: "center", paddingVertical: 20, marginBottom: 20 }]}>
             <Feather name="bar-chart-2" size={22} color={colors.mutedForeground} />
             <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 8 }}>Log a workout to see your analytics</Text>

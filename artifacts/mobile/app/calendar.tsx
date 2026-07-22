@@ -35,28 +35,13 @@ type CalendarItem =
   | { kind: "scheduled"; id: string; title: string; completed: boolean; workout: ScheduledWorkout }
   | { kind: "ai_plan"; id: string; title: string; workout: AIPlanWorkout };
 
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function toDateKey(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function buildMonthGrid(year: number, month: number): (Date | null)[] {
-  const first = new Date(year, month, 1);
-  const startOffset = first.getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: (Date | null)[] = [];
-  for (let i = 0; i < startOffset; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
-  while (cells.length % 7 !== 0) cells.push(null);
-  return cells;
 }
 
 // The AI plan stores workouts as "Day 1", "Day 2", ... per week rather than
@@ -122,15 +107,22 @@ export default function CalendarScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusDateParam]);
 
-  const [viewYear, setViewYear] = useState(focusDate.getFullYear());
-  const [viewMonth, setViewMonth] = useState(focusDate.getMonth());
+  // weekStart = the Sunday of the week being viewed
+  const [weekStart, setWeekStart] = useState<Date>(() => {
+    const d = new Date(focusDate);
+    d.setDate(d.getDate() - d.getDay());
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
   const [selectedDate, setSelectedDate] = useState<string>(toDateKey(focusDate));
 
   // Re-focus if a new 'date' param arrives while this screen instance stays
   // mounted (e.g. navigating here again from Home with a different day).
   useEffect(() => {
-    setViewYear(focusDate.getFullYear());
-    setViewMonth(focusDate.getMonth());
+    const d = new Date(focusDate);
+    d.setDate(d.getDate() - d.getDay());
+    d.setHours(0, 0, 0, 0);
+    setWeekStart(d);
     setSelectedDate(toDateKey(focusDate));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusDateParam]);
@@ -178,16 +170,37 @@ export default function CalendarScreen() {
     return map;
   }, [scheduled]);
 
-  const cells = useMemo(() => buildMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
+  const weekDates = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      return d;
+    });
+  }, [weekStart]);
 
-  function goPrevMonth() {
+  function goPrevWeek() {
     Haptics.selectionAsync();
-    if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); } else { setViewMonth((m) => m - 1); }
+    setWeekStart((prev) => {
+      const d = new Date(prev);
+      d.setDate(prev.getDate() - 7);
+      return d;
+    });
   }
-  function goNextMonth() {
+  function goNextWeek() {
     Haptics.selectionAsync();
-    if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); } else { setViewMonth((m) => m + 1); }
+    setWeekStart((prev) => {
+      const d = new Date(prev);
+      d.setDate(prev.getDate() + 7);
+      return d;
+    });
   }
+
+  const weekLabel = useMemo(() => {
+    const end = new Date(weekStart);
+    end.setDate(weekStart.getDate() + 6);
+    const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+    return `${weekStart.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
+  }, [weekStart]);
 
   const selectedItems: CalendarItem[] = useMemo(() => {
     const items: CalendarItem[] = [];
@@ -285,48 +298,48 @@ export default function CalendarScreen() {
           Plan your week ahead
         </Text>
 
+        {/* ── Week navigation ── */}
         <View style={styles.monthNav}>
-          <Pressable onPress={goPrevMonth} style={styles.monthArrow}>
+          <Pressable onPress={goPrevWeek} style={styles.monthArrow}>
             <Feather name="chevron-left" size={22} color={colors.foreground} />
           </Pressable>
-          <Text style={[styles.monthLabel, { color: colors.foreground }]}>
-            {MONTH_NAMES[viewMonth]} {viewYear}
-          </Text>
-          <Pressable onPress={goNextMonth} style={styles.monthArrow}>
+          <Text style={[styles.monthLabel, { color: colors.foreground }]}>{weekLabel}</Text>
+          <Pressable onPress={goNextWeek} style={styles.monthArrow}>
             <Feather name="chevron-right" size={22} color={colors.foreground} />
           </Pressable>
         </View>
 
-        <View style={styles.weekdayRow}>
-          {WEEKDAY_LABELS.map((w, i) => (
-            <Text key={i} style={[styles.weekdayLabel, { color: colors.mutedForeground }]}>{w}</Text>
-          ))}
-        </View>
-
-        <View style={styles.grid}>
-          {cells.map((d, i) => {
-            if (!d) return <View key={i} style={styles.cell} />;
+        {/* ── Week strip ── */}
+        <View style={[styles.weekStrip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {weekDates.map((d, i) => {
             const key = toDateKey(d);
             const hasScheduled = (scheduledByDate.get(key)?.length ?? 0) > 0;
             const hasAiPlan = (aiOverlay.get(key)?.length ?? 0) > 0;
             const selected = key === selectedDate;
+            const todayDay = isToday(d);
             return (
               <Pressable
                 key={i}
                 onPress={() => { setSelectedDate(key); Haptics.selectionAsync(); }}
-                style={styles.cell}
+                style={styles.stripCell}
               >
+                <Text style={[
+                  styles.stripDayName,
+                  { color: todayDay ? colors.primary : colors.mutedForeground },
+                ]}>
+                  {WEEKDAY_LABELS[i]}
+                </Text>
                 <View
                   style={[
                     styles.dayCircle,
                     selected && { backgroundColor: colors.primary },
-                    !selected && isToday(d) && { borderWidth: 1, borderColor: colors.primary },
+                    !selected && todayDay && { borderWidth: 1.5, borderColor: colors.primary },
                   ]}
                 >
                   <Text
                     style={[
                       styles.dayNum,
-                      { color: selected ? colors.primaryForeground : colors.foreground },
+                      { color: selected ? colors.primaryForeground : todayDay && !selected ? colors.primary : colors.foreground },
                     ]}
                   >
                     {d.getDate()}
@@ -504,16 +517,15 @@ const styles = StyleSheet.create({
   screenSubtitle: { fontSize: 13, fontWeight: "500", textAlign: "center", marginBottom: 4 },
   monthNav: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12, marginBottom: 12 },
   monthArrow: { padding: 6 },
-  monthLabel: { fontSize: 20, fontWeight: "700" },
-  weekdayRow: { flexDirection: "row", marginBottom: 4 },
-  weekdayLabel: { flex: 1, textAlign: "center", fontSize: 12, fontWeight: "600" },
-  grid: { flexDirection: "row", flexWrap: "wrap" },
-  cell: { width: `${100 / 7}%`, alignItems: "center", paddingVertical: 6 },
-  dayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  dayNum: { fontSize: 14, fontWeight: "500" },
-  dotRow: { flexDirection: "row", gap: 3, marginTop: 4, height: 6 },
+  monthLabel: { fontSize: 16, fontWeight: "700" },
+  weekStrip: { flexDirection: "row", borderRadius: 16, borderWidth: 1, paddingVertical: 12, marginBottom: 14 },
+  stripCell: { flex: 1, alignItems: "center", gap: 6 },
+  stripDayName: { fontSize: 11, fontWeight: "600" },
+  dayCircle: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  dayNum: { fontSize: 14, fontWeight: "600" },
+  dotRow: { flexDirection: "row", gap: 3, height: 6 },
   dot: { width: 5, height: 5, borderRadius: 2.5 },
-  legendRow: { flexDirection: "row", gap: 16, marginTop: 8, marginBottom: 20 },
+  legendRow: { flexDirection: "row", gap: 16, marginTop: 4, marginBottom: 18 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   legendText: { fontSize: 12 },
   dayHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },

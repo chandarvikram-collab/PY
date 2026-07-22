@@ -5,6 +5,7 @@ import * as Speech from "expo-speech";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Dimensions,
   Platform,
   Pressable,
@@ -16,7 +17,7 @@ import {
 import Svg, { Circle, Polyline } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useApp, ME_USER_ID } from "@/context/AppContext";
+import { useApp, ME_USER_ID, socialFetch } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import type { RunSession, RunSplit } from "@/context/AppContext";
 
@@ -33,11 +34,14 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
+const KM_TO_MI = 0.621371;
+
 function formatPace(kmPerSec: number): string {
   if (kmPerSec <= 0) return "--:--";
-  const secPerKm = 1 / kmPerSec;
-  const mins = Math.floor(secPerKm / 60);
-  const secs = Math.round(secPerKm % 60);
+  const miPerSec = kmPerSec * KM_TO_MI;
+  const secPerMi = 1 / miPerSec;
+  const mins = Math.floor(secPerMi / 60);
+  const secs = Math.round(secPerMi % 60);
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
@@ -61,7 +65,7 @@ function simNextCoord(elapsed: number, prev: { lat: number; lng: number }) {
   };
 }
 
-const CALS_PER_KM = 65;
+const CALS_PER_MI = 105;
 
 function speak(text: string) {
   try { Speech.speak(text, { rate: 0.92, pitch: 1.0 }); } catch {}
@@ -157,8 +161,10 @@ export default function RunSessionScreen() {
       setCurrentPace(formatPace(d / 2));
     }
 
-    const newKm = Math.floor(totalDist);
-    if (newKm > lastSplitKmRef.current && totalDist >= 1) {
+    // Split every 1 mile (1.60934 km)
+    const distanceMi = totalDist * KM_TO_MI;
+    const newKm = Math.floor(distanceMi);
+    if (newKm > lastSplitKmRef.current && distanceMi >= 1) {
       const splitElapsed = elapsedRef.current;
       const splitDuration = splitElapsed - lastSplitElapsedRef.current;
       const pace = formatPace(splitDuration > 0 ? 1 / splitDuration : 0);
@@ -168,7 +174,7 @@ export default function RunSessionScreen() {
         setBestPaceSec((best) => (best === null || splitDuration < best ? splitDuration : best));
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      speak(`${newKm} kilometer. Pace: ${pace} per kilometer.`);
+      speak(`${newKm} ${newKm === 1 ? "mile" : "miles"}. Pace: ${pace} per mile.`);
       lastSplitKmRef.current = newKm;
       lastSplitElapsedRef.current = splitElapsed;
     }
@@ -252,36 +258,84 @@ export default function RunSessionScreen() {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
       type: "run",
       date: new Date().toISOString().split("T")[0],
-      distance: Math.round(dist * 100) / 100,
+      distance: Math.round(dist * KM_TO_MI * 100) / 100,
       duration: dur,
       avgPace,
       bestPace,
-      calories: Math.round(dist * CALS_PER_KM),
+      calories: Math.round(dist * KM_TO_MI * CALS_PER_MI),
       splits,
       routeCoords: coords.slice(0, 300),
     };
 
     addRunSession(session);
-    addPost({
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
-      userId: ME_USER_ID,
-      userName: state.userProfile.name,
-      userInitials: state.userProfile.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase(),
-      userColor: "#E8151B",
-      type: "milestone",
-      content: `Just completed a ${session.distance.toFixed(2)} km run in ${fmtTime(dur)}!`,
-      likes: 0,
-      comments: 0,
-      liked: false,
-      time: "Just now",
-      stats: { Distance: `${session.distance.toFixed(2)} km`, Pace: `${avgPace} /km`, Calories: String(session.calories) },
-    });
 
-    router.back();
+    // Prompt to log the run to the weekly schedule
+    const dateLabel = new Date(session.date + "T00:00:00").toLocaleDateString(undefined, {
+      weekday: "long", month: "short", day: "numeric",
+    });
+    Alert.alert(
+      "Log to schedule?",
+      `Add this run to your schedule for ${dateLabel}?`,
+      [
+        {
+          text: "Skip",
+          style: "cancel",
+          onPress: () => {
+            addPost({
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+              userId: ME_USER_ID,
+              userName: state.userProfile.name,
+              userInitials: state.userProfile.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
+              userColor: "#E8151B",
+              type: "milestone",
+              content: `Just completed a ${session.distance.toFixed(2)} mi run in ${fmtTime(dur)}!`,
+              likes: 0,
+              comments: 0,
+              liked: false,
+              time: "Just now",
+              stats: { Distance: `${session.distance.toFixed(2)} km`, Pace: `${avgPace} /mi`, Calories: String(session.calories) },
+            });
+            router.back();
+          },
+        },
+        {
+          text: "Add to Schedule",
+          onPress: async () => {
+            try {
+              await socialFetch("/schedule", {
+                method: "POST",
+                body: JSON.stringify({
+                  date: session.date,
+                  title: `Run — ${session.distance.toFixed(2)} mi`,
+                  source: "custom",
+                  exercises: [],
+                  completed: true,
+                }),
+              });
+            } catch { /* silent — schedule is non-critical */ }
+            addPost({
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+              userId: ME_USER_ID,
+              userName: state.userProfile.name,
+              userInitials: state.userProfile.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
+              userColor: "#E8151B",
+              type: "milestone",
+              content: `Just completed a ${session.distance.toFixed(2)} mi run in ${fmtTime(dur)}!`,
+              likes: 0,
+              comments: 0,
+              liked: false,
+              time: "Just now",
+              stats: { Distance: `${session.distance.toFixed(2)} km`, Pace: `${avgPace} /mi`, Calories: String(session.calories) },
+            });
+            router.back();
+          },
+        },
+      ],
+    );
   }, [bestPaceSec, splits, coords, addRunSession, addPost, state.userProfile, router]);
 
   const avgPace = elapsed > 0 && distance > 0 ? formatPace(distance / elapsed) : "--:--";
-  const calories = Math.round(distance * CALS_PER_KM);
+  const calories = Math.round(distance * KM_TO_MI * CALS_PER_MI);
   const nextKmProgress = Math.min(100, (distance % 1) * 100);
 
   if (phase === "pre") {
@@ -309,10 +363,10 @@ export default function RunSessionScreen() {
           <View style={styles.preTips}>
             {[
               "Live distance, pace, and calorie tracking",
-              "Audio coaching cues at every kilometer",
+              "Audio coaching cues at every mile",
               "Route map drawn as you run",
-              "Haptic alerts at km milestones",
-              "Splits logged per kilometer",
+              "Haptic alerts at mile milestones",
+              "Splits logged per mile",
             ].map((tip) => (
               <View key={tip} style={styles.preTipRow}>
                 <Feather name="check-circle" size={15} color={colors.success} />
@@ -349,9 +403,9 @@ export default function RunSessionScreen() {
 
           <View style={[styles.statsGrid, { marginTop: 16 }]}>
             {[
-              { label: "Avg Pace", value: `${finalAvg}/km` },
-              { label: "Best Pace", value: `${finalBest}/km` },
-              { label: "Calories", value: `${Math.round(distance * CALS_PER_KM)} kcal` },
+              { label: "Avg Pace", value: `${finalAvg}/mi` },
+              { label: "Best Pace", value: `${finalBest}/mi` },
+              { label: "Calories", value: `${Math.round(distance * KM_TO_MI * CALS_PER_MI)} kcal` },
               { label: "Splits", value: `${splits.length} km` },
             ].map((s) => (
               <View key={s.label} style={[styles.statBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -366,8 +420,8 @@ export default function RunSessionScreen() {
               <Text style={[styles.splitsTitle, { color: colors.foreground }]}>Splits</Text>
               {splits.map((sp) => (
                 <View key={sp.km} style={[styles.splitRow, { borderBottomColor: colors.border }]}>
-                  <Text style={[styles.splitKm, { color: colors.mutedForeground }]}>km {sp.km}</Text>
-                  <Text style={[styles.splitPace, { color: colors.foreground }]}>{sp.pace}/km</Text>
+                  <Text style={[styles.splitKm, { color: colors.mutedForeground }]}>mi {sp.km}</Text>
+                  <Text style={[styles.splitPace, { color: colors.foreground }]}>{sp.pace}/mi</Text>
                   <Text style={[styles.splitTime, { color: colors.mutedForeground }]}>{fmtTime(sp.elapsed)}</Text>
                 </View>
               ))}
@@ -402,14 +456,14 @@ export default function RunSessionScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 20, paddingTop: 16 }} showsVerticalScrollIndicator={false}>
         <View style={styles.mainStatBlock}>
           <Text style={[styles.bigDistance, { color: colors.foreground }]}>{distance.toFixed(2)}</Text>
-          <Text style={[styles.bigDistLabel, { color: colors.mutedForeground }]}>kilometers</Text>
+          <Text style={[styles.bigDistLabel, { color: colors.mutedForeground }]}>miles</Text>
         </View>
 
         <View style={[styles.kmProgressTrack, { backgroundColor: colors.border }]}>
           <View style={[styles.kmFill, { backgroundColor: colors.primary, width: `${nextKmProgress}%` as any }]} />
         </View>
         <Text style={[styles.kmNextText, { color: colors.mutedForeground }]}>
-          {((1 - (distance % 1)) % 1).toFixed(2)} km to next split
+          {((1 - (distance % 1)) % 1).toFixed(2)} mi to next split
         </Text>
 
         <View style={[styles.paceRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -438,8 +492,8 @@ export default function RunSessionScreen() {
             <Text style={[styles.splitsTitle, { color: colors.foreground }]}>Splits</Text>
             {splits.slice(-4).map((sp) => (
               <View key={sp.km} style={[styles.splitRow, { borderBottomColor: colors.border }]}>
-                <Text style={[styles.splitKm, { color: colors.mutedForeground }]}>km {sp.km}</Text>
-                <Text style={[styles.splitPace, { color: colors.foreground }]}>{sp.pace}/km</Text>
+                <Text style={[styles.splitKm, { color: colors.mutedForeground }]}>mi {sp.km}</Text>
+                <Text style={[styles.splitPace, { color: colors.foreground }]}>{sp.pace}/mi</Text>
                 <Text style={[styles.splitTime, { color: colors.mutedForeground }]}>{fmtTime(sp.elapsed)}</Text>
               </View>
             ))}

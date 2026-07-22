@@ -1,0 +1,122 @@
+ronPace Update Request
+
+Please work through this in order. Sections are grouped by feature area. After each section, give me a short plain-English summary of what changed and what I should test — no code explanations needed.
+
+
+0. URGENT — Fix data leakage between accounts (do this first, before anything else)
+
+When a user views logs/workouts, they are sometimes seeing another user's data instead of their own. This is a data isolation bug, not a feature request — it needs to be fixed before any new features are built on top of it.
+
+
+Every workout, run, food log, and profile record must be scoped strictly to the logged-in user's ID.
+Audit all queries that fetch this kind of data and confirm each one filters by the current user's ID (not just by record ID).
+When Person A is logged in, they should only ever see Person A's data. When Person B logs in, only Person B's data. No mixing, and this should hold consistently across sessions.
+After fixing, tell me specifically what was wrong (in plain English) and how you verified it's fixed.
+
+
+
+1. Onboarding
+
+
+Add questions (after the strength/running steps) asking:
+
+What days of the week the user wants to lift weights
+What days the user wants to run (based on which activities they selected earlier)
+
+
+
+Remove the "Improve Endurance" option from step 6.
+Remove the equipment questions from onboarding entirely.
+Fix: when the user taps "Calculate Targets," nothing is currently being saved. Fix this so that:
+
+Their onboarding answers (sex, age, height, weight, activity level, goals) are saved
+Calorie and macro targets are calculated from that data and automatically populate the "NutriLens" calories/macros section
+Their workout day/run day preferences are saved and used to auto-build their weekly schedule (see Section 3) and tied into notification reminders (see Section 7)
+
+
+
+
+
+
+2. Home Screen
+
+
+Replace the water-cup tracker with three macro bars: protein, fat, and carbs (showing progress toward daily targets).
+Add a "This Week" summary card showing the day-by-day plan, e.g.:
+
+Sunday: Upper
+Monday: Lower
+Tuesday: Running
+
+
+
+
+
+
+3. Weekly Schedule (not a full calendar)
+
+
+No full calendar view — just a simple Sunday–Saturday week strip showing what's planned each day.
+Auto-generate this schedule from the user's onboarding day preferences (e.g., "Sunday morning = strength, upper body" repeats weekly by default).
+Every Sunday, prompt the user: "Is this week's schedule the same, or do you want to make changes?" If they want changes, let them edit which workouts/exercises happen on which days.
+After a user finishes a run, ask if they want to log/post it as part of their schedule.
+
+
+
+4. Train Tab — AI Plan
+
+
+Remove the payment lock on "Advanced Lifter" and on the 5-day/6-day per week plan options — these should be free for everyone.
+When "Generate Plan" is tapped, it should only generate the workout plan itself — it should NOT modify the user's existing daily nutrition targets.
+If a user edits their existing AI plan after finishing a workout, ask them: "Keep your existing plan template, or save these as changes going forward?"
+
+
+
+5. Workout Session Screen (while actively working out)
+
+
+Add a "⋯" (three-dot) menu on each exercise during a live workout that lets the user:
+
+Edit the rest timer
+Change the number of sets/reps
+View history for that exercise — past sets, weight, reps, and which workout/template it was logged under (e.g., "50 lb × 10 reps in Upper A" vs. "25 lb in Upper B")
+
+
+
+Let the user swipe right on a set to delete it.
+
+
+
+6. Exercise Library / Search
+
+
+Let users filter exercises by category: Chest, Back, Legs, Arms, Core.
+Add a search bar to find exercises by name.
+Populate/expand the exercise database using the equipment-based breakdown below (Machine, Barbell, EZ-Bar, Cable, Bodyweight) for each muscle group. I've attached the full list of exercises the user provided — use it to seed the exercise library, organized by muscle group and equipment type.
+
+
+(Exercise list omitted here for brevity — reference the original list of Chest/Back/Shoulders/Triceps/Biceps/Quads/Hamstrings exercises by equipment type that was provided, and use it to populate the database.)
+
+
+7. Units & Running
+
+
+Use American units everywhere in the app: miles (not km), lbs (not kg), etc. Audit the whole app for any leftover metric units and convert them.
+Tie the weekly schedule (Section 3) into push notifications — remind the user on the day they've scheduled a workout or run that it's time to do it.
+
+
+
+8. Social / Discover
+
+
+Add a way to search for and find other users who have signed up (a "Discover" or search feature).
+Let users find and connect with each other from an Explore/Discover page.
+
+
+
+General notes for you (the agent)
+
+
+This app is not fully built yet — some of these features may not exist at all (e.g., notifications, AI plan generation). If something is genuinely a "build from scratch" item rather than an edit, flag it separately in your summary so I know it's bigger scope than a tweak.
+Don't change the database schema without telling me first — Section 0 will likely require this, so just explain briefly what's changing and why before you do it there.
+Work in the order above. After each numbered section, pause and give me: what changed, why, and exactly what to tap/test to confirm it works.

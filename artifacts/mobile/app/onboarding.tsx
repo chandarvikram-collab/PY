@@ -32,24 +32,12 @@ type OnboardingStep =
   | "activity"
   | "goal"
   | "pace"
-  | "equipment"
   | "activities"
-  | "availability"
+  | "lift_days"
+  | "run_days"
   | "review";
 
-const STEPS: OnboardingStep[] = [
-  "sex",
-  "age",
-  "height",
-  "weight",
-  "activity",
-  "goal",
-  "pace",
-  "equipment",
-  "activities",
-  "availability",
-  "review",
-];
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const ACTIVITY_OPTIONS = ["Strength Training", "Running", "Cycling", "Yoga", "HIIT", "Swimming", "Climbing"];
 const AVAILABILITY_OPTIONS = ["Weekday Mornings", "Weekday Evenings", "Weekends", "Lunch Breaks"];
@@ -66,24 +54,7 @@ const GOALS = [
   { key: "lose_fat", label: "Lose Fat", sub: "Caloric deficit, preserve muscle" },
   { key: "maintain", label: "Maintain", sub: "Keep current weight and composition" },
   { key: "build_muscle", label: "Build Muscle", sub: "Caloric surplus, progressive overload" },
-  { key: "improve_endurance", label: "Improve Endurance", sub: "Fuel performance, recover better" },
 ] as const;
-
-const EQUIPMENT_OPTIONS = [
-  "Barbell",
-  "Dumbbell",
-  "Kettlebell",
-  "Cable Machine",
-  "Smith Machine",
-  "Resistance Bands",
-  "Pull-Up Bar",
-  "Bench",
-  "Squat Rack",
-  "Treadmill",
-  "Rowing Machine",
-  "Exercise Bike",
-  "None / Bodyweight",
-];
 
 export default function OnboardingScreen() {
   const colors = useColors();
@@ -113,19 +84,31 @@ export default function OnboardingScreen() {
   );
   const [activity, setActivity] = useState<string | undefined>(userProfile.activityLevel ?? undefined);
   const [goal, setGoal] = useState<string | undefined>(userProfile.primaryGoal ?? undefined);
-  const [pace, setPace] = useState<number>(
-    userProfile.weeklyPaceLbs ?? 0.5
-  );
-  const [equipment, setEquipment] = useState<Set<string>>(
-    () => new Set(userProfile.equipment.length > 0 ? userProfile.equipment : ["Barbell", "Dumbbell"])
-  );
+  const [pace, setPace] = useState<number>(userProfile.weeklyPaceLbs ?? 0.5);
   const [activities, setActivities] = useState<Set<string>>(
     () => new Set(userProfile.activities ?? [])
   );
   const [availability, setAvailability] = useState<Set<string>>(
     () => new Set(userProfile.availability ?? [])
   );
+  const [liftDays, setLiftDays] = useState<Set<string>>(
+    () => new Set(userProfile.liftDays ?? [])
+  );
+  const [runDays, setRunDays] = useState<Set<string>>(
+    () => new Set(userProfile.runDays ?? [])
+  );
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Steps are dynamic: run_days only appears if Running is selected
+  const STEPS = useMemo<OnboardingStep[]>(() => {
+    const base: OnboardingStep[] = [
+      "sex", "age", "height", "weight", "activity", "goal", "pace",
+      "activities", "lift_days",
+    ];
+    if (activities.has("Running")) base.push("run_days");
+    base.push("review");
+    return base;
+  }, [activities]);
 
   const currentStep = STEPS[stepIndex];
   const isFirst = stepIndex === 0;
@@ -147,12 +130,12 @@ export default function OnboardingScreen() {
       case "activity": return !!activity;
       case "goal": return !!goal;
       case "pace": return pace >= 0 && pace <= 5;
-      case "equipment": return equipment.size > 0;
       case "activities": return true;
-      case "availability": return true;
+      case "lift_days": return liftDays.size > 0;
+      case "run_days": return true;
       case "review": return true;
     }
-  }, [currentStep, sex, age, heightFt, heightIn, weightLbs, activity, goal, pace, equipment]);
+  }, [currentStep, sex, age, heightFt, heightIn, weightLbs, activity, goal, pace, liftDays]);
 
   const advance = useCallback(() => {
     if (!canAdvance) return;
@@ -162,7 +145,7 @@ export default function OnboardingScreen() {
     } else {
       setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
     }
-  }, [canAdvance, isLast]);
+  }, [canAdvance, isLast, STEPS.length]);
 
   const back = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -182,7 +165,6 @@ export default function OnboardingScreen() {
         activityLevel: activity!,
         primaryGoal: goal!,
         weeklyPaceLbs: pace,
-        equipment: Array.from(equipment),
         activities: Array.from(activities),
         availability: Array.from(availability),
       };
@@ -212,9 +194,11 @@ export default function OnboardingScreen() {
           activityLevel: payload.activityLevel,
           primaryGoal: payload.primaryGoal,
           weeklyPaceLbs: payload.weeklyPaceLbs,
-          equipment: payload.equipment,
           activities: payload.activities,
           availability: payload.availability,
+          // Workout day preferences — stored in local profile (not DB)
+          liftDays: Array.from(liftDays),
+          runDays: Array.from(runDays),
           hasCompletedOnboarding: true,
         });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -233,7 +217,7 @@ export default function OnboardingScreen() {
     } finally {
       setSaving(false);
     }
-  }, [sex, heightFt, heightIn, weightLbs, age, activity, goal, pace, equipment, activities, availability, userProfile.id, updateProfile, router, getToken]);
+  }, [sex, heightFt, heightIn, weightLbs, age, activity, goal, pace, activities, availability, liftDays, runDays, userProfile.id, updateProfile, router, getToken]);
 
   function toggleActivity(item: string) {
     setActivities((prev) => {
@@ -253,11 +237,20 @@ export default function OnboardingScreen() {
     });
   }
 
-  function toggleEquipment(item: string) {
-    setEquipment((prev) => {
+  function toggleLiftDay(day: string) {
+    setLiftDays((prev) => {
       const next = new Set(prev);
-      if (next.has(item)) next.delete(item);
-      else next.add(item);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return next;
+    });
+  }
+
+  function toggleRunDay(day: string) {
+    setRunDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
       return next;
     });
   }
@@ -312,16 +305,11 @@ export default function OnboardingScreen() {
                   ]}
                 >
                   <Feather
-                    name={s === "male" ? "user" : "user"}
+                    name="user"
                     size={22}
                     color={sex === s ? colors.primary : colors.mutedForeground}
                   />
-                  <Text
-                    style={[
-                      styles.optionLabel,
-                      { color: sex === s ? colors.primary : colors.foreground },
-                    ]}
-                  >
+                  <Text style={[styles.optionLabel, { color: sex === s ? colors.primary : colors.foreground }]}>
                     {s === "male" ? "Male" : "Female"}
                   </Text>
                 </Pressable>
@@ -524,44 +512,12 @@ export default function OnboardingScreen() {
           </>
         )}
 
-        {/* ── Equipment ── */}
-        {currentStep === "equipment" && (
-          <>
-            <Text style={[styles.title, { color: colors.foreground }]}>What equipment do you have?</Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              AI plans will only include exercises using equipment you select.
-            </Text>
-            <View style={styles.chipWrap}>
-              {EQUIPMENT_OPTIONS.map((e) => {
-                const active = equipment.has(e);
-                return (
-                  <Pressable
-                    key={e}
-                    onPress={() => { toggleEquipment(e); Haptics.selectionAsync(); }}
-                    style={[
-                      styles.equipChip,
-                      {
-                        backgroundColor: active ? colors.primary + "22" : colors.card,
-                        borderColor: active ? colors.primary : colors.border,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.equipChipText, { color: active ? colors.primary : colors.foreground }]}>
-                      {e}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </>
-        )}
-
         {/* ── Activities ── */}
         {currentStep === "activities" && (
           <>
             <Text style={[styles.title, { color: colors.foreground }]}>What activities do you enjoy?</Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              We'll use this to match you with others in Discover. Optional — you can skip.
+              Select everything that applies. This shapes your schedule and helps find others like you.
             </Text>
             <View style={styles.chipWrap}>
               {ACTIVITY_OPTIONS.map((a) => {
@@ -571,14 +527,15 @@ export default function OnboardingScreen() {
                     key={a}
                     onPress={() => { toggleActivity(a); Haptics.selectionAsync(); }}
                     style={[
-                      styles.equipChip,
+                      styles.chip,
                       {
                         backgroundColor: active ? colors.primary + "22" : colors.card,
                         borderColor: active ? colors.primary : colors.border,
                       },
                     ]}
                   >
-                    <Text style={[styles.equipChipText, { color: active ? colors.primary : colors.foreground }]}>
+                    {active && <Feather name="check" size={13} color={colors.primary} />}
+                    <Text style={[styles.chipText, { color: active ? colors.primary : colors.foreground }]}>
                       {a}
                     </Text>
                   </Pressable>
@@ -588,31 +545,81 @@ export default function OnboardingScreen() {
           </>
         )}
 
-        {/* ── Availability ── */}
-        {currentStep === "availability" && (
+        {/* ── Lift Days ── */}
+        {currentStep === "lift_days" && (
           <>
-            <Text style={[styles.title, { color: colors.foreground }]}>When are you usually free to train?</Text>
+            <Text style={[styles.title, { color: colors.foreground }]}>Which days do you want to lift?</Text>
             <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              We'll use this to match you with others in Discover. Optional — you can skip.
+              Pick at least one. Your weekly schedule will repeat these by default.
             </Text>
-            <View style={styles.chipWrap}>
-              {AVAILABILITY_OPTIONS.map((a) => {
-                const active = availability.has(a);
+            <View style={styles.optionsColumn}>
+              {WEEKDAYS.map((day) => {
+                const selected = liftDays.has(day);
                 return (
                   <Pressable
-                    key={a}
-                    onPress={() => { toggleAvailability(a); Haptics.selectionAsync(); }}
+                    key={day}
+                    onPress={() => { toggleLiftDay(day); Haptics.selectionAsync(); }}
                     style={[
-                      styles.equipChip,
+                      styles.dayRow,
                       {
-                        backgroundColor: active ? colors.primary + "22" : colors.card,
-                        borderColor: active ? colors.primary : colors.border,
+                        backgroundColor: selected ? colors.primary + "22" : colors.card,
+                        borderColor: selected ? colors.primary : colors.border,
                       },
                     ]}
                   >
-                    <Text style={[styles.equipChipText, { color: active ? colors.primary : colors.foreground }]}>
-                      {a}
+                    <Text style={[styles.optionLabel, { color: selected ? colors.primary : colors.foreground }]}>
+                      {day}
                     </Text>
+                    <Feather
+                      name={selected ? "check-circle" : "circle"}
+                      size={20}
+                      color={selected ? colors.primary : colors.mutedForeground}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        {/* ── Run Days (only if Running selected) ── */}
+        {currentStep === "run_days" && (
+          <>
+            <Text style={[styles.title, { color: colors.foreground }]}>Which days do you want to run?</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              Optional — tap any day. We'll block these off from strength workouts.
+            </Text>
+            <View style={styles.optionsColumn}>
+              {WEEKDAYS.map((day) => {
+                const selected = runDays.has(day);
+                const isLift = liftDays.has(day);
+                return (
+                  <Pressable
+                    key={day}
+                    onPress={() => { toggleRunDay(day); Haptics.selectionAsync(); }}
+                    style={[
+                      styles.dayRow,
+                      {
+                        backgroundColor: selected ? colors.primary + "22" : colors.card,
+                        borderColor: selected ? colors.primary : colors.border,
+                        opacity: isLift ? 0.45 : 1,
+                      },
+                    ]}
+                    disabled={isLift}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.optionLabel, { color: selected ? colors.primary : colors.foreground }]}>
+                        {day}
+                      </Text>
+                      {isLift && (
+                        <Text style={[styles.optionSub, { color: colors.mutedForeground }]}>Already a lift day</Text>
+                      )}
+                    </View>
+                    <Feather
+                      name={selected ? "check-circle" : "circle"}
+                      size={20}
+                      color={selected ? colors.primary : colors.mutedForeground}
+                    />
                   </Pressable>
                 );
               })}
@@ -635,7 +642,13 @@ export default function OnboardingScreen() {
               <ReviewRow label="Activity" value={ACTIVITY_LEVELS.find((a) => a.key === activity)?.label ?? ""} />
               <ReviewRow label="Goal" value={GOALS.find((g) => g.key === goal)?.label ?? ""} />
               <ReviewRow label="Pace" value={`${pace} lb/week`} />
-              <ReviewRow label="Equipment" value={`${equipment.size} selected`} last />
+              <ReviewRow label="Lift days" value={liftDays.size > 0 ? Array.from(liftDays).join(", ") : "None"} />
+              {activities.has("Running") && (
+                <ReviewRow label="Run days" value={runDays.size > 0 ? Array.from(runDays).join(", ") : "None"} last />
+              )}
+              {!activities.has("Running") && (
+                <ReviewRow label="Activities" value={activities.size > 0 ? `${activities.size} selected` : "None"} last />
+              )}
             </View>
             {submitError ? (
               <Text style={{ color: "#ef4444", fontFamily: "Inter_500Medium", fontSize: 13, marginTop: 12, textAlign: "center" }}>
@@ -710,6 +723,14 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1.5,
   },
+  dayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
   optionLabel: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   optionSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   inputWrap: { flexDirection: "row", alignItems: "center", gap: 12 },
@@ -725,13 +746,16 @@ const styles = StyleSheet.create({
   },
   bigInputUnit: { fontSize: 18, fontFamily: "Inter_500Medium" },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  equipChip: {
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1.5,
   },
-  equipChipText: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  chipText: { fontSize: 14, fontFamily: "Inter_500Medium" },
   reviewCard: { borderRadius: 16, borderWidth: 1, overflow: "hidden", marginTop: 4 },
   reviewRow: {
     flexDirection: "row",
@@ -741,7 +765,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   reviewLabel: { fontSize: 14, fontFamily: "Inter_500Medium" },
-  reviewValue: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  reviewValue: { fontSize: 14, fontFamily: "Inter_600SemiBold", flexShrink: 1, textAlign: "right", marginLeft: 12 },
   bottomBar: {
     flexDirection: "row",
     alignItems: "center",

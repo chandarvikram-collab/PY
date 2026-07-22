@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { z } from "zod";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { db, foodAnalyses } from "@workspace/db";
+import { requireAuth } from "../middlewares/requireAuth";
 
 const router = Router();
 
@@ -309,7 +310,7 @@ router.post("/suggest-meal", async (req, res) => {
   }
 });
 
-router.get("/food-analyses/:id", async (req, res) => {
+router.get("/food-analyses/:id", requireAuth, async (req, res) => {
   const id = req.params.id as string;
   const [row] = await db
     .select()
@@ -319,6 +320,12 @@ router.get("/food-analyses/:id", async (req, res) => {
 
   if (!row) {
     res.status(404).json({ error: "Analysis not found" });
+    return;
+  }
+
+  // Ownership check: only the user who created this analysis may fetch it.
+  if (row.userId !== req.localUserId) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
 

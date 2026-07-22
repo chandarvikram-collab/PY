@@ -87,6 +87,19 @@ export default function HomeScreen() {
     [todayCals.entries]
   );
 
+  const proteinConsumed = useMemo(
+    () => todayCals.entries.reduce((s, e) => s + (e.protein ?? 0), 0),
+    [todayCals.entries]
+  );
+  const carbConsumed = useMemo(
+    () => todayCals.entries.reduce((s, e) => s + (e.carbs ?? 0), 0),
+    [todayCals.entries]
+  );
+  const fatConsumed = useMemo(
+    () => todayCals.entries.reduce((s, e) => s + (e.fat ?? 0), 0),
+    [todayCals.entries]
+  );
+
   const leaderboard = useMemo(() => {
     const me = {
       id: "me",
@@ -253,14 +266,30 @@ export default function HomeScreen() {
 
         <View style={{ width: 10 }} />
 
-        <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, flex: 1 }]}>
-          <Feather name="droplet" size={16} color={colors.info} />
-          <Text style={[styles.statBig, { color: colors.foreground }]}>{todayCals.water}</Text>
-          <Text style={[styles.statSub, { color: colors.mutedForeground }]}>of 8 cups water</Text>
-          <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-            <View style={[styles.progressFill, { backgroundColor: colors.info, width: `${Math.min(100, (todayCals.water / 8) * 100)}%` as any }]} />
-          </View>
-        </View>
+        {/* Macro mini-card */}
+        <Pressable
+          onPress={() => router.push("/calories")}
+          style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, flex: 1, gap: 6 }]}
+        >
+          <Feather name="pie-chart" size={16} color={colors.primary} />
+          {(
+            [
+              { label: "P", val: proteinConsumed, goal: userProfile.proteinGoal ?? 180, color: "#3b82f6" },
+              { label: "C", val: carbConsumed, goal: userProfile.carbGoal ?? 250, color: "#f59e0b" },
+              { label: "F", val: fatConsumed, goal: userProfile.fatGoal ?? 70, color: "#ef4444" },
+            ] as const
+          ).map(({ label, val, goal, color }) => (
+            <View key={label}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 2 }}>
+                <Text style={[styles.macroLabel, { color: colors.mutedForeground }]}>{label}</Text>
+                <Text style={[styles.macroVal, { color: colors.foreground }]}>{Math.round(val)}g</Text>
+              </View>
+              <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+                <View style={[styles.progressFill, { backgroundColor: color, width: `${Math.min(100, (val / Math.max(1, goal)) * 100)}%` as any }]} />
+              </View>
+            </View>
+          ))}
+        </Pressable>
       </View>
 
       {/* Active Challenge */}
@@ -429,4 +458,6 @@ const styles = StyleSheet.create({
   weekBarDot: { width: 6, height: 6, borderRadius: 3 },
   weekBarLabelToday: { fontFamily: "Inter_700Bold" },
   weekBarTodayDot: { width: 4, height: 4, borderRadius: 2, marginTop: 4 },
+  macroLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  macroVal: { fontSize: 11, fontFamily: "Inter_700Bold" },
 });

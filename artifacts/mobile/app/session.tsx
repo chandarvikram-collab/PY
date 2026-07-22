@@ -15,7 +15,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp, ME_USER_ID } from "@/context/AppContext";
-import { AVAILABLE_EXERCISES } from "@/constants/exercises";
+import { AVAILABLE_EXERCISES, EXERCISE_CATEGORIES } from "@/constants/exercises";
+import type { ExerciseCategory } from "@/constants/exercises";
 import { useColors } from "@/hooks/useColors";
 import type { Exercise, ExerciseLog, SetLog, WorkoutSession } from "@/context/AppContext";
 
@@ -57,6 +58,15 @@ export default function SessionScreen() {
   );
   const [showAdd, setShowAdd] = useState(false);
   const [restTimer, setRestTimer] = useState<number | null>(null);
+
+  // Exercise picker search/filter
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterCategory, setFilterCategory] = useState<ExerciseCategory>("All");
+
+  // 3-dot exercise menu
+  const [exMenuIdx, setExMenuIdx] = useState<number | null>(null);
+  const [editRestIdx, setEditRestIdx] = useState<number | null>(null);
+  const [editRestValue, setEditRestValue] = useState("");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const restRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -133,6 +143,51 @@ export default function SessionScreen() {
       )
     );
   }
+
+  function deleteSet(exIdx: number, setIdx: number) {
+    setEntries((prev) =>
+      prev.map((e, ei) =>
+        ei === exIdx ? { ...e, sets: e.sets.filter((_, si) => si !== setIdx) } : e
+      )
+    );
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
+  function deleteExercise(exIdx: number) {
+    setEntries((prev) => prev.filter((_, ei) => ei !== exIdx));
+    setExMenuIdx(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }
+
+  function confirmDeleteSet(exIdx: number, setIdx: number) {
+    Alert.alert("Remove Set", "Delete this set?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => deleteSet(exIdx, setIdx) },
+    ]);
+  }
+
+  function openRestEdit(exIdx: number) {
+    setEditRestIdx(exIdx);
+    setEditRestValue(String(entries[exIdx]?.exercise.rest ?? 90));
+    setExMenuIdx(null);
+  }
+
+  function saveRestEdit() {
+    if (editRestIdx === null) return;
+    const val = parseInt(editRestValue) || 90;
+    setEntries((prev) =>
+      prev.map((e, ei) =>
+        ei === editRestIdx ? { ...e, exercise: { ...e.exercise, rest: val } } : e
+      )
+    );
+    setEditRestIdx(null);
+  }
+
+  const filteredExercises = AVAILABLE_EXERCISES.filter((ex) => {
+    const matchesCat = filterCategory === "All" || ex.category === filterCategory;
+    const matchesSearch = searchQuery === "" || ex.name.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCat && matchesSearch;
+  });
 
   function finishWorkout() {
     const exerciseLog: ExerciseLog[] = entries
@@ -263,12 +318,47 @@ export default function SessionScreen() {
 
         {entries.map((entry, exIdx) => (
           <View key={`${entry.exercise.id}-${exIdx}`} style={[styles.exerciseBlock, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {/* Exercise header with 3-dot menu */}
             <View style={styles.exHeader}>
-              <Text style={[styles.exName, { color: colors.foreground }]}>{entry.exercise.name}</Text>
               <View style={[styles.catChip, { backgroundColor: colors.primary + "22" }]}>
                 <Text style={[styles.catChipText, { color: colors.primary }]}>{entry.exercise.category}</Text>
               </View>
+              <Text style={[styles.exName, { color: colors.foreground, flex: 1, marginHorizontal: 8 }]}>{entry.exercise.name}</Text>
+              <Pressable
+                onPress={() => setExMenuIdx(exMenuIdx === exIdx ? null : exIdx)}
+                style={{ padding: 6 }}
+                hitSlop={8}
+              >
+                <Feather name="more-vertical" size={18} color={colors.mutedForeground} />
+              </Pressable>
             </View>
+
+            {/* 3-dot dropdown menu */}
+            {exMenuIdx === exIdx && (
+              <View style={[styles.exMenu, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Pressable
+                  onPress={() => openRestEdit(exIdx)}
+                  style={[styles.exMenuItem, { borderBottomColor: colors.border }]}
+                >
+                  <Feather name="clock" size={15} color={colors.foreground} />
+                  <Text style={[styles.exMenuText, { color: colors.foreground }]}>
+                    Edit Rest ({entry.exercise.rest}s)
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    Alert.alert("Remove Exercise", `Remove "${entry.exercise.name}" from this workout?`, [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Remove", style: "destructive", onPress: () => deleteExercise(exIdx) },
+                    ]);
+                  }}
+                  style={styles.exMenuItem}
+                >
+                  <Feather name="trash-2" size={15} color={colors.destructive} />
+                  <Text style={[styles.exMenuText, { color: colors.destructive }]}>Remove Exercise</Text>
+                </Pressable>
+              </View>
+            )}
 
             {/* Set Headers */}
             <View style={[styles.setHeaderRow, { borderBottomColor: colors.border }]}>
@@ -279,7 +369,12 @@ export default function SessionScreen() {
             </View>
 
             {entry.sets.map((set, setIdx) => (
-              <View key={setIdx} style={[styles.setRow, { borderBottomColor: colors.border, backgroundColor: set.done ? colors.primary + "0d" : "transparent" }]}>
+              <Pressable
+                key={setIdx}
+                onLongPress={() => !set.done && confirmDeleteSet(exIdx, setIdx)}
+                delayLongPress={500}
+                style={[styles.setRow, { borderBottomColor: colors.border, backgroundColor: set.done ? colors.primary + "0d" : "transparent" }]}
+              >
                 <Text style={[styles.setNum, { color: colors.mutedForeground }]}>{setIdx + 1}</Text>
                 <TextInput
                   style={[styles.setInput, { backgroundColor: colors.muted, color: colors.foreground, borderColor: set.done ? colors.primary + "44" : colors.border }]}
@@ -312,7 +407,7 @@ export default function SessionScreen() {
                 >
                   <Feather name={set.done ? "check" : "circle"} size={16} color={set.done ? "#fff" : colors.mutedForeground} />
                 </Pressable>
-              </View>
+              </Pressable>
             ))}
 
             <Pressable onPress={() => addSet(exIdx)} style={styles.addSetBtn}>
@@ -337,27 +432,110 @@ export default function SessionScreen() {
           <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
             <View style={styles.sheetHeader}>
               <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Add Exercise</Text>
-              <Pressable onPress={() => setShowAdd(false)}>
+              <Pressable onPress={() => { setShowAdd(false); setSearchQuery(""); setFilterCategory("All"); }}>
                 <Feather name="x" size={22} color={colors.mutedForeground} />
               </Pressable>
             </View>
-            <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
-              {AVAILABLE_EXERCISES.map((ex) => (
-                <Pressable
-                  key={ex.id}
-                  onPress={() => addExercise(ex)}
-                  style={[styles.exPickRow, { borderBottomColor: colors.border }]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.exPickName, { color: colors.foreground }]}>{ex.name}</Text>
-                    <Text style={[styles.exPickMeta, { color: colors.mutedForeground }]}>
-                      {ex.category} · {ex.equipment} · {ex.sets}x{ex.reps}
-                    </Text>
-                  </View>
-                  <Feather name="plus" size={18} color={colors.primary} />
+
+            {/* Search bar */}
+            <View style={[styles.searchBar, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Feather name="search" size={15} color={colors.mutedForeground} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.foreground }]}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search exercises..."
+                placeholderTextColor={colors.mutedForeground}
+                autoCorrect={false}
+              />
+              {searchQuery !== "" && (
+                <Pressable onPress={() => setSearchQuery("")}>
+                  <Feather name="x" size={14} color={colors.mutedForeground} />
                 </Pressable>
-              ))}
+              )}
+            </View>
+
+            {/* Category filter chips */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+              {EXERCISE_CATEGORIES.map((cat) => {
+                const active = filterCategory === cat;
+                return (
+                  <Pressable
+                    key={cat}
+                    onPress={() => setFilterCategory(cat)}
+                    style={[
+                      styles.catFilterChip,
+                      {
+                        backgroundColor: active ? colors.primary : colors.muted,
+                        borderColor: active ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: active ? "#fff" : colors.mutedForeground, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>
+                      {cat}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
+
+            <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+              {filteredExercises.length === 0 ? (
+                <View style={{ paddingVertical: 28, alignItems: "center" }}>
+                  <Text style={[{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 14 }]}>No exercises found</Text>
+                </View>
+              ) : (
+                filteredExercises.map((ex) => (
+                  <Pressable
+                    key={ex.id}
+                    onPress={() => addExercise(ex)}
+                    style={[styles.exPickRow, { borderBottomColor: colors.border }]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.exPickName, { color: colors.foreground }]}>{ex.name}</Text>
+                      <Text style={[styles.exPickMeta, { color: colors.mutedForeground }]}>
+                        {ex.category} · {ex.equipment} · {ex.sets}×{ex.reps}
+                      </Text>
+                    </View>
+                    <Feather name="plus" size={18} color={colors.primary} />
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* Edit Rest Timer Modal */}
+      {editRestIdx !== null && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.75)", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 32 }]}>
+          <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: 20, borderRadius: 20 }]}>
+            <Text style={[styles.sheetTitle, { color: colors.foreground, marginBottom: 12 }]}>Edit Rest Timer</Text>
+            <Text style={[{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13, marginBottom: 16 }]}>
+              Seconds between sets for {entries[editRestIdx]?.exercise.name ?? "this exercise"}.
+            </Text>
+            <TextInput
+              style={[styles.setInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.muted, fontSize: 22, padding: 14, textAlign: "center" }]}
+              value={editRestValue}
+              onChangeText={setEditRestValue}
+              keyboardType="number-pad"
+              autoFocus
+              selectTextOnFocus
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+              <Pressable
+                onPress={() => setEditRestIdx(null)}
+                style={[{ flex: 1, padding: 14, borderRadius: 12, borderWidth: 1, alignItems: "center", borderColor: colors.border }]}
+              >
+                <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_600SemiBold" }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={saveRestEdit}
+                style={[{ flex: 1, padding: 14, borderRadius: 12, alignItems: "center", backgroundColor: colors.primary }]}
+              >
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold" }}>Save</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       )}
@@ -399,9 +577,15 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: "center", justifyContent: "center", paddingTop: 60, gap: 14 },
   emptyText: { fontSize: 15, fontFamily: "Inter_500Medium" },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
-  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   sheetTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
   exPickRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1 },
   exPickName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   exPickMeta: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  searchBar: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular" },
+  catFilterChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, marginRight: 6 },
+  exMenu: { borderWidth: 1, borderRadius: 12, marginHorizontal: 14, marginBottom: 8, overflow: "hidden" },
+  exMenuItem: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 0.5 },
+  exMenuText: { fontSize: 14, fontFamily: "Inter_500Medium" },
 });

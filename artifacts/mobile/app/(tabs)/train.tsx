@@ -51,7 +51,7 @@ function RunHistoryCard({ run, isPR }: { run: RunSession; isPR: boolean }) {
         <View style={{ flex: 1, marginLeft: 12 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text style={[styles.runCardDist, { color: colors.foreground }]}>
-              {run.distance.toFixed(2)} km
+              {run.distance.toFixed(2)} mi
             </Text>
             {isPR && (
               <View style={[styles.prBadge, { backgroundColor: "#f59e0b22" }]}>
@@ -329,7 +329,7 @@ export default function TrainScreen() {
             <View style={[styles.weekDivider, { backgroundColor: colors.border }]} />
             <View style={styles.weekStat}>
               <Text style={[styles.weekVal, { color: colors.foreground }]}>{weekRunKm.toFixed(1)}</Text>
-              <Text style={[styles.weekLbl, { color: colors.mutedForeground }]}>km this week</Text>
+              <Text style={[styles.weekLbl, { color: colors.mutedForeground }]}>mi this week</Text>
             </View>
             <View style={[styles.weekDivider, { backgroundColor: colors.border }]} />
             <View style={styles.weekStat}>
@@ -345,7 +345,7 @@ export default function TrainScreen() {
             <View style={[styles.lastRunCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.lastRunLabel, { color: colors.mutedForeground }]}>Last Run · {runHistory[0].date}</Text>
               <Text style={[styles.lastRunDist, { color: colors.foreground }]}>
-                {runHistory[0].distance.toFixed(2)} km
+                {runHistory[0].distance.toFixed(2)} mi
               </Text>
               <View style={styles.lastRunMeta}>
                 <View style={styles.lastRunStat}>
@@ -357,13 +357,13 @@ export default function TrainScreen() {
                 <View style={styles.lastRunStat}>
                   <Feather name="zap" size={13} color={colors.mutedForeground} />
                   <Text style={[styles.lastRunStatText, { color: colors.mutedForeground }]}>
-                    {runHistory[0].avgPace}/km avg
+                    {runHistory[0].avgPace}/mi avg
                   </Text>
                 </View>
                 <View style={styles.lastRunStat}>
                   <Feather name="trending-up" size={13} color={colors.mutedForeground} />
                   <Text style={[styles.lastRunStatText, { color: colors.mutedForeground }]}>
-                    {runHistory[0].bestPace}/km best
+                    {runHistory[0].bestPace}/mi best
                   </Text>
                 </View>
               </View>

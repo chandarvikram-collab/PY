@@ -413,39 +413,10 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* ── Detailed Analytics (Premium) ── */}
+      {/* ── Detailed Analytics ── */}
       <View style={[styles.section, { paddingHorizontal: 18 }]}>
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>Detailed Analytics</Text>
-          {!isPremium && (
-            <View style={{ marginLeft: 8, backgroundColor: colors.primary + "22", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
-              <Text style={{ color: colors.primary, fontSize: 11, fontFamily: "Inter_700Bold" }}>PREMIUM</Text>
-            </View>
-          )}
-        </View>
-        {premiumStatusLoading ? (
-          <View style={{ paddingVertical: 24, alignItems: "center" }}>
-            <ActivityIndicator color={colors.primary} />
-          </View>
-        ) : isPremium ? (
-          <AnalyticsCard workoutHistory={workoutHistory} colors={colors} />
-        ) : (
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/upgrade" as any); }}
-            style={({ pressed }) => [
-              styles.card,
-              { backgroundColor: colors.muted, borderColor: colors.border, opacity: pressed ? 0.85 : 1, alignItems: "center", paddingVertical: 20 },
-            ]}
-          >
-            <Feather name="lock" size={22} color={colors.mutedForeground} />
-            <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold", marginTop: 8 }}>
-              Unlock trends, volume charts &amp; more
-            </Text>
-            <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 4 }}>
-              Upgrade to IronPace Premium
-            </Text>
-          </Pressable>
-        )}
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Detailed Analytics</Text>
+        <AnalyticsCard workoutHistory={workoutHistory} colors={colors} />
       </View>
 
       {/* ── Goals chips ── */}
@@ -746,12 +717,6 @@ export default function ProfileScreen() {
           <MenuRow icon="message-circle" label="Messages" onPress={() => router.push("/chat")} value={`${state.chatThreads.reduce((s, t) => s + t.unread, 0) || ""}`} />
           <MenuRow icon="zap" label="Calorie Tracker" onPress={() => router.push("/calories")} />
           <MenuRow icon="bar-chart-2" label="Progress & Analytics" onPress={() => router.push("/analytics" as any)} />
-          <MenuRow
-            icon={isPremium ? "star" : "arrow-up-circle"}
-            label={isPremium ? "IronPace Premium" : "Upgrade to Premium"}
-            value={isPremium ? "Active" : ""}
-            onPress={() => router.push("/upgrade" as any)}
-          />
           <MenuRow icon="users" label="Following" onPress={() => { setShowFriends(true); }} value={followingList.length > 0 ? `${followingList.length}` : ""} />
           <MenuRow icon="award" label="Achievements" onPress={() => router.push("/achievements" as any)} value={`${completedChallenges} completed`} />
         </View>
