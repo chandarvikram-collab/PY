@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+
+:root {
+  --pastel-bg: #F3F4F6;
+  --pastel-card: #FFFFFF;
+  --pastel-border: #F3F4F6;
+  --pastel-text: #1F2937;
+  --pastel-muted: #9CA3AF;
+  
+  /* Pastel Palette */
+  --pastel-pink: #FFAFCC;
+  --pastel-blue: #A2D2FF;
+  --pastel-green: #B9FBC0;
+  --pastel-yellow: #FBF8CC;
+  --pastel-purple: #CDB4DB;
+}
+
+.pastel-theme {
+  background-color: var(--pastel-bg);
+  color: var(--pastel-text);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.pastel-title {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Custom Scrollbar */
+.pastel-scroll::-webkit-scrollbar {
+  display: none;
+}
+.pastel-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.pastel-card {
+  background-color: var(--pastel-card);
+  border: 4px solid var(--pastel-card); /* Soft thick border for rounding */
+  border-radius: 2rem; /* 32px soft rounding */
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05), 0 4px 10px -5px rgba(0,0,0,0.02);
+  overflow: hidden;
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pastel-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 35px -10px rgba(0,0,0,0.08), 0 8px 15px -5px rgba(0,0,0,0.04);
+}
+
+/* Grid layout definition */
+.pastel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.col-span-2 {
+  grid-column: span 2 / span 2;
+}
+
+.pastel-glow {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at center, rgba(162, 210, 255, 0.15) 0%, transparent 60%);
+  pointer-events: none;
+}
