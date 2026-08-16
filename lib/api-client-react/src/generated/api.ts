@@ -20,19 +20,24 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ActiveChallengeResult,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
   CreateWorkoutInviteRequest,
+  DashboardSummary,
   DirectMessageRecord,
   ErrorEnvelope,
+  GetLeaderboardParams,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
+  LeaderboardEntry,
   LogoutSuccess,
   MessageThread,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
   RespondToWorkoutInviteRequest,
   SendDirectMessageRequest,
+  WeekScheduleEntry,
   WorkoutInvite,
   WorkoutInviteRecord
 } from './api.schemas';
@@ -589,6 +594,321 @@ export const useLogoutMobileSession = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getLogoutMobileSessionMutationOptions(options));
     }
+
+export const getGetDashboardSummaryUrl = () => {
+
+
+
+
+  return `/api/dashboard/summary`
+}
+
+/**
+ * @summary Get aggregated dashboard summary for the current user
+ */
+export const getDashboardSummary = async ( options?: RequestInit): Promise<DashboardSummary> => {
+
+  return customFetch<DashboardSummary>(getGetDashboardSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDashboardSummaryQueryKey = () => {
+    return [
+    `/api/dashboard/summary`
+    ] as const;
+    }
+
+
+export const getGetDashboardSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardSummary>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardSummaryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboardSummary>>> = ({ signal }) => getDashboardSummary({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDashboardSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDashboardSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboardSummary>>>
+export type GetDashboardSummaryQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get aggregated dashboard summary for the current user
+ */
+
+export function useGetDashboardSummary<TData = Awaited<ReturnType<typeof getDashboardSummary>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDashboardSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetCurrentWeekScheduleUrl = () => {
+
+
+
+
+  return `/api/dashboard/current-week`
+}
+
+/**
+ * @summary Get this week's scheduled workouts (Sun–Sat) for the current user
+ */
+export const getCurrentWeekSchedule = async ( options?: RequestInit): Promise<WeekScheduleEntry[]> => {
+
+  return customFetch<WeekScheduleEntry[]>(getGetCurrentWeekScheduleUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCurrentWeekScheduleQueryKey = () => {
+    return [
+    `/api/dashboard/current-week`
+    ] as const;
+    }
+
+
+export const getGetCurrentWeekScheduleQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentWeekSchedule>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentWeekSchedule>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrentWeekScheduleQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentWeekSchedule>>> = ({ signal }) => getCurrentWeekSchedule({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCurrentWeekSchedule>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCurrentWeekScheduleQueryResult = NonNullable<Awaited<ReturnType<typeof getCurrentWeekSchedule>>>
+export type GetCurrentWeekScheduleQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get this week's scheduled workouts (Sun–Sat) for the current user
+ */
+
+export function useGetCurrentWeekSchedule<TData = Awaited<ReturnType<typeof getCurrentWeekSchedule>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentWeekSchedule>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCurrentWeekScheduleQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetActiveChallengeUrl = () => {
+
+
+
+
+  return `/api/dashboard/active-challenge`
+}
+
+/**
+ * @summary Get the current user's most recent active challenge with progress
+ */
+export const getActiveChallenge = async ( options?: RequestInit): Promise<ActiveChallengeResult> => {
+
+  return customFetch<ActiveChallengeResult>(getGetActiveChallengeUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetActiveChallengeQueryKey = () => {
+    return [
+    `/api/dashboard/active-challenge`
+    ] as const;
+    }
+
+
+export const getGetActiveChallengeQueryOptions = <TData = Awaited<ReturnType<typeof getActiveChallenge>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActiveChallenge>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetActiveChallengeQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getActiveChallenge>>> = ({ signal }) => getActiveChallenge({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getActiveChallenge>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetActiveChallengeQueryResult = NonNullable<Awaited<ReturnType<typeof getActiveChallenge>>>
+export type GetActiveChallengeQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the current user's most recent active challenge with progress
+ */
+
+export function useGetActiveChallenge<TData = Awaited<ReturnType<typeof getActiveChallenge>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActiveChallenge>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetActiveChallengeQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetLeaderboardUrl = (params?: GetLeaderboardParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dashboard/leaderboard?${stringifiedParams}` : `/api/dashboard/leaderboard`
+}
+
+/**
+ * @summary Get the top users by total points for the leaderboard podium
+ */
+export const getLeaderboard = async (params?: GetLeaderboardParams, options?: RequestInit): Promise<LeaderboardEntry[]> => {
+
+  return customFetch<LeaderboardEntry[]>(getGetLeaderboardUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLeaderboardQueryKey = (params?: GetLeaderboardParams,) => {
+    return [
+    `/api/dashboard/leaderboard`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetLeaderboardQueryOptions = <TData = Awaited<ReturnType<typeof getLeaderboard>>, TError = ErrorType<ErrorEnvelope>>(params?: GetLeaderboardParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeaderboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLeaderboardQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeaderboard>>> = ({ signal }) => getLeaderboard(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLeaderboard>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLeaderboardQueryResult = NonNullable<Awaited<ReturnType<typeof getLeaderboard>>>
+export type GetLeaderboardQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the top users by total points for the leaderboard podium
+ */
+
+export function useGetLeaderboard<TData = Awaited<ReturnType<typeof getLeaderboard>>, TError = ErrorType<ErrorEnvelope>>(
+ params?: GetLeaderboardParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeaderboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLeaderboardQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListWorkoutInvitesUrl = () => {
 

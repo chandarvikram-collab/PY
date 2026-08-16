@@ -14,6 +14,8 @@ tags:
     description: Browser and mobile authentication endpoints.
   - name: Social
     description: Workout invites and direct messaging between connected users.
+  - name: Dashboard
+    description: Aggregated dashboard data for the web client.
 paths:
   /healthz:
     get:
@@ -144,6 +146,104 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LogoutSuccess'
+  /dashboard/summary:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboardSummary
+      summary: Get aggregated dashboard summary for the current user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: Dashboard summary data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /dashboard/current-week:
+    get:
+      tags: [Dashboard]
+      operationId: getCurrentWeekSchedule
+      summary: Get this week's scheduled workouts (Sun–Sat) for the current user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: Scheduled workouts for the current week.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WeekScheduleEntry'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /dashboard/active-challenge:
+    get:
+      tags: [Dashboard]
+      operationId: getActiveChallenge
+      summary: Get the current user's most recent active challenge with progress
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: Active challenge or null if none.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveChallengeResult'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /dashboard/leaderboard:
+    get:
+      tags: [Dashboard]
+      operationId: getLeaderboard
+      summary: Get the top users by total points for the leaderboard podium
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Ranked leaderboard entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaderboardEntry'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /invites:
     get:
       tags: [Social]
@@ -342,6 +442,103 @@ components:
       schema:
         type: string
   schemas:
+    DashboardSummary:
+      type: object
+      required: [workoutsThisWeek, streakDays, caloriesToday, calorieGoal, proteinToday, carbsToday, fatToday, proteinGoal, carbGoal, fatGoal, totalPoints, name, imageUrl]
+      properties:
+        workoutsThisWeek:
+          type: integer
+        streakDays:
+          type: integer
+        caloriesToday:
+          type: number
+        calorieGoal:
+          type: integer
+        proteinToday:
+          type: number
+        carbsToday:
+          type: number
+        fatToday:
+          type: number
+        proteinGoal:
+          type: integer
+        carbGoal:
+          type: integer
+        fatGoal:
+          type: integer
+        totalPoints:
+          type: integer
+        name:
+          type: string
+        imageUrl:
+          type: ["string", "null"]
+
+    WeekScheduleEntry:
+      type: object
+      required: [id, date, title, completed]
+      properties:
+        id:
+          type: string
+        date:
+          type: string
+        title:
+          type: string
+        completed:
+          type: boolean
+        source:
+          type: ["string", "null"]
+
+    ActiveChallengeResult:
+      type: object
+      required: [challenge]
+      properties:
+        challenge:
+          oneOf:
+            - $ref: '#/components/schemas/ActiveChallenge'
+            - type: 'null'
+
+    ActiveChallenge:
+      type: object
+      required: [id, title, type, target, unit, deadline, progress, progressPercent, daysLeft]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+        target:
+          type: number
+        unit:
+          type: string
+        deadline:
+          type: string
+        progress:
+          type: number
+        progressPercent:
+          type: number
+        daysLeft:
+          type: integer
+
+    LeaderboardEntry:
+      type: object
+      required: [userId, name, username, imageUrl, totalPoints, rank, isCurrentUser]
+      properties:
+        userId:
+          type: string
+        name:
+          type: string
+        username:
+          type: string
+        imageUrl:
+          type: ["string", "null"]
+        totalPoints:
+          type: integer
+        rank:
+          type: integer
+        isCurrentUser:
+          type: boolean
+
     HealthStatus:
       type: object
       properties:

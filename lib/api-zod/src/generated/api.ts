@@ -97,6 +97,94 @@ export const LogoutMobileSessionResponse = zod.object({
 
 
 /**
+ * @summary Get aggregated dashboard summary for the current user
+ */
+export const GetDashboardSummaryHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetDashboardSummaryResponse = zod.object({
+  "workoutsThisWeek": zod.number(),
+  "streakDays": zod.number(),
+  "caloriesToday": zod.number(),
+  "calorieGoal": zod.number(),
+  "proteinToday": zod.number(),
+  "carbsToday": zod.number(),
+  "fatToday": zod.number(),
+  "proteinGoal": zod.number(),
+  "carbGoal": zod.number(),
+  "fatGoal": zod.number(),
+  "totalPoints": zod.number(),
+  "name": zod.string(),
+  "imageUrl": zod.string().nullable()
+})
+
+
+/**
+ * @summary Get this week's scheduled workouts (Sun–Sat) for the current user
+ */
+export const GetCurrentWeekScheduleHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetCurrentWeekScheduleResponseItem = zod.object({
+  "id": zod.string(),
+  "date": zod.string(),
+  "title": zod.string(),
+  "completed": zod.boolean(),
+  "source": zod.string().nullish()
+})
+export const GetCurrentWeekScheduleResponse = zod.array(GetCurrentWeekScheduleResponseItem)
+
+
+/**
+ * @summary Get the current user's most recent active challenge with progress
+ */
+export const GetActiveChallengeHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetActiveChallengeResponse = zod.object({
+  "challenge": zod.union([zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "type": zod.string(),
+  "target": zod.number(),
+  "unit": zod.string(),
+  "deadline": zod.string(),
+  "progress": zod.number(),
+  "progressPercent": zod.number(),
+  "daysLeft": zod.number()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Get the top users by total points for the leaderboard podium
+ */
+export const getLeaderboardQueryLimitDefault = 10;
+
+export const GetLeaderboardQueryParams = zod.object({
+  "limit": zod.coerce.number().default(getLeaderboardQueryLimitDefault)
+})
+
+export const GetLeaderboardHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetLeaderboardResponseItem = zod.object({
+  "userId": zod.string(),
+  "name": zod.string(),
+  "username": zod.string(),
+  "imageUrl": zod.string().nullable(),
+  "totalPoints": zod.number(),
+  "rank": zod.number(),
+  "isCurrentUser": zod.boolean()
+})
+export const GetLeaderboardResponse = zod.array(GetLeaderboardResponseItem)
+
+
+/**
  * @summary List workout invites sent or received by the current user
  */
 export const ListWorkoutInvitesHeader = zod.object({
