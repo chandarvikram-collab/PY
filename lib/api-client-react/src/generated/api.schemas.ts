@@ -5,59 +5,6 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface DashboardSummary {
-  workoutsThisWeek: number;
-  streakDays: number;
-  caloriesToday: number;
-  calorieGoal: number;
-  proteinToday: number;
-  carbsToday: number;
-  fatToday: number;
-  proteinGoal: number;
-  carbGoal: number;
-  fatGoal: number;
-  totalPoints: number;
-  name: string;
-  /** @nullable */
-  imageUrl: string | null;
-}
-
-export interface WeekScheduleEntry {
-  id: string;
-  date: string;
-  title: string;
-  completed: boolean;
-  /** @nullable */
-  source?: string | null;
-}
-
-export interface ActiveChallenge {
-  id: string;
-  title: string;
-  type: string;
-  target: number;
-  unit: string;
-  deadline: string;
-  progress: number;
-  progressPercent: number;
-  daysLeft: number;
-}
-
-export interface ActiveChallengeResult {
-  challenge: ActiveChallenge | null;
-}
-
-export interface LeaderboardEntry {
-  userId: string;
-  name: string;
-  username: string;
-  /** @nullable */
-  imageUrl: string | null;
-  totalPoints: number;
-  rank: number;
-  isCurrentUser: boolean;
-}
-
 export interface HealthStatus {
   status: string;
 }
@@ -202,9 +149,5 @@ export type HandleBrowserLoginCallbackParams = {
 code?: string;
 state?: string;
 iss?: string;
-};
-
-export type GetLeaderboardParams = {
-limit?: number;
 };
 

@@ -15,7 +15,6 @@ import prsRouter from "./prs";
 import stripeRouter from "./stripe";
 import scheduleRouter from "./schedule";
 import achievementsRouter from "./achievements";
-import dashboardRouter from "./dashboard";
 
 const router: IRouter = Router();
 
@@ -35,6 +34,5 @@ router.use(prsRouter);
 router.use(stripeRouter);
 router.use(scheduleRouter);
 router.use(achievementsRouter);
-router.use(dashboardRouter);
 
 export default router;

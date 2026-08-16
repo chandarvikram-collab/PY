@@ -6,20 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export * from './activeChallenge';
-export * from './activeChallengeResult';
 export * from './authorizationSessionHeaderParameter';
 export * from './authUser';
 export * from './authUserEnvelope';
 export * from './beginBrowserLoginParams';
 export * from './createWorkoutInviteRequest';
-export * from './dashboardSummary';
 export * from './directMessageRecord';
 export * from './errorEnvelope';
-export * from './getLeaderboardParams';
 export * from './handleBrowserLoginCallbackParams';
 export * from './healthStatus';
-export * from './leaderboardEntry';
 export * from './logoutSuccess';
 export * from './messageThread';
 export * from './mobileTokenExchangeRequest';
@@ -27,7 +22,6 @@ export * from './mobileTokenExchangeSuccess';
 export * from './respondToWorkoutInviteRequest';
 export * from './respondToWorkoutInviteRequestStatus';
 export * from './sendDirectMessageRequest';
-export * from './weekScheduleEntry';
 export * from './workoutInvite';
 export * from './workoutInviteRecord';
 export * from './workoutInviteStatus';

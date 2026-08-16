@@ -6,9 +6,7 @@ import {
   ExchangeMobileAuthorizationCodeResponse,
   LogoutMobileSessionResponse,
 } from "@workspace/api-zod";
-import { getAuth } from "@clerk/express";
-import { db, authUsersTable, users } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, authUsersTable } from "@workspace/db";
 import {
   clearSession,
   getOidcConfig,
@@ -84,35 +82,10 @@ async function upsertUser(claims: Record<string, unknown>) {
   return user;
 }
 
-router.get("/auth/user", async (req: Request, res: Response) => {
-  const { userId: clerkId } = getAuth(req);
-
-  if (!clerkId) {
-    res.json(GetCurrentAuthUserResponse.parse({ user: null }));
-    return;
-  }
-
-  // Look up the local user record by clerkId so we can return profile fields
-  const [localUser] = await db
-    .select({ id: users.id, name: users.name, username: users.username, imageUrl: users.imageUrl })
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
-    .limit(1);
-
-  if (!localUser) {
-    res.json(GetCurrentAuthUserResponse.parse({ user: null }));
-    return;
-  }
-
+router.get("/auth/user", (req: Request, res: Response) => {
   res.json(
     GetCurrentAuthUserResponse.parse({
-      user: {
-        id: localUser.id,
-        email: null,
-        firstName: localUser.name.split(" ")[0] ?? localUser.name,
-        lastName: localUser.name.split(" ").slice(1).join(" ") || null,
-        profileImageUrl: localUser.imageUrl ?? null,
-      },
+      user: req.isAuthenticated() ? req.user : null,
     }),
   );
 });
