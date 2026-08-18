@@ -1,15 +1,17 @@
-import React, { useMemo } from "react";
-import { useUserId } from "@/hooks/use-user";
-import { useLocalLog } from "@/hooks/use-local-log";
-import { UserSetupModal } from "@/components/user-setup-modal";
-import { QuickLogModal } from "@/components/quick-log-modal";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Flame, Dumbbell, Footprints, Settings2, MonitorSmartphone } from "lucide-react";
-import { useState } from "react";
+import React, { useMemo } from 'react';
+import { useUser, useClerk } from '@clerk/react';
+import { useGetCurrentAuthUser } from '@workspace/api-client-react';
+import { useLocalLog } from '@/hooks/use-local-log';
+import { QuickLogModal } from '@/components/quick-log-modal';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { Flame, Dumbbell, Footprints, LogOut, Loader2 } from 'lucide-react';
 
 export default function Dashboard() {
-  const { userId, saveUserId, isLoaded } = useUserId();
-  const [showChangeUser, setShowChangeUser] = useState(false);
+  const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
+  const { signOut } = useClerk();
+  const { data: authData, isLoading: authLoading } = useGetCurrentAuthUser();
   const { todayFoodLog, recentWorkouts, recentRuns, refresh } = useLocalLog();
 
   const macros = useMemo(
@@ -26,46 +28,78 @@ export default function Dashboard() {
     [todayFoodLog],
   );
 
-  if (!isLoaded) return null;
+  if (!clerkLoaded || authLoading) {
+    return (
+      <div className="min-h-screen w-full bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Display name: prefer full name from Clerk, fallback to email prefix
+  const displayName =
+    clerkUser?.fullName ||
+    clerkUser?.firstName ||
+    clerkUser?.emailAddresses?.[0]?.emailAddress?.split('@')[0] ||
+    'Athlete';
+
+  const avatarFallback = displayName.slice(0, 2).toUpperCase();
+  const avatarUrl = clerkUser?.imageUrl;
+
+  // The local user id (from our DB, linked to clerkId)
+  const localUserId = authData?.user?.id;
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground p-6">
-      <UserSetupModal
-        open={!userId || showChangeUser}
-        onSave={(id) => {
-          saveUserId(id);
-          setShowChangeUser(false);
-        }}
-      />
-
       <div className="max-w-7xl mx-auto space-y-6">
         <header className="flex items-center justify-between border-b border-border pb-4">
           <div>
             <h1 className="text-3xl font-black tracking-tight text-white flex items-center gap-2">
               <span className="text-primary uppercase">Iron</span>Pace
             </h1>
-            <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
-              ID: {userId ? `${userId.slice(0, 8)}...` : "None"}
-              <button
-                onClick={() => setShowChangeUser(true)}
-                className="text-primary hover:underline flex items-center gap-1 ml-2"
-              >
-                <Settings2 className="w-3 h-3" /> Change
-              </button>
-            </div>
+            <p className="text-xs text-muted-foreground mt-1">Dashboard</p>
           </div>
           <div className="flex items-center gap-4">
-            {userId && <QuickLogModal userId={userId} onLogSuccess={refresh} />}
+            {localUserId && (
+              <QuickLogModal userId={localUserId} onLogSuccess={refresh} />
+            )}
+            <div className="flex items-center gap-3">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={avatarUrl ?? undefined} alt={displayName} />
+                <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
+                  {avatarFallback}
+                </AvatarFallback>
+              </Avatar>
+              <div className="hidden sm:block">
+                <p className="text-sm font-semibold leading-none">{displayName}</p>
+                {clerkUser?.emailAddresses?.[0]?.emailAddress && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {clerkUser.emailAddresses[0].emailAddress}
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() =>
+                  signOut({ redirectUrl: import.meta.env.BASE_URL || '/' })
+                }
+                title="Sign out"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </header>
 
-        {/* Device-local data notice */}
-        <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-          <MonitorSmartphone className="h-3.5 w-3.5 shrink-0" />
-          <span>
-            Data logged on this device only. Connect your account (coming soon) to sync full history.
-          </span>
-        </div>
+        {/* Account linked notice */}
+        {!authData?.user && (
+          <div className="flex items-center gap-2 rounded-none border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-xs text-yellow-400">
+            <span className="font-semibold">Mobile account not linked.</span>
+            <span>Open the IronPace mobile app and log in to sync your data here.</span>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <MacroCard
@@ -138,7 +172,7 @@ export default function Dashboard() {
                       </div>
                       <div className="text-right font-mono">
                         <div className="text-white">
-                          {w.volumeKg > 0 ? `${w.volumeKg} kg` : "-"}
+                          {w.volumeKg > 0 ? `${w.volumeKg} kg` : '-'}
                         </div>
                       </div>
                     </div>
