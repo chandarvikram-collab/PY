@@ -1,12 +1,17 @@
 import React, { useMemo } from 'react';
 import { useUser, useClerk } from '@clerk/react';
-import { useGetCurrentAuthUser } from '@workspace/api-client-react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  useGetCurrentAuthUser,
+  useGetWorkoutSessions,
+  useGetRunSessions,
+} from '@workspace/api-client-react';
 import { useLocalLog } from '@/hooks/use-local-log';
 import { QuickLogModal } from '@/components/quick-log-modal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Flame, Dumbbell, Footprints, LogOut, Loader2 } from 'lucide-react';
+import { Flame, Dumbbell, Footprints, LogOut, Loader2, CalendarDays, CheckCircle2 } from 'lucide-react';
 
 export default function Dashboard() {
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
@@ -112,6 +117,8 @@ export default function Dashboard() {
           <MacroCard title="Carbs" value={macros.carb} suffix="g" />
           <MacroCard title="Fat" value={macros.fat} suffix="g" />
         </div>
+
+        <ThisWeekCard userId={localUserId ?? null} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="col-span-1 border-border">
@@ -242,6 +249,205 @@ function MacroCard({
           {value}
           <span className="text-lg text-muted-foreground ml-1">{suffix}</span>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Formats a Date as a local YYYY-MM-DD string, matching the mobile toDateKey convention. */
+function toLocalDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Returns the local YYYY-MM-DD strings for Mon–Sun of the week containing `date`. */
+function getWeekDates(date: Date): string[] {
+  const day = date.getDay(); // 0=Sun … 6=Sat, local
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - ((day + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return toLocalDateKey(d);
+  });
+}
+
+interface ScheduledWorkout {
+  id: string;
+  date: string;
+  title: string;
+  source: string;
+  completed: boolean;
+}
+
+/** Fetches all scheduled workouts for the user then filters to the current week. */
+function useScheduledWorkoutsThisWeek(userId: string | null, weekDates: string[]) {
+  const weekStart = weekDates[0];
+  const weekEnd = weekDates[6];
+
+  return useQuery<ScheduledWorkout[]>({
+    queryKey: ['scheduledWorkouts', userId, weekStart],
+    queryFn: async () => {
+      const res = await fetch(`/api/schedule/${userId}`);
+      if (!res.ok) throw new Error('Failed to fetch schedule');
+      const json = (await res.json()) as { scheduledWorkouts: ScheduledWorkout[] };
+      return (json.scheduledWorkouts ?? []).filter(
+        (sw) => sw.date >= weekStart && sw.date <= weekEnd,
+      );
+    },
+    enabled: !!userId,
+  });
+}
+
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function ThisWeekCard({ userId }: { userId: string | null }) {
+  const today = toLocalDateKey(new Date());
+  const weekDates = useMemo(() => getWeekDates(new Date()), []);
+
+  // Primary: scheduled workouts from the schedule table
+  const { data: schedule, isLoading: sLoading } = useScheduledWorkoutsThisWeek(userId, weekDates);
+
+  // Secondary: completed sessions (workout_sessions + run_sessions)
+  // Pass empty string when userId is null — the generated hook sets `enabled: !!(userId)`
+  const { data: workoutSessions, isLoading: wLoading } = useGetWorkoutSessions(userId ?? '');
+  const { data: runSessions, isLoading: rLoading } = useGetRunSessions(userId ?? '');
+
+  // Map date → scheduled entries for this week
+  const scheduleByDate = useMemo(() => {
+    const map = new Map<string, ScheduledWorkout[]>();
+    for (const sw of schedule ?? []) {
+      const d = sw.date.slice(0, 10);
+      if (!map.has(d)) map.set(d, []);
+      map.get(d)!.push(sw);
+    }
+    return map;
+  }, [schedule]);
+
+  // Set of dates with completed workout or run sessions
+  const completedWorkoutDates = useMemo(
+    () => new Set((workoutSessions ?? []).map((s) => s.date.slice(0, 10))),
+    [workoutSessions],
+  );
+  const completedRunDates = useMemo(
+    () => new Set((runSessions ?? []).map((s) => s.date.slice(0, 10))),
+    [runSessions],
+  );
+
+  const isLoading = !!userId && (sLoading || wLoading || rLoading);
+
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-3 border-b border-border/50">
+        <CardTitle className="text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+          <CalendarDays className="w-4 h-4" /> This Week
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-4">
+        {!userId ? (
+          <p className="text-xs text-muted-foreground text-center py-4">
+            Link your mobile account to see this week's schedule.
+          </p>
+        ) : isLoading ? (
+          <div className="flex justify-center py-4">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-7 gap-1">
+            {weekDates.map((date, i) => {
+              const entries = scheduleByDate.get(date) ?? [];
+              const hasScheduled = entries.length > 0;
+              const completedWorkout = completedWorkoutDates.has(date);
+              const completedRun = completedRunDates.has(date);
+              const hasActivity = hasScheduled || completedWorkout || completedRun;
+              const isToday = date === today;
+              const isPast = date < today;
+
+              return (
+                <div
+                  key={date}
+                  className={`flex flex-col items-center gap-1 rounded-md py-2 px-1 min-h-[6rem] ${
+                    isToday ? 'bg-primary/10 ring-1 ring-primary/40' : ''
+                  }`}
+                >
+                  {/* Day label */}
+                  <span
+                    className={`text-[10px] uppercase tracking-wider font-semibold ${
+                      isToday ? 'text-primary' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {DAY_LABELS[i]}
+                  </span>
+                  {/* Date number */}
+                  <span
+                    className={`text-xs font-mono ${
+                      isToday ? 'text-white font-bold' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {date.slice(8)}
+                  </span>
+
+                  {/* Scheduled workout entries */}
+                  <div className="flex flex-col items-center gap-1 mt-1 w-full">
+                    {entries.map((sw) => (
+                      <div
+                        key={sw.id}
+                        title={sw.title}
+                        className={`w-full text-center rounded px-0.5 py-0.5 ${
+                          sw.completed
+                            ? 'bg-primary/20 text-primary'
+                            : 'bg-card border border-border/60 text-muted-foreground'
+                        }`}
+                      >
+                        <Dumbbell className="w-3 h-3 mx-auto" />
+                        <span className="block text-[8px] leading-tight truncate max-w-full px-0.5">
+                          {sw.title}
+                        </span>
+                      </div>
+                    ))}
+
+                    {/* Completed-session markers (no corresponding scheduled entry) */}
+                    {completedWorkout && !entries.some((e) => e.completed) && (
+                      <CheckCircle2
+                        className="w-3.5 h-3.5 text-primary mt-0.5"
+                        aria-label="Lift completed"
+                      />
+                    )}
+                    {completedRun && (
+                      <Footprints
+                        className="w-3.5 h-3.5 text-blue-400 mt-0.5"
+                        aria-label="Run completed"
+                      />
+                    )}
+
+                    {/* Empty indicator */}
+                    {!hasActivity && isPast && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-border mt-1" />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Legend */}
+        {userId && !isLoading && (
+          <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/50">
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Dumbbell className="w-3 h-3 text-muted-foreground" /> Scheduled
+            </span>
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <CheckCircle2 className="w-3 h-3 text-primary" /> Lift done
+            </span>
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Footprints className="w-3 h-3 text-blue-400" /> Run done
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
