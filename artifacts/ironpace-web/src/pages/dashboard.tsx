@@ -1,10 +1,12 @@
 import React, { useMemo } from 'react';
 import { useUser, useClerk } from '@clerk/react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useGetCurrentAuthUser,
   useGetWorkoutSessions,
   useGetRunSessions,
+  useGetFoodLogForDate,
+  getGetFoodLogForDateQueryKey,
 } from '@workspace/api-client-react';
 import { useLocalLog } from '@/hooks/use-local-log';
 import { QuickLogModal } from '@/components/quick-log-modal';
@@ -17,11 +19,34 @@ export default function Dashboard() {
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
   const { signOut } = useClerk();
   const { data: authData, isLoading: authLoading } = useGetCurrentAuthUser();
-  const { todayFoodLog, recentWorkouts, recentRuns, refresh } = useLocalLog();
+  const queryClient = useQueryClient();
+
+  // The local user id (from our DB, linked to clerkId) — needed by hooks before the guard
+  const localUserId = authData?.user?.id ?? null;
+  const today = useMemo(() => toLocalDateKey(new Date()), []);
+
+  // API-backed food log for today
+  const { data: todayFoodEntries = [] } = useGetFoodLogForDate(localUserId ?? '', today);
+
+  // API-backed recent run sessions (reuse the same hook used by ThisWeekCard)
+  const { data: apiRunSessions = [] } = useGetRunSessions(localUserId ?? '');
+  const recentRuns = useMemo(() => apiRunSessions.slice(0, 5), [apiRunSessions]);
+
+  // Workouts are still read from localStorage (out of scope for this task)
+  const { recentWorkouts } = useLocalLog();
+
+  // Invalidate the food log query after a new entry is logged
+  const refresh = () => {
+    if (localUserId) {
+      queryClient.invalidateQueries({
+        queryKey: getGetFoodLogForDateQueryKey(localUserId, today),
+      });
+    }
+  };
 
   const macros = useMemo(
     () =>
-      todayFoodLog.reduce(
+      todayFoodEntries.reduce(
         (acc, entry) => ({
           cal: acc.cal + entry.calories,
           pro: acc.pro + entry.protein,
@@ -30,7 +55,7 @@ export default function Dashboard() {
         }),
         { cal: 0, pro: 0, carb: 0, fat: 0 },
       ),
-    [todayFoodLog],
+    [todayFoodEntries],
   );
 
   if (!clerkLoaded || authLoading) {
@@ -50,9 +75,6 @@ export default function Dashboard() {
 
   const avatarFallback = displayName.slice(0, 2).toUpperCase();
   const avatarUrl = clerkUser?.imageUrl;
-
-  // The local user id (from our DB, linked to clerkId)
-  const localUserId = authData?.user?.id;
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground p-6">
@@ -128,13 +150,13 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4 space-y-4">
-              {todayFoodLog.length === 0 ? (
+              {todayFoodEntries.length === 0 ? (
                 <div className="text-sm text-muted-foreground text-center py-8">
                   No food logged today.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {todayFoodLog.map((food) => (
+                  {todayFoodEntries.map((food) => (
                     <div key={food.id} className="flex justify-between items-center text-sm">
                       <div>
                         <div className="font-medium">{food.name}</div>
