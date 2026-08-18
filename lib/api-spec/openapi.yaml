@@ -260,6 +260,190 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/MessageThread'
+  /food-log/{userId}/{date}:
+    get:
+      tags: [Nutrition]
+      operationId: getFoodLogForDate
+      summary: Get food entries for a user on a specific date
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Food entries for the date.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FoodEntry'
+  /food-log/{userId}:
+    post:
+      tags: [Nutrition]
+      operationId: logFoodEntry
+      summary: Log a food entry for a user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FoodEntryInput'
+      responses:
+        '201':
+          description: Food entry saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodEntry'
+        '200':
+          description: Duplicate entry ignored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  duplicate:
+                    type: boolean
+        '400':
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /sessions/workout:
+    post:
+      tags: [Sessions]
+      operationId: logWorkoutSession
+      summary: Log a completed workout session
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutSessionInput'
+      responses:
+        '201':
+          description: Workout session saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutSessionResult'
+        '200':
+          description: Duplicate entry ignored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  duplicate:
+                    type: boolean
+        '400':
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /sessions/workout/{userId}:
+    get:
+      tags: [Sessions]
+      operationId: getWorkoutSessions
+      summary: Get recent workout sessions for a user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Workout sessions ordered newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkoutSession'
+  /sessions/run:
+    post:
+      tags: [Sessions]
+      operationId: logRunSession
+      summary: Log a completed run session
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunSessionInput'
+      responses:
+        '201':
+          description: Run session saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunSessionResult'
+        '200':
+          description: Duplicate entry ignored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  duplicate:
+                    type: boolean
+        '400':
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /sessions/run/{userId}:
+    get:
+      tags: [Sessions]
+      operationId: getRunSessions
+      summary: Get recent run sessions for a user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run sessions ordered newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RunSession'
   /messages/{friendId}:
     get:
       tags: [Social]
@@ -508,6 +692,190 @@ components:
         createdAt:
           type: string
           format: date-time
+    FoodEntry:
+      type: object
+      required: [id, userId, date, meal, name, calories, protein, carbs, fat, loggedAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        date:
+          type: string
+        meal:
+          type: string
+        name:
+          type: string
+        calories:
+          type: integer
+        protein:
+          type: number
+        carbs:
+          type: number
+        fat:
+          type: number
+        fiber:
+          type: ['number', 'null']
+        sugar:
+          type: ['number', 'null']
+        sodium:
+          type: ['number', 'null']
+        loggedAt:
+          type: string
+          format: date-time
+    FoodEntryInput:
+      type: object
+      required: [date, meal, name, calories, protein, carbs, fat]
+      properties:
+        date:
+          type: string
+          minLength: 1
+        meal:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        calories:
+          type: integer
+          minimum: 0
+        protein:
+          type: number
+          minimum: 0
+        carbs:
+          type: number
+          minimum: 0
+        fat:
+          type: number
+          minimum: 0
+        fiber:
+          type: ['number', 'null']
+        sugar:
+          type: ['number', 'null']
+        sodium:
+          type: ['number', 'null']
+    WorkoutSession:
+      type: object
+      required: [id, userId, name, date, durationSeconds, volumeKg, exerciseCount, pointsEarned, createdAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        date:
+          type: string
+        durationSeconds:
+          type: integer
+        volumeKg:
+          type: number
+        exerciseCount:
+          type: integer
+        exerciseLogJson:
+          type: object
+        pointsEarned:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    WorkoutSessionInput:
+      type: object
+      required: [userId, name, date, durationSeconds]
+      properties:
+        userId:
+          type: string
+        name:
+          type: string
+          minLength: 1
+        date:
+          type: string
+          minLength: 1
+        type:
+          type: string
+        durationSeconds:
+          type: integer
+          minimum: 0
+        volumeKg:
+          type: number
+        exerciseCount:
+          type: integer
+        exerciseLogJson:
+          type: object
+        pointsEarned:
+          type: integer
+    WorkoutSessionResult:
+      type: object
+      required: [session, newPrs]
+      properties:
+        session:
+          $ref: '#/components/schemas/WorkoutSession'
+        user:
+          type: object
+        newPrs:
+          type: array
+          items:
+            type: string
+    RunSession:
+      type: object
+      required: [id, userId, date, durationSeconds, distanceKm, avgPace, bestPace, calories, pointsEarned, createdAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+        date:
+          type: string
+        durationSeconds:
+          type: integer
+        distanceKm:
+          type: number
+        avgPace:
+          type: string
+        bestPace:
+          type: string
+        calories:
+          type: integer
+        pointsEarned:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    RunSessionInput:
+      type: object
+      required: [userId, date, durationSeconds, distanceKm, avgPace]
+      properties:
+        userId:
+          type: string
+        date:
+          type: string
+          minLength: 1
+        durationSeconds:
+          type: integer
+          minimum: 0
+        distanceKm:
+          type: number
+          minimum: 0
+        avgPace:
+          type: string
+        bestPace:
+          type: string
+        calories:
+          type: integer
+        pointsEarned:
+          type: integer
+    RunSessionResult:
+      type: object
+      required: [session]
+      properties:
+        session:
+          $ref: '#/components/schemas/RunSession'
+        user:
+          type: object
     SendDirectMessageRequest:
       type: object
       required: [content]

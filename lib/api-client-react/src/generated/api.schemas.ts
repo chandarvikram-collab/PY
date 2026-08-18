@@ -125,6 +125,124 @@ export interface DirectMessageRecord {
   createdAt: string;
 }
 
+export interface FoodEntry {
+  id: string;
+  userId: string;
+  date: string;
+  meal: string;
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  /** @nullable */
+  fiber?: number | null;
+  /** @nullable */
+  sugar?: number | null;
+  /** @nullable */
+  sodium?: number | null;
+  loggedAt: string;
+}
+
+export interface FoodEntryInput {
+  /** @minLength 1 */
+  date: string;
+  /** @minLength 1 */
+  meal: string;
+  /** @minLength 1 */
+  name: string;
+  /** @minimum 0 */
+  calories: number;
+  /** @minimum 0 */
+  protein: number;
+  /** @minimum 0 */
+  carbs: number;
+  /** @minimum 0 */
+  fat: number;
+  /** @nullable */
+  fiber?: number | null;
+  /** @nullable */
+  sugar?: number | null;
+  /** @nullable */
+  sodium?: number | null;
+}
+
+export type WorkoutSessionExerciseLogJson = { [key: string]: unknown };
+
+export interface WorkoutSession {
+  id: string;
+  userId: string;
+  type?: string;
+  name: string;
+  date: string;
+  durationSeconds: number;
+  volumeKg: number;
+  exerciseCount: number;
+  exerciseLogJson?: WorkoutSessionExerciseLogJson;
+  pointsEarned: number;
+  createdAt: string;
+}
+
+export type WorkoutSessionInputExerciseLogJson = { [key: string]: unknown };
+
+export interface WorkoutSessionInput {
+  userId: string;
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 1 */
+  date: string;
+  type?: string;
+  /** @minimum 0 */
+  durationSeconds: number;
+  volumeKg?: number;
+  exerciseCount?: number;
+  exerciseLogJson?: WorkoutSessionInputExerciseLogJson;
+  pointsEarned?: number;
+}
+
+export type WorkoutSessionResultUser = { [key: string]: unknown };
+
+export interface WorkoutSessionResult {
+  session: WorkoutSession;
+  user?: WorkoutSessionResultUser;
+  newPrs: string[];
+}
+
+export interface RunSession {
+  id: string;
+  userId: string;
+  type?: string;
+  date: string;
+  durationSeconds: number;
+  distanceKm: number;
+  avgPace: string;
+  bestPace: string;
+  calories: number;
+  pointsEarned: number;
+  createdAt: string;
+}
+
+export interface RunSessionInput {
+  userId: string;
+  /** @minLength 1 */
+  date: string;
+  /** @minimum 0 */
+  durationSeconds: number;
+  /** @minimum 0 */
+  distanceKm: number;
+  avgPace: string;
+  bestPace?: string;
+  calories?: number;
+  pointsEarned?: number;
+}
+
+export type RunSessionResultUser = { [key: string]: unknown };
+
+export interface RunSessionResult {
+  session: RunSession;
+  user?: RunSessionResultUser;
+}
+
 export interface SendDirectMessageRequest {
   /**
      * @minLength 1
@@ -149,5 +267,17 @@ export type HandleBrowserLoginCallbackParams = {
 code?: string;
 state?: string;
 iss?: string;
+};
+
+export type LogFoodEntry200 = {
+  duplicate?: boolean;
+};
+
+export type LogWorkoutSession200 = {
+  duplicate?: boolean;
+};
+
+export type LogRunSession200 = {
+  duplicate?: boolean;
 };
 

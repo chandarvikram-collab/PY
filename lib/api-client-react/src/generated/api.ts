@@ -25,16 +25,27 @@ import type {
   CreateWorkoutInviteRequest,
   DirectMessageRecord,
   ErrorEnvelope,
+  FoodEntry,
+  FoodEntryInput,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
+  LogFoodEntry200,
+  LogRunSession200,
+  LogWorkoutSession200,
   LogoutSuccess,
   MessageThread,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
   RespondToWorkoutInviteRequest,
+  RunSession,
+  RunSessionInput,
+  RunSessionResult,
   SendDirectMessageRequest,
   WorkoutInvite,
-  WorkoutInviteRecord
+  WorkoutInviteRecord,
+  WorkoutSession,
+  WorkoutSessionInput,
+  WorkoutSessionResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -875,6 +886,456 @@ export function useListMessageThreads<TData = Awaited<ReturnType<typeof listMess
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListMessageThreadsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetFoodLogForDateUrl = (userId: string,
+    date: string,) => {
+
+
+
+
+  return `/api/food-log/${userId}/${date}`
+}
+
+/**
+ * @summary Get food entries for a user on a specific date
+ */
+export const getFoodLogForDate = async (userId: string,
+    date: string, options?: RequestInit): Promise<FoodEntry[]> => {
+
+  return customFetch<FoodEntry[]>(getGetFoodLogForDateUrl(userId,date),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFoodLogForDateQueryKey = (userId: string,
+    date: string,) => {
+    return [
+    `/api/food-log/${userId}/${date}`
+    ] as const;
+    }
+
+
+export const getGetFoodLogForDateQueryOptions = <TData = Awaited<ReturnType<typeof getFoodLogForDate>>, TError = ErrorType<unknown>>(userId: string,
+    date: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFoodLogForDate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFoodLogForDateQueryKey(userId,date);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFoodLogForDate>>> = ({ signal }) => getFoodLogForDate(userId,date, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId && date), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFoodLogForDate>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFoodLogForDateQueryResult = NonNullable<Awaited<ReturnType<typeof getFoodLogForDate>>>
+export type GetFoodLogForDateQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get food entries for a user on a specific date
+ */
+
+export function useGetFoodLogForDate<TData = Awaited<ReturnType<typeof getFoodLogForDate>>, TError = ErrorType<unknown>>(
+ userId: string,
+    date: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFoodLogForDate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFoodLogForDateQueryOptions(userId,date,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getLogFoodEntryUrl = (userId: string,) => {
+
+
+
+
+  return `/api/food-log/${userId}`
+}
+
+/**
+ * @summary Log a food entry for a user
+ */
+export const logFoodEntry = async (userId: string,
+    foodEntryInput: FoodEntryInput, options?: RequestInit): Promise<LogFoodEntry200 | FoodEntry> => {
+
+  return customFetch<LogFoodEntry200 | FoodEntry>(getLogFoodEntryUrl(userId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      foodEntryInput,)
+  }
+);}
+
+
+
+
+export const getLogFoodEntryMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logFoodEntry>>, TError,{userId: string;data: BodyType<FoodEntryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof logFoodEntry>>, TError,{userId: string;data: BodyType<FoodEntryInput>}, TContext> => {
+
+const mutationKey = ['logFoodEntry'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logFoodEntry>>, {userId: string;data: BodyType<FoodEntryInput>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  logFoodEntry(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogFoodEntryMutationResult = NonNullable<Awaited<ReturnType<typeof logFoodEntry>>>
+    export type LogFoodEntryMutationBody = BodyType<FoodEntryInput>
+    export type LogFoodEntryMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Log a food entry for a user
+ */
+export const useLogFoodEntry = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logFoodEntry>>, TError,{userId: string;data: BodyType<FoodEntryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof logFoodEntry>>,
+        TError,
+        {userId: string;data: BodyType<FoodEntryInput>},
+        TContext
+      > => {
+      return useMutation(getLogFoodEntryMutationOptions(options));
+    }
+
+export const getLogWorkoutSessionUrl = () => {
+
+
+
+
+  return `/api/sessions/workout`
+}
+
+/**
+ * @summary Log a completed workout session
+ */
+export const logWorkoutSession = async (workoutSessionInput: WorkoutSessionInput, options?: RequestInit): Promise<LogWorkoutSession200 | WorkoutSessionResult> => {
+
+  return customFetch<LogWorkoutSession200 | WorkoutSessionResult>(getLogWorkoutSessionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      workoutSessionInput,)
+  }
+);}
+
+
+
+
+export const getLogWorkoutSessionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logWorkoutSession>>, TError,{data: BodyType<WorkoutSessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof logWorkoutSession>>, TError,{data: BodyType<WorkoutSessionInput>}, TContext> => {
+
+const mutationKey = ['logWorkoutSession'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logWorkoutSession>>, {data: BodyType<WorkoutSessionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  logWorkoutSession(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogWorkoutSessionMutationResult = NonNullable<Awaited<ReturnType<typeof logWorkoutSession>>>
+    export type LogWorkoutSessionMutationBody = BodyType<WorkoutSessionInput>
+    export type LogWorkoutSessionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Log a completed workout session
+ */
+export const useLogWorkoutSession = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logWorkoutSession>>, TError,{data: BodyType<WorkoutSessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof logWorkoutSession>>,
+        TError,
+        {data: BodyType<WorkoutSessionInput>},
+        TContext
+      > => {
+      return useMutation(getLogWorkoutSessionMutationOptions(options));
+    }
+
+export const getGetWorkoutSessionsUrl = (userId: string,) => {
+
+
+
+
+  return `/api/sessions/workout/${userId}`
+}
+
+/**
+ * @summary Get recent workout sessions for a user
+ */
+export const getWorkoutSessions = async (userId: string, options?: RequestInit): Promise<WorkoutSession[]> => {
+
+  return customFetch<WorkoutSession[]>(getGetWorkoutSessionsUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWorkoutSessionsQueryKey = (userId: string,) => {
+    return [
+    `/api/sessions/workout/${userId}`
+    ] as const;
+    }
+
+
+export const getGetWorkoutSessionsQueryOptions = <TData = Awaited<ReturnType<typeof getWorkoutSessions>>, TError = ErrorType<unknown>>(userId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkoutSessions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWorkoutSessionsQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWorkoutSessions>>> = ({ signal }) => getWorkoutSessions(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWorkoutSessions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWorkoutSessionsQueryResult = NonNullable<Awaited<ReturnType<typeof getWorkoutSessions>>>
+export type GetWorkoutSessionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get recent workout sessions for a user
+ */
+
+export function useGetWorkoutSessions<TData = Awaited<ReturnType<typeof getWorkoutSessions>>, TError = ErrorType<unknown>>(
+ userId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkoutSessions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWorkoutSessionsQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getLogRunSessionUrl = () => {
+
+
+
+
+  return `/api/sessions/run`
+}
+
+/**
+ * @summary Log a completed run session
+ */
+export const logRunSession = async (runSessionInput: RunSessionInput, options?: RequestInit): Promise<LogRunSession200 | RunSessionResult> => {
+
+  return customFetch<LogRunSession200 | RunSessionResult>(getLogRunSessionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      runSessionInput,)
+  }
+);}
+
+
+
+
+export const getLogRunSessionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logRunSession>>, TError,{data: BodyType<RunSessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof logRunSession>>, TError,{data: BodyType<RunSessionInput>}, TContext> => {
+
+const mutationKey = ['logRunSession'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logRunSession>>, {data: BodyType<RunSessionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  logRunSession(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogRunSessionMutationResult = NonNullable<Awaited<ReturnType<typeof logRunSession>>>
+    export type LogRunSessionMutationBody = BodyType<RunSessionInput>
+    export type LogRunSessionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Log a completed run session
+ */
+export const useLogRunSession = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logRunSession>>, TError,{data: BodyType<RunSessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof logRunSession>>,
+        TError,
+        {data: BodyType<RunSessionInput>},
+        TContext
+      > => {
+      return useMutation(getLogRunSessionMutationOptions(options));
+    }
+
+export const getGetRunSessionsUrl = (userId: string,) => {
+
+
+
+
+  return `/api/sessions/run/${userId}`
+}
+
+/**
+ * @summary Get recent run sessions for a user
+ */
+export const getRunSessions = async (userId: string, options?: RequestInit): Promise<RunSession[]> => {
+
+  return customFetch<RunSession[]>(getGetRunSessionsUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRunSessionsQueryKey = (userId: string,) => {
+    return [
+    `/api/sessions/run/${userId}`
+    ] as const;
+    }
+
+
+export const getGetRunSessionsQueryOptions = <TData = Awaited<ReturnType<typeof getRunSessions>>, TError = ErrorType<unknown>>(userId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRunSessions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRunSessionsQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRunSessions>>> = ({ signal }) => getRunSessions(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRunSessions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRunSessionsQueryResult = NonNullable<Awaited<ReturnType<typeof getRunSessions>>>
+export type GetRunSessionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get recent run sessions for a user
+ */
+
+export function useGetRunSessions<TData = Awaited<ReturnType<typeof getRunSessions>>, TError = ErrorType<unknown>>(
+ userId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRunSessions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRunSessionsQueryOptions(userId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

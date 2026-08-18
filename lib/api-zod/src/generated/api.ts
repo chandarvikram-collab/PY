@@ -192,6 +192,196 @@ export const ListMessageThreadsResponse = zod.array(ListMessageThreadsResponseIt
 
 
 /**
+ * @summary Get food entries for a user on a specific date
+ */
+export const GetFoodLogForDateParams = zod.object({
+  "userId": zod.coerce.string(),
+  "date": zod.coerce.string()
+})
+
+export const GetFoodLogForDateHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetFoodLogForDateResponseItem = zod.object({
+  "id": zod.string(),
+  "userId": zod.string(),
+  "date": zod.string(),
+  "meal": zod.string(),
+  "name": zod.string(),
+  "calories": zod.number(),
+  "protein": zod.number(),
+  "carbs": zod.number(),
+  "fat": zod.number(),
+  "fiber": zod.number().nullish(),
+  "sugar": zod.number().nullish(),
+  "sodium": zod.number().nullish(),
+  "loggedAt": zod.coerce.date()
+})
+export const GetFoodLogForDateResponse = zod.array(GetFoodLogForDateResponseItem)
+
+
+/**
+ * @summary Log a food entry for a user
+ */
+export const LogFoodEntryParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const LogFoodEntryHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+
+
+export const logFoodEntryBodyCaloriesMin = 0;
+
+export const logFoodEntryBodyProteinMin = 0;
+
+export const logFoodEntryBodyCarbsMin = 0;
+
+export const logFoodEntryBodyFatMin = 0;
+
+
+
+export const LogFoodEntryBody = zod.object({
+  "date": zod.string().min(1),
+  "meal": zod.string().min(1),
+  "name": zod.string().min(1),
+  "calories": zod.number().min(logFoodEntryBodyCaloriesMin),
+  "protein": zod.number().min(logFoodEntryBodyProteinMin),
+  "carbs": zod.number().min(logFoodEntryBodyCarbsMin),
+  "fat": zod.number().min(logFoodEntryBodyFatMin),
+  "fiber": zod.number().nullish(),
+  "sugar": zod.number().nullish(),
+  "sodium": zod.number().nullish()
+})
+
+export const LogFoodEntryResponse = zod.object({
+  "duplicate": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Log a completed workout session
+ */
+export const LogWorkoutSessionHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+
+export const logWorkoutSessionBodyDurationSecondsMin = 0;
+
+
+
+export const LogWorkoutSessionBody = zod.object({
+  "userId": zod.string(),
+  "name": zod.string().min(1),
+  "date": zod.string().min(1),
+  "type": zod.string().optional(),
+  "durationSeconds": zod.number().min(logWorkoutSessionBodyDurationSecondsMin),
+  "volumeKg": zod.number().optional(),
+  "exerciseCount": zod.number().optional(),
+  "exerciseLogJson": zod.object({
+
+}).passthrough().optional(),
+  "pointsEarned": zod.number().optional()
+})
+
+export const LogWorkoutSessionResponse = zod.object({
+  "duplicate": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get recent workout sessions for a user
+ */
+export const GetWorkoutSessionsParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const GetWorkoutSessionsHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetWorkoutSessionsResponseItem = zod.object({
+  "id": zod.string(),
+  "userId": zod.string(),
+  "type": zod.string().optional(),
+  "name": zod.string(),
+  "date": zod.string(),
+  "durationSeconds": zod.number(),
+  "volumeKg": zod.number(),
+  "exerciseCount": zod.number(),
+  "exerciseLogJson": zod.object({
+
+}).passthrough().optional(),
+  "pointsEarned": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+export const GetWorkoutSessionsResponse = zod.array(GetWorkoutSessionsResponseItem)
+
+
+/**
+ * @summary Log a completed run session
+ */
+export const LogRunSessionHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+export const logRunSessionBodyDurationSecondsMin = 0;
+
+export const logRunSessionBodyDistanceKmMin = 0;
+
+
+
+export const LogRunSessionBody = zod.object({
+  "userId": zod.string(),
+  "date": zod.string().min(1),
+  "durationSeconds": zod.number().min(logRunSessionBodyDurationSecondsMin),
+  "distanceKm": zod.number().min(logRunSessionBodyDistanceKmMin),
+  "avgPace": zod.string(),
+  "bestPace": zod.string().optional(),
+  "calories": zod.number().optional(),
+  "pointsEarned": zod.number().optional()
+})
+
+export const LogRunSessionResponse = zod.object({
+  "duplicate": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get recent run sessions for a user
+ */
+export const GetRunSessionsParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const GetRunSessionsHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetRunSessionsResponseItem = zod.object({
+  "id": zod.string(),
+  "userId": zod.string(),
+  "type": zod.string().optional(),
+  "date": zod.string(),
+  "durationSeconds": zod.number(),
+  "distanceKm": zod.number(),
+  "avgPace": zod.string(),
+  "bestPace": zod.string(),
+  "calories": zod.number(),
+  "pointsEarned": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+export const GetRunSessionsResponse = zod.array(GetRunSessionsResponseItem)
+
+
+/**
  * @summary Get the full message history with a connected user
  */
 export const GetMessagesWithFriendParams = zod.object({
