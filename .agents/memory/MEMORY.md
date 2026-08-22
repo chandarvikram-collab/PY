@@ -8,3 +8,4 @@
 - [Drizzle push TTY prompt](drizzle-push-tty-prompt.md) — `db run push` can hang on an unrelated constraint prompt; fall back to direct SQL via executeSql()
 - [Mobile routines are local-only](mobile-routines-local-only.md) — user-created routines live in AsyncStorage only, not the server `routines` table; don't rely on server-side routineId lookups
 - [Expo notifications web crash](expo-notifications-web-crash.md) — getLastNotificationResponse not available on web preview; pre-existing, not a regression signal
+- [GitHub push authentication](github-push-auth.md) — an attached GitHub connector may still withhold credentials from shell git pushes; reauthorize through Replit Git/Integrations
