@@ -60,7 +60,7 @@ export default function OnboardingScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, updateProfile } = useApp();
+  const { state, apiUserId, updateProfile } = useApp();
   const { userProfile } = state;
   const { getToken } = useAuth();
 
@@ -170,7 +170,7 @@ export default function OnboardingScreen() {
       };
 
       const token = await getToken();
-      const res = await fetch(`${API_BASE}/api/users/${userProfile.id}/nutrition-goals`, {
+      const res = await fetch(`${API_BASE}/api/users/${apiUserId}/nutrition-goals`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -217,7 +217,7 @@ export default function OnboardingScreen() {
     } finally {
       setSaving(false);
     }
-  }, [sex, heightFt, heightIn, weightLbs, age, activity, goal, pace, activities, availability, liftDays, runDays, userProfile.id, updateProfile, router, getToken]);
+  }, [sex, heightFt, heightIn, weightLbs, age, activity, goal, pace, activities, availability, liftDays, runDays, apiUserId, updateProfile, router, getToken]);
 
   function toggleActivity(item: string) {
     setActivities((prev) => {
