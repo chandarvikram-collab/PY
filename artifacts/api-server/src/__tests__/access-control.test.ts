@@ -1,10 +1,13 @@
 /**
  * Access-control integration tests.
  *
- * Each protected route is exercised with three token scenarios:
+ * Protected read/update/delete routes are exercised with three token scenarios:
  *   - no token         → 401
  *   - mismatched token → 403
  *   - matching token   → 2xx
+ *
+ * Create routes that support pre-sign-in device logging accept anonymous
+ * requests, while still rejecting authenticated requests for another owner.
  *
  * Public GET routes (leaderboard, user profile) are exercised without a token
  * and must return 200.
@@ -204,10 +207,11 @@ describe("POST /api/sessions/workout", () => {
     pointsEarned: 10,
   };
 
-  it("returns 401 with no token", async () => {
+  it("accepts pre-sign-in logging with no token", async () => {
     setNoToken();
     const res = await request(app).post("/api/sessions/workout").send(validBody);
-    expect(res.status).toBe(401);
+    expect(res.status).toBeGreaterThanOrEqual(200);
+    expect(res.status).toBeLessThan(300);
   });
 
   it("returns 403 with a mismatched token", async () => {
@@ -267,10 +271,11 @@ describe("POST /api/sessions/run", () => {
     pointsEarned: 15,
   };
 
-  it("returns 401 with no token", async () => {
+  it("accepts pre-sign-in logging with no token", async () => {
     setNoToken();
     const res = await request(app).post("/api/sessions/run").send(validBody);
-    expect(res.status).toBe(401);
+    expect(res.status).toBeGreaterThanOrEqual(200);
+    expect(res.status).toBeLessThan(300);
   });
 
   it("returns 403 with a mismatched token", async () => {
@@ -356,10 +361,11 @@ describe("POST /api/food-log/:userId", () => {
   const url = `/api/food-log/${OWNER_ID}`;
   const validBody = { name: "Apple", calories: 95, date: "2026-07-01" };
 
-  it("returns 401 with no token", async () => {
+  it("accepts pre-sign-in logging with no token", async () => {
     setNoToken();
     const res = await request(app).post(url).send(validBody);
-    expect(res.status).toBe(401);
+    expect(res.status).toBeGreaterThanOrEqual(200);
+    expect(res.status).toBeLessThan(300);
   });
 
   it("returns 403 with a mismatched token", async () => {
