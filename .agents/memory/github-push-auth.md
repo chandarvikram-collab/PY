@@ -7,4 +7,4 @@ An authorized GitHub integration can be attached to the environment while shell-
 
 **Why:** Repeated pushes to configured GitHub remotes failed at GitHub authentication while the integration status reported as attached and the connector credential lookup returned no usable connection, including immediately after a fresh OAuth grant.
 
-**How to apply:** Do not ask for or paste a personal access token in chat. Have the user reauthorize GitHub through Replit's Git panel or Integrations flow, refresh or reopen the workspace if the credential has not propagated, and retry the normal push. If it remains unavailable, the user can use the Git pane to push directly.
+**How to apply:** Do not ask for or paste a personal access token in chat. Have the user sign in through the GitHub CLI's browser flow and configure its Git credential helper. When Replit's default askpass continues to override it, invoke the push with `GIT_ASKPASS` unset so Git uses the CLI helper. Preserve any pre-existing remote history with a normal fetch-and-merge; do not force-push.
