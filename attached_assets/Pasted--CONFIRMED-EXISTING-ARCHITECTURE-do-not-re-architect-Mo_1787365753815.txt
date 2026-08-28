@@ -1,0 +1,71 @@
+
+
+CONFIRMED EXISTING ARCHITECTURE (do not re-architect):
+- Mobile: Expo/React Native app in artifacts/mobile
+- Backend: Express 5 in artifacts/api-server, mounted at /api
+- Database: PostgreSQL via Drizzle ORM, schema in lib/db/src/schema
+- Auth: Clerk (@clerk/express), JWT verified server-side, local user UUID
+  resolved via requireAuth middleware into req.localUserId
+- Ownership pattern already in use — follow it exactly for any new route:
+  EITHER requireOwner((req) => req.params.userId) middleware when the
+  owner ID is directly in the URL, OR an inline
+  `if (row.userId !== req.localUserId) return res.status(403)...`
+  check when the resource has to be looked up first. Do not invent a
+  different pattern.
+- Payments: Stripe via stripe-replit-sync
+- Object storage: Google Cloud Storage
+- Health check already exists at GET /api/healthz — do not create a
+  duplicate at /health.
+
+TASK 1 (fix first, it's a one-line bug):
+In artifacts/mobile/app/onboarding.tsx, the submit() function POSTs to
+`/api/users/${userProfile.id}/nutrition-goals`. userProfile.id is a
+hardcoded placeholder ("me") that never updates. Every other screen in
+the app correctly uses `apiUserId` from useApp() context for server
+calls. Change onboarding.tsx to use apiUserId instead of userProfile.id
+in this fetch call. Do not touch any other file for this fix. After the
+fix, confirm by reading the code that requireOwner on the server route
+will now receive a real UUID that matches req.localUserId.
+
+TASK 2:
+Create a .env.example file at the repo root listing every environment
+variable actually referenced in artifacts/api-server/src (grep
+process.env to find them all — confirmed ones include DATABASE_URL,
+CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, INTERNAL_API_SECRET,
+STRIPE_PREMIUM_PRICE_ID, REPLIT_CONNECTORS_HOSTNAME,
+PUBLIC_OBJECT_SEARCH_PATHS, ISSUER_URL, NODE_ENV). Use placeholder
+values only, never real secrets.
+
+TASK 3:
+Run `pnpm install`, `pnpm run typecheck`, and `pnpm --filter
+@workspace/api-server run test` (vitest). Report the actual output —
+do not claim success without showing the real command output. Fix any
+typecheck errors you find, but do not change working logic beyond
+what's needed to make it compile.
+
+TASK 4:
+Expand test coverage in artifacts/api-server/src/__tests__ to cover:
+ownership rejection (user A cannot read/edit/delete user B's workout
+session, routine, or PR data — use supertest against the existing
+routes), and the nutrition-goals calculation endpoint with valid and
+invalid payloads. Do not rewrite the existing access-control.test.ts;
+add alongside it.
+
+RULES:
+- Do not rewrite or restructure the mobile frontend beyond Task 1.
+- Do not introduce a second backend framework, a new ORM, Redis, queues,
+  or microservices. This app runs one Express server against one
+  Postgres database — keep it that way.
+- Do not remove or weaken any existing ownership/auth check.
+- If a task reveals a bug outside this list, stop, describe it plainly
+  (file, root cause, proposed fix), and wait for confirmation before
+  fixing it — do not silently expand scope.
+
+DEFINITION OF DONE:
+- [ ] Task 1 fix verified against actual onboarding submit() code
+- [ ] .env.example exists and lists every real env var used server-side
+- [ ] pnpm install / typecheck / test output shown verbatim, not summarized as "passed"
+- [ ] Any typecheck errors found are fixed and re-verified
+- [ ] New tests added and passing
+- [ ] No existing route's auth/ownership check was removed or weakened
+
